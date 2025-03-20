@@ -1,0 +1,28 @@
+{
+	"name": "image-resizer-2",
+	"version": "1.0.0",
+	"private": true,
+	"scripts": {
+		"deploy:dev": "wrangler deploy --env development",
+		"deploy:staging": "wrangler deploy --env staging",
+		"deploy:prod": "wrangler deploy --env production",
+		"dev": "wrangler dev",
+		"start": "wrangler dev",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"lint": "eslint src/**/*.ts",
+		"typecheck": "tsc --noEmit",
+		"build": "npx esbuild src/index.ts --bundle --format=esm --outfile=dist/index.js",
+		"cf-typegen": "wrangler types"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "^0.7.5",
+		"@typescript-eslint/eslint-plugin": "^7.4.0",
+		"@typescript-eslint/parser": "^7.4.0",
+		"esbuild": "^0.25.1",
+		"eslint": "^8.57.0",
+		"typescript": "^5.5.2",
+		"vitest": "~3.0.7",
+		"wrangler": "^4.2.0"
+	}
+}

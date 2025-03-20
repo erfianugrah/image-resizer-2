@@ -1,0 +1,326 @@
+/**
+ * Image Resizer Worker Configuration
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "image-resizer-2",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-03-10",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"assets": {
+		"binding": "ASSETS",
+		"directory": "./public"
+	},
+	"observability": {
+		"enabled": true
+	},
+	"account_id": "25f21f141824546aa72c74451a11b419",
+	/**
+   * Image Resizer Variables
+   */
+	"vars": {
+		"ENVIRONMENT": "development",
+		"DEBUG": "true",
+		"REMOTE_URL": "https://example.com/images",
+		"FALLBACK_URL": "https://placehold.co",
+		"STORAGE_PRIORITY": "r2,remote,fallback", // Default storage priority order
+		"ENABLE_AKAMAI_COMPATIBILITY": "true", // Enable Akamai compatibility in development
+		"LOGGING_LEVEL": "DEBUG",
+		"LOGGING_STRUCTURED": "true",
+		"LOGGING_TIMESTAMP": "true",
+		"LOGGING_BREADCRUMBS_ENABLED": "true",
+		"CACHE_TAGS_ENABLED": "true",
+		"CACHE_TAGS_PREFIX": "img-dev-",
+		"CACHE_TAGS_CUSTOM": "dev,test",
+		"CACHE_TAGS_PARSE_METADATA": "true",
+		"CACHE_TTL_OK": "60",
+		"CACHE_TTL_CLIENT_ERROR": "10",
+		"CACHE_TTL_SERVER_ERROR": "5",
+		"CACHE_TTL_REMOTE_FETCH": "60",
+		"CACHE_TTL_R2_HEADERS": "60",
+		"CACHE_METHOD": "cf",
+		"CACHE_EVERYTHING": "true",
+		"CACHE_USE_TTL_BY_STATUS": "true",
+		"CACHE_STATUS_SUCCESS_RANGE": "200-299",
+		"CACHE_STATUS_REDIRECT_RANGE": "301-302,307",
+		"CACHE_STATUS_NOTFOUND_RANGE": "404,410",
+		"CACHE_STATUS_ERROR_RANGE": "500-503,507",
+		"CACHE_TTL_STATUS_SUCCESS": "60",
+		"CACHE_TTL_STATUS_REDIRECT": "30",
+		"CACHE_TTL_STATUS_NOTFOUND": "10",
+		"CACHE_TTL_STATUS_ERROR": "5",
+		"FORMAT_QUALITY_WEBP": "80",
+		"FORMAT_QUALITY_AVIF": "75",
+		"FORMAT_QUALITY_JPEG": "80",
+		"FORMAT_QUALITY_PNG": "85",
+		"DEFAULT_QUALITY": "80",
+		"DEFAULT_FIT": "scale-down",
+		"USER_AGENT": "Cloudflare-Image-Resizer/1.0-DEV",
+		/* Path transformations for all storage types */
+		"PATH_TRANSFORMS": {
+			"images": {
+				"prefix": "",
+				"removePrefix": true
+			},
+			"assets": {
+				"prefix": "img/",
+				"removePrefix": true,
+				/* Origin-specific transforms */
+				"r2": {
+					"prefix": "img/",
+					"removePrefix": true
+				},
+				"remote": {
+					"prefix": "assets/",
+					"removePrefix": true
+				},
+				"fallback": {
+					"prefix": "public/",
+					"removePrefix": true
+				}
+			},
+			"content": {
+				"prefix": "content-images/",
+				"removePrefix": true
+			}
+		},
+		/* Authentication settings */
+		"AUTH_ENABLED": "true",
+		"AUTH_SECURITY_LEVEL": "permissive",
+		"AUTH_CACHE_TTL": "60",
+		"AUTH_USE_ORIGIN_AUTH": "true",
+		"AUTH_SHARE_PUBLICLY": "true",
+		/* Auth domain settings */
+		"AUTH_DOMAIN_SECURE": "secure.example.com",
+		"AUTH_DOMAIN_BASIC": "basic-auth.example.com",
+		"AUTH_DOMAIN_API": "api.example.com",
+		"AUTH_DOMAIN_SIGNED": "signed.example.com",
+		/* Auth type settings */
+		"AUTH_TYPE_SECURE": "bearer",
+		"AUTH_TYPE_BASIC": "basic",
+		"AUTH_TYPE_API": "header",
+		"AUTH_TYPE_SIGNED": "query",
+		/* Auth parameter settings */
+		"AUTH_TOKEN_HEADER_NAME": "Authorization",
+		"AUTH_TOKEN_PARAM_NAME": "token",
+		"AUTH_TOKEN_EXPIRATION": "3600",
+		"AUTH_SIGNED_EXPIRATION": "86400"
+	},
+	/**
+   * Smart Placement for optimal performance
+   */
+	"placement": {
+		"mode": "smart"
+	},
+	/**
+   * R2 Binding for image storage
+   * In production, you would create an R2 bucket and bind it here
+   */
+	"r2_buckets": [
+		{
+			"binding": "IMAGES_BUCKET",
+			"bucket_name": "images",
+			"preview_bucket_name": "images-dev"
+		}
+	],
+	/**
+   * Environment-specific configurations
+   */
+	"env": {
+		"staging": {
+			"vars": {
+				"ENVIRONMENT": "staging",
+				"DEBUG": "true",
+				"REMOTE_URL": "https://example.com/images",
+				"FALLBACK_URL": "https://placehold.co",
+				"STORAGE_PRIORITY": "r2,remote,fallback", // Default storage priority order
+				"ENABLE_AKAMAI_COMPATIBILITY": "true", // Enable in staging for testing
+				"LOGGING_LEVEL": "INFO",
+				"LOGGING_STRUCTURED": "true",
+				"LOGGING_TIMESTAMP": "true",
+				"LOGGING_BREADCRUMBS_ENABLED": "true",
+				"CACHE_TAGS_ENABLED": "true",
+				"CACHE_TAGS_PREFIX": "img-staging-",
+				"CACHE_TAGS_CUSTOM": "staging,test",
+				"CACHE_TAGS_PARSE_METADATA": "true",
+				"CACHE_TTL_OK": "3600",
+				"CACHE_TTL_CLIENT_ERROR": "30",
+				"CACHE_TTL_SERVER_ERROR": "5",
+				"CACHE_TTL_REMOTE_FETCH": "1800",
+				"CACHE_TTL_R2_HEADERS": "3600",
+				"CACHE_METHOD": "cache-api",
+				/* Path transformations for all storage types */
+				"PATH_TRANSFORMS": {
+					"images": {
+						"prefix": "",
+						"removePrefix": true
+					},
+					"assets": {
+						"prefix": "img/",
+						"removePrefix": true,
+						/* Origin-specific transforms */
+						"r2": {
+							"prefix": "img/",
+							"removePrefix": true
+						},
+						"remote": {
+							"prefix": "assets/",
+							"removePrefix": true
+						},
+						"fallback": {
+							"prefix": "public/",
+							"removePrefix": true
+						}
+					},
+					"content": {
+						"prefix": "content-images/",
+						"removePrefix": true
+					}
+				},
+				"CACHE_EVERYTHING": "true",
+				"CACHE_USE_TTL_BY_STATUS": "false",
+				"CACHE_STATUS_SUCCESS_RANGE": "200-206,226",
+				"CACHE_STATUS_REDIRECT_RANGE": "301-302",
+				"CACHE_STATUS_NOTFOUND_RANGE": "404",
+				"CACHE_STATUS_ERROR_RANGE": "500-504",
+				"CACHE_TTL_STATUS_SUCCESS": "3600",
+				"CACHE_TTL_STATUS_REDIRECT": "1800",
+				"CACHE_TTL_STATUS_NOTFOUND": "30",
+				"CACHE_TTL_STATUS_ERROR": "5",
+				"FORMAT_QUALITY_WEBP": "85",
+				"FORMAT_QUALITY_AVIF": "80",
+				"FORMAT_QUALITY_JPEG": "85",
+				"FORMAT_QUALITY_PNG": "90",
+				"DEFAULT_QUALITY": "85",
+				"DEFAULT_FIT": "scale-down",
+				"USER_AGENT": "Cloudflare-Image-Resizer/1.0-STAGING",
+				/* Authentication settings */
+				"AUTH_ENABLED": "true",
+				"AUTH_SECURITY_LEVEL": "strict",
+				"AUTH_CACHE_TTL": "3600",
+				"AUTH_USE_ORIGIN_AUTH": "true",
+				"AUTH_SHARE_PUBLICLY": "true",
+				/* Auth domain settings */
+				"AUTH_DOMAIN_SECURE": "secure.example.com",
+				"AUTH_DOMAIN_BASIC": "basic-auth.example.com",
+				"AUTH_DOMAIN_API": "api.example.com",
+				"AUTH_DOMAIN_SIGNED": "signed.example.com",
+				/* Auth type settings */
+				"AUTH_TYPE_SECURE": "bearer",
+				"AUTH_TYPE_BASIC": "basic",
+				"AUTH_TYPE_API": "header",
+				"AUTH_TYPE_SIGNED": "query",
+				/* Auth parameter settings */
+				"AUTH_TOKEN_HEADER_NAME": "Authorization",
+				"AUTH_TOKEN_PARAM_NAME": "token",
+				"AUTH_TOKEN_EXPIRATION": "3600",
+				"AUTH_SIGNED_EXPIRATION": "86400"
+			}
+		},
+		"production": {
+			"vars": {
+				"ENVIRONMENT": "production",
+				"DEBUG": "true",
+				"REMOTE_URL": "https://cdn.erfianugrah.com",
+				"FALLBACK_URL": "https://cdn.erfianugrah.com",
+				"STORAGE_PRIORITY": "remote,fallback", // Default storage priority order
+				"ENABLE_AKAMAI_COMPATIBILITY": "true", // Enabled in production
+				"LOGGING_LEVEL": "DEBUG",
+				"LOGGING_STRUCTURED": "true",
+				"LOGGING_TIMESTAMP": "true",
+				"LOGGING_BREADCRUMBS_ENABLED": "true",
+				"CACHE_TAGS_ENABLED": "true",
+				"CACHE_TAGS_PREFIX": "img-prod-",
+				"CACHE_TAGS_CUSTOM": "prod,site1",
+				"CACHE_TAGS_PARSE_METADATA": "true",
+				"CACHE_TTL_OK": "604800",
+				"CACHE_TTL_CLIENT_ERROR": "60",
+				"CACHE_TTL_SERVER_ERROR": "10",
+				"CACHE_TTL_REMOTE_FETCH": "86400",
+				"CACHE_TTL_R2_HEADERS": "604800",
+				"CACHE_METHOD": "cf",
+				/* Path transformations for all storage types */
+				"PATH_TRANSFORMS": {
+					"images": {
+						"prefix": "",
+						"removePrefix": true
+					},
+					"assets": {
+						"prefix": "img/",
+						"removePrefix": true,
+						/* Origin-specific transforms */
+						"r2": {
+							"prefix": "img/",
+							"removePrefix": true
+						},
+						"remote": {
+							"prefix": "assets/",
+							"removePrefix": true
+						},
+						"fallback": {
+							"prefix": "public/",
+							"removePrefix": true
+						}
+					},
+					"content": {
+						"prefix": "content-images/",
+						"removePrefix": true
+					}
+				},
+				"CACHE_EVERYTHING": "true",
+				"CACHE_USE_TTL_BY_STATUS": "false",
+				"CACHE_STATUS_SUCCESS_RANGE": "200-206,226",
+				"CACHE_STATUS_REDIRECT_RANGE": "301-302,307-308",
+				"CACHE_STATUS_NOTFOUND_RANGE": "404,410,451",
+				"CACHE_STATUS_ERROR_RANGE": "500-504",
+				"CACHE_TTL_STATUS_SUCCESS": "604800",
+				"CACHE_TTL_STATUS_REDIRECT": "86400",
+				"CACHE_TTL_STATUS_NOTFOUND": "60",
+				"CACHE_TTL_STATUS_ERROR": "10",
+				"FORMAT_QUALITY_WEBP": "85",
+				"FORMAT_QUALITY_AVIF": "80",
+				"FORMAT_QUALITY_JPEG": "85",
+				"FORMAT_QUALITY_PNG": "90",
+				"DEFAULT_QUALITY": "85",
+				"DEFAULT_FIT": "scale-down",
+				"USER_AGENT": "Cloudflare-Image-Resizer/1.0-PROD",
+				/* Authentication settings */
+				"AUTH_ENABLED": "false",
+				"AUTH_SECURITY_LEVEL": "strict",
+				"AUTH_CACHE_TTL": "86400",
+				"AUTH_USE_ORIGIN_AUTH": "true",
+				"AUTH_SHARE_PUBLICLY": "true",
+				/* Auth domain settings */
+				"AUTH_DOMAIN_SECURE": "secure.example.com",
+				"AUTH_DOMAIN_BASIC": "basic-auth.example.com",
+				"AUTH_DOMAIN_API": "api.example.com",
+				"AUTH_DOMAIN_SIGNED": "signed.example.com",
+				/* Auth type settings */
+				"AUTH_TYPE_SECURE": "bearer",
+				"AUTH_TYPE_BASIC": "basic",
+				"AUTH_TYPE_API": "header",
+				"AUTH_TYPE_SIGNED": "query",
+				/* Auth parameter settings */
+				"AUTH_TOKEN_HEADER_NAME": "Authorization",
+				"AUTH_TOKEN_PARAM_NAME": "token",
+				"AUTH_TOKEN_EXPIRATION": "3600",
+				"AUTH_SIGNED_EXPIRATION": "86400"
+			},
+			"r2_buckets": [
+				{
+					"binding": "IMAGES_BUCKET",
+					"bucket_name": "images"
+				}
+			]
+		}
+	},
+	"routes": [
+		{
+			"pattern": "images.erfi.dev/*",
+			"zone_id": "d6260a9cd0c27db1e9c0a453b2e4761e"
+		}
+	]
+}
