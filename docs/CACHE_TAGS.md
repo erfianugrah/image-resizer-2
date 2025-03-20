@@ -139,12 +139,28 @@ curl -X POST "https://api.cloudflare.com/client/v4/zones/{zone_id}/purge_cache" 
      --data '{"tags":["img-prod-product-catalog"]}'
 ```
 
+### Cache Tag Usage Examples
+
+| Purpose | Tag Pattern | Example | Use Case |
+|---------|------------|---------|----------|
+| Global site update | `img-prod-site1` | `img-prod-site1` | Purge all images for a complete site refresh |
+| Section update | `img-prod-section-*` | `img-prod-section-blog` | Purge all images in a specific section |
+| Product catalog | `img-prod-path-products-*` | `img-prod-path-products-electronics` | Update product category images |
+| Format-based purge | `img-prod-format-*` | `img-prod-format-webp` | Update specific format during optimization changes |
+| Resolution purge | `img-prod-width-*` | `img-prod-width-320` | Purge mobile-specific renditions |
+| Quality update | `img-prod-quality-*` | `img-prod-quality-85` | Update specific quality level after policy change |
+| Content-type | `img-prod-type-*` | `img-prod-type-image` | Purge by content type |
+| Cache-control | `img-prod-cc-*` | `img-prod-cc-public` | Purge public cache items |
+| Source metadata | `img-prod-meta-category-*` | `img-prod-meta-category-electronics` | Purge by content category stored in metadata |
+
 ### Purging Scenarios
 
 - **Global site update**: Purge all images with `img-prod-site1`
 - **Product updates**: Purge product images with `img-prod-path-products`
 - **Format updates**: Purge specific formats with `img-prod-format-webp`
 - **Resolution-specific**: Purge mobile renditions with `img-prod-width-320`
+- **Metadata-based**: Purge items with specific metadata using `img-prod-meta-category-electronics`
+- **Cache directive**: Purge immutable items with `img-prod-cc-immutable`
 
 ## Best Practices
 

@@ -82,6 +82,42 @@ Demo URL: [https://images.erfi.dev/Granna_1.JPG?width=400&height=300&fit=crop&gr
 
 Demo URL: [https://images.erfi.dev/_width=300/_format=webp/Granna_1.JPG](https://images.erfi.dev/_width=300/_format=webp/Granna_1.JPG)
 
+### Image Effects (Brightness, Contrast, Saturation)
+
+![Image Effects](https://images.erfi.dev/Granna_1.JPG?width=400&brightness=10&contrast=15&saturation=-5)
+
+Demo URL: [https://images.erfi.dev/Granna_1.JPG?width=400&brightness=10&contrast=15&saturation=-5](https://images.erfi.dev/Granna_1.JPG?width=400&brightness=10&contrast=15&saturation=-5)
+
+### Advanced Gravity with Focus Point
+
+![Focus Point](https://images.erfi.dev/Granna_1.JPG?width=400&height=400&fit=crop&gravity=auto)
+
+Demo URL: [https://images.erfi.dev/Granna_1.JPG?width=400&height=400&fit=crop&gravity=auto](https://images.erfi.dev/Granna_1.JPG?width=400&height=400&fit=crop&gravity=auto)
+
+### Background Color with Padding
+
+![Background Color](https://images.erfi.dev/Granna_1.JPG?width=400&height=400&fit=pad&background=lightblue)
+
+Demo URL: [https://images.erfi.dev/Granna_1.JPG?width=400&height=400&fit=pad&background=lightblue](https://images.erfi.dev/Granna_1.JPG?width=400&height=400&fit=pad&background=lightblue)
+
+### Sharpen Enhancement
+
+![Sharpened Image](https://images.erfi.dev/Granna_1.JPG?width=400&sharpen=3)
+
+Demo URL: [https://images.erfi.dev/Granna_1.JPG?width=400&sharpen=3](https://images.erfi.dev/Granna_1.JPG?width=400&sharpen=3)
+
+### Multiple Derivatives (Banner Example)
+
+![Banner Derivative](https://images.erfi.dev/banner/Granna_1.JPG)
+
+Demo URL: [https://images.erfi.dev/banner/Granna_1.JPG](https://images.erfi.dev/banner/Granna_1.JPG)
+
+### Debug Mode
+
+[Debug HTML Report](https://images.erfi.dev/debug-report?url=https://images.erfi.dev/Granna_1.JPG&width=500)
+
+Debug Header Example: Add `?debug=true` to any image URL
+
 ## Architecture
 
 This project implements a simplified architecture compared to the original image-resizer:
