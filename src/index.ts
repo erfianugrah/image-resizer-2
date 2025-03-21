@@ -130,7 +130,16 @@ export default {
             // Add Cloudflare parameters
             for (const [key, value] of Object.entries(cfParams)) {
               if (value !== undefined && value !== null && !key.startsWith('_')) {
-                if (typeof value === 'object') {
+                // Special handling for gravity parameter with x,y coordinates
+                if (key === 'gravity' && typeof value === 'object' && 'x' in value && 'y' in value) {
+                  // Use a simpler format: "x,y" for gravity coordinates (e.g., "0.5,0.3")
+                  // This is easier to parse and less error-prone than JSON serialization
+                  // The format matches the regex in transform.ts: /^(0(\.\d+)?|1(\.0+)?),(0(\.\d+)?|1(\.0+)?)$/
+                  // Values must be between 0-1 representing the focal point position
+                  const x = (value as any).x;
+                  const y = (value as any).y;
+                  convertedUrl.searchParams.set(key, `${x},${y}`);
+                } else if (typeof value === 'object') {
                   convertedUrl.searchParams.set(key, JSON.stringify(value));
                 } else {
                   convertedUrl.searchParams.set(key, String(value));

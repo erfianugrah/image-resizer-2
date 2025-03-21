@@ -1133,8 +1133,43 @@ export function buildTransformOptions(
         });
       }
     } else if (typeof result.gravity === 'string') {
-      // Handle case where gravity is a stringified JSON object
-      if (result.gravity.startsWith('{') && result.gravity.endsWith('}')) {
+      // First, check for the "x,y" coordinate format (our preferred format)
+      // This format is used when gravity contains exact coordinates like "0.5,0.2"
+      // Values must be between 0-1 representing the focal point position (x,y)
+      // This is the simpler, more reliable format that replaces JSON serialization
+      const coordRegex = /^(0(\.\d+)?|1(\.0+)?),(0(\.\d+)?|1(\.0+)?)$/;
+      const coordMatch = (result.gravity as string).match(coordRegex);
+      
+      if (coordMatch) {
+        // Parse x,y coordinates from the string format
+        // The regex captures the values differently than expected
+        // We need to use the original string and split it
+        const coordinates = (result.gravity as string).split(',');
+        if (coordinates.length === 2) {
+          result.gravity = {
+            x: parseFloat(coordinates[0]),
+            y: parseFloat(coordinates[1])
+          };
+        }
+        
+        // Since we've set result.gravity to an object with x and y properties,
+        // we can safely cast it for logging purposes
+        const gravityObj = result.gravity as { x: number; y: number };
+        
+        logger.debug('Parsed gravity from coordinate string format', {
+          x: gravityObj.x,
+          y: gravityObj.y,
+          originalValue: coordMatch[0]
+        });
+        
+        logger.breadcrumb('Parsed gravity from simple coordinate format', undefined, {
+          x: gravityObj.x,
+          y: gravityObj.y,
+          originalString: coordMatch[0]
+        });
+      } 
+      // Handle case where gravity is a stringified JSON object (fallback for backward compatibility)
+      else if (result.gravity.startsWith('{') && result.gravity.endsWith('}')) {
         try {
           // Attempt to parse the JSON string
           const parsedGravity = JSON.parse(result.gravity);
@@ -1149,16 +1184,20 @@ export function buildTransformOptions(
               y: parsedGravity.y
             };
             
+            // Since we've set result.gravity to an object with x and y properties,
+            // we can safely cast it for logging purposes
+            const gravityObj = result.gravity as { x: number; y: number };
+            
             logger.debug('Successfully parsed gravity from JSON string', {
-              x: result.gravity.x,
-              y: result.gravity.y,
-              originalValue: result.gravity
+              x: gravityObj.x,
+              y: gravityObj.y,
+              originalValue: JSON.stringify(gravityObj)
             });
             
             logger.breadcrumb('Parsed gravity from stringified JSON', undefined, {
-              x: result.gravity.x,
-              y: result.gravity.y,
-              originalString: result.gravity
+              x: gravityObj.x,
+              y: gravityObj.y,
+              originalString: JSON.stringify(gravityObj)
             });
           } else {
             logger.warn('Parsed gravity object is missing x or y coordinates, defaulting to center', {
@@ -1175,15 +1214,12 @@ export function buildTransformOptions(
           result.gravity = 'center';
         }
       } else {
-        // Existing string validation logic
+        // Existing string validation logic for named positions
         const validGravityValues = ['auto', 'center', 'top', 'bottom', 'left', 'right', 
                                 'north', 'south', 'east', 'west', 
                                 'north-east', 'north-west', 'south-east', 'south-west', 'face'];
-                                
-        // Check for coordinate format like "0.5,0.2"
-        const coordRegex = /^(0(\.\d+)?|1(\.0+)?),(0(\.\d+)?|1(\.0+)?)$/;
         
-        if (!validGravityValues.includes(result.gravity) && !coordRegex.test(result.gravity)) {
+        if (!validGravityValues.includes(result.gravity)) {
           logger.warn('Invalid gravity value, defaulting to center', {
             originalValue: result.gravity
           });
