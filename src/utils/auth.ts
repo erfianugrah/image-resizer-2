@@ -7,6 +7,8 @@
 
 import { ImageResizerConfig } from '../config';
 import { Logger, defaultLogger } from './logging';
+import { AwsClient } from 'aws4fetch';
+import { Env } from '../types';
 
 // Use default logger until a configured one is provided
 let logger: Logger = defaultLogger;
@@ -27,9 +29,10 @@ export function setLogger(configuredLogger: Logger): void {
  */
 export enum AuthType {
   BEARER = 'bearer',
-  BASIC = 'basic',
+  BASIC = 'basic', // Kept for backwards compatibility but not actively used
   HEADER = 'header',
-  QUERY = 'query'
+  QUERY = 'query',
+  AWS_S3 = 'aws-s3'  // S3/R2/GCS compatible API
 }
 
 /**
@@ -69,29 +72,33 @@ function findAuthOrigin(url: string, config: ImageResizerConfig) {
   
   // Try to find a matching origin in the configuration
   if (config.storage.auth && config.storage.auth.origins) {
-    for (const [id, origin] of Object.entries(config.storage.auth.origins)) {
-      if (!origin.domain) continue;
+    // Make sure we have origins object
+    const origins = config.storage.auth.origins || {};
+    
+    for (const [id, originConfig] of Object.entries(origins)) {
+      // Skip invalid entries
+      if (!originConfig || !originConfig.domain) continue;
       
       // Check for exact domain match
-      if (origin.domain === domain) {
-        return { originId: id, origin };
+      if (originConfig.domain === domain) {
+        return { originId: id, origin: originConfig };
       }
       
       // Check for wildcard and pattern matches
-      if (origin.domain.includes('*')) {
-        const pattern = origin.domain
+      if (originConfig.domain.includes('*')) {
+        const pattern = originConfig.domain
           .replace(/\./g, '\\.') // Escape dots
           .replace(/\*/g, '.*'); // Convert * to regex wildcard
         
         try {
           const regex = new RegExp(`^${pattern}$`);
           if (regex.test(domain)) {
-            return { originId: id, origin };
+            return { originId: id, origin: originConfig };
           }
         } catch (error) {
           logger.error('Error creating regex pattern for domain', { 
             pattern, 
-            domain: origin.domain, 
+            domain: originConfig.domain, 
             error: String(error) 
           });
         }
@@ -113,16 +120,26 @@ function findAuthOrigin(url: string, config: ImageResizerConfig) {
  */
 /**
  * Type for origin configuration settings
+ * 
+ * Note: For S3, R2, and GCS (using S3-compatible API), use the AWS_S3 auth type
+ * and set accessKey/secretKey in environment variables. Make sure useOriginAuth: true
+ * is set so Cloudflare passes the authentication headers to the origin.
  */
 export interface OriginConfig {
   domain: string;
-  type: 'bearer' | 'basic' | 'header' | 'query';
+  type: 'bearer' | 'header' | 'query' | 'aws-s3' | 'basic';  // Added aws-s3 support and kept basic for compatibility
   tokenSecret?: string;
   tokenHeaderName?: string;
   tokenParam?: string;
   tokenExpiration?: number;
-  username?: string;
-  password?: string;
+  // S3/R2/GCS specific settings
+  region?: string;             // AWS/GCS region (e.g., us-east-1, us-central1)
+  service?: string;            // Default 's3' for S3/R2, 'storage' for GCS
+  accessKeyEnvVar?: string;    // Environment variable name containing access key
+  secretKeyEnvVar?: string;    // Environment variable name containing secret key
+  accessKeyVar?: string;       // Alternative name for accessKeyEnvVar
+  secretKeyVar?: string;       // Alternative name for secretKeyEnvVar
+  // Other settings
   headers?: Record<string, string>;
   signedUrlExpiration?: number;
   hashAlgorithm?: string;
@@ -152,8 +169,12 @@ export function findOriginForPath(
     return null;
   }
   
+  // Ensure the origin is properly typed
+  const originConfig: OriginConfig = result.origin;
+  
   return {
-    ...result,
+    originId: result.originId,
+    origin: originConfig,
     env
   };
 }
@@ -207,44 +228,76 @@ function generateBearerToken(url: string, origin: OriginConfig, env: Env): strin
 }
 
 /**
- * Generate basic auth credentials
+ * [REMOVED] Basic auth is no longer supported.
+ * Use aws-s3 type with origin-auth for S3, R2, and GCS authentication.
+ */
+
+/**
+ * Sign a request for S3, R2, or GCS (S3-compatible API)
  * 
- * @param url URL to authenticate
+ * @param url URL to sign
  * @param origin Auth origin configuration
  * @param env Environment variables
- * @returns Basic auth header value or null if unable to generate
+ * @returns An object with signed headers for the request
  */
-function generateBasicAuth(url: string, origin: OriginConfig, env: Env): string | null {
-  // Use Record for string indexing while keeping safety
-  const envRecord = env as unknown as Record<string, string | undefined>;
-  
-  // Get the credentials from environment variable or config
-  const originId = Object.keys(envRecord).find(key => 
-    envRecord[key] && origin.domain && envRecord[key] === origin.domain
-  ) || 'default';
-  
-  const usernameKey = `AUTH_BASIC_USERNAME_${originId.toUpperCase()}`;
-  const passwordKey = `AUTH_BASIC_PASSWORD_${originId.toUpperCase()}`;
-  
-  const username = envRecord[usernameKey] || origin.username;
-  const password = envRecord[passwordKey] || origin.password;
-  
-  if (!username || !password) {
-    logger.error('Basic auth credentials not found for origin', { originId });
-    return null;
-  }
-  
+async function signAwsRequest(url: string, origin: OriginConfig, env: Env): Promise<Record<string, string> | null> {
   try {
-    // Create the basic auth string: username:password
-    const credentials = `${username}:${password}`;
+    // Get credentials from environment variables
+    // Try the new naming first, then fall back to the old naming
+    const accessKeyEnvVar = origin.accessKeyVar || origin.accessKeyEnvVar || 'AWS_ACCESS_KEY_ID';
+    const secretKeyEnvVar = origin.secretKeyVar || origin.secretKeyEnvVar || 'AWS_SECRET_ACCESS_KEY';
     
-    // Base64 encode the credentials
-    const encoded = btoa(credentials);
+    // Access environment variables safely
+    const envRecord = env as unknown as Record<string, string | undefined>;
     
-    return `Basic ${encoded}`;
+    const accessKey = envRecord[accessKeyEnvVar];
+    const secretKey = envRecord[secretKeyEnvVar];
+    
+    if (!accessKey || !secretKey) {
+      logger.error('AWS credentials not found in environment variables', { 
+        accessKeyVar: accessKeyEnvVar, 
+        secretKeyVar: secretKeyEnvVar 
+      });
+      return null;
+    }
+    
+    // Set up AWS client
+    const aws = new AwsClient({
+      accessKeyId: accessKey,
+      secretAccessKey: secretKey,
+      service: origin.service || 's3',
+      region: origin.region || 'us-east-1'
+    });
+    
+    // Create a request to sign
+    const request = new Request(url, {
+      method: 'GET'
+    });
+    
+    // Sign the request
+    const signedRequest = await aws.sign(request);
+    
+    // Extract the headers
+    const headers: Record<string, string> = {};
+    signedRequest.headers.forEach((value, key) => {
+      // Only include AWS specific headers
+      if (key.startsWith('x-amz-') || key === 'authorization') {
+        headers[key] = value;
+      }
+    });
+    
+    logger.debug('Generated AWS signed headers', { 
+      url,
+      headerCount: Object.keys(headers).length,
+      service: origin.service || 's3',
+      region: origin.region || 'us-east-1'
+    });
+    
+    return headers;
   } catch (error) {
-    logger.error('Error generating basic auth', { 
+    logger.error('Error signing AWS request', {
       error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
       url
     });
     return null;
@@ -259,10 +312,10 @@ function generateBasicAuth(url: string, origin: OriginConfig, env: Env): string 
  * @param env Environment variables
  * @returns Signed URL or original URL if unable to sign
  */
-function generateSignedUrl(url: string, origin: any, env: Env): string {
+function generateSignedUrl(url: string, origin: OriginConfig, env: Env): string {
   try {
-    // Use Record<string, any> to allow for string indexing
-    const envRecord = env as Record<string, any>;
+    // First cast to unknown, then to Record type for type safety
+    const envRecord = env as unknown as Record<string, string | undefined>;
     
     // Get the signing secret from environment variable or config
     const originId = Object.keys(envRecord).find(key => 
@@ -320,11 +373,11 @@ function generateSignedUrl(url: string, origin: any, env: Env): string {
  * @param env Environment variables
  * @returns Authentication result with success status, URL and headers
  */
-export function authenticateRequest(
+export async function authenticateRequest(
   url: string, 
   config: ImageResizerConfig,
   env: Env
-): AuthResult {
+): Promise<AuthResult> {
   logger.breadcrumb('Authenticating request', undefined, { 
     url, 
     authEnabled: config.storage.auth?.enabled === true
@@ -343,6 +396,12 @@ export function authenticateRequest(
     // Find the appropriate origin for this URL
     const { originId, origin } = findAuthOrigin(url, config);
     
+    // Create an empty origin object if none found
+    const authOrigin: OriginConfig = origin || {
+      domain: '',
+      type: 'bearer'
+    };
+    
     // If no matching origin, return success with original URL
     if (!originId || !origin) {
       logger.breadcrumb('No matching auth origin found for URL', undefined, { url });
@@ -353,7 +412,7 @@ export function authenticateRequest(
     }
     
     // Determine auth type
-    const authType = origin.type || AuthType.BEARER;
+    const authType = authOrigin.type || AuthType.BEARER;
     
     logger.breadcrumb('Applying authentication', undefined, { 
       originId, 
@@ -366,7 +425,7 @@ export function authenticateRequest(
     case AuthType.BEARER: {
       logger.breadcrumb('Generating bearer token');
       // Generate bearer token
-      const token = generateBearerToken(url, origin, env);
+      const token = generateBearerToken(url, authOrigin, env);
       
       // If token generation failed
       if (!token) {
@@ -391,7 +450,7 @@ export function authenticateRequest(
       }
       
       // Header name (default to Authorization)
-      const headerName = origin.tokenHeaderName || 'Authorization';
+      const headerName = authOrigin.tokenHeaderName || 'Authorization';
       
       logger.breadcrumb('Bearer token generated successfully', undefined, {
         headerName,
@@ -409,31 +468,21 @@ export function authenticateRequest(
     }
       
     case AuthType.BASIC: {
-      // Generate basic auth
-      const basicAuth = generateBasicAuth(url, origin, env);
+      // Basic auth is no longer supported
+      logger.warn('Basic auth is no longer supported, use origin-auth for S3/GCS or BEARER/HEADER for custom auth', {
+        url
+      });
       
-      // If basic auth generation failed, return error
-      if (!basicAuth) {
-        return {
-          success: false,
-          url: url,
-          error: 'Failed to generate basic auth credentials'
-        };
-      }
-      
-      // Return success with original URL and header
       return {
-        success: true,
+        success: false,
         url: url,
-        headers: {
-          'Authorization': basicAuth
-        }
+        error: 'Basic auth is no longer supported'
       };
     }
       
     case AuthType.HEADER: {
       // Get custom headers from config
-      const headers = origin.headers || {};
+      const headers = authOrigin.headers || {};
       
       // Return success with original URL and headers
       return {
@@ -445,12 +494,51 @@ export function authenticateRequest(
       
     case AuthType.QUERY: {
       // Generate signed URL
-      const signedUrl = generateSignedUrl(url, origin, env);
+      const signedUrl = generateSignedUrl(url, authOrigin, env);
       
       // Return success with signed URL
       return {
         success: true,
         url: signedUrl
+      };
+    }
+      
+    case AuthType.AWS_S3: {
+      logger.breadcrumb('Generating AWS S3 signature');
+      // Generate AWS signature
+      const headers = await signAwsRequest(url, authOrigin, env);
+      
+      // If signature generation failed
+      if (!headers) {
+        // Check security level - permissive will continue without auth
+        if (config.storage.auth?.securityLevel === 'permissive') {
+          logger.warn('AWS signature generation failed, continuing in permissive mode', { url });
+          logger.breadcrumb('AWS signature generation failed, but permissive mode enabled', undefined, { url });
+          return {
+            success: true,
+            url: url,
+            headers: {}
+          };
+        }
+        
+        logger.breadcrumb('AWS signature generation failed in strict mode', undefined, { url });
+        // Strict mode returns error
+        return {
+          success: false,
+          url: url,
+          error: 'Failed to generate AWS S3 signature'
+        };
+      }
+      
+      logger.breadcrumb('AWS signature generated successfully', undefined, {
+        headerCount: Object.keys(headers).length
+      });
+      
+      // Return success with original URL and headers
+      return {
+        success: true,
+        url: url,
+        headers
       };
     }
       

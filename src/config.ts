@@ -7,6 +7,7 @@
 
 // Define the configuration structure with TypeScript types
 import { PathTransforms } from './utils/path';
+import { Env } from './types';
 
 // Define interfaces for cache tag configuration
 interface CacheTagsPathNormalization {
@@ -83,25 +84,29 @@ export interface ImageResizerConfig {
   cache: {
     method: 'cf' | 'cache-api' | 'none';
     ttl: {
-      ok: number;
-      clientError: number;
-      serverError: number;
+      // When useTtlByStatus=false: ok value is used for Cloudflare's cacheTtl setting
+      // When useTtlByStatus=true: these values are ignored for Cloudflare cache, use cacheTtlByStatus instead
+      // All values are still used for Cache-Control headers regardless of useTtlByStatus
+      ok: number;           // TTL for successful responses (200-299)
+      clientError: number;  // TTL for client error responses (400-499)
+      serverError: number;  // TTL for server error responses (500-599)
       remoteFetch?: number; // TTL for remote fetch requests
       r2Headers?: number;   // TTL for R2 headers
     };
     cacheEverything?: boolean; // Whether to cache all content types
-    useTtlByStatus?: boolean;  // Whether to use cacheTtlByStatus instead of cacheTtl
-    statusRanges?: {          // Configurable status code ranges
-      success: string;        // Success status range (default: "200-299")
-      redirect: string;       // Redirect status range (default: "301-302")
-      notFound: string;       // Not found status code (default: "404")
-      serverError: string;    // Server error range (default: "500-599")
+    useTtlByStatus?: boolean;  // When true: use cacheTtlByStatus, when false: use ttl.ok for cacheTtl
+    statusRanges?: {           // Status code ranges for cacheTtlByStatus
+      success: string;         // Success status range (default: "200-299")
+      redirect: string;        // Redirect status range (default: "301-302")
+      notFound: string;        // Not found status code (default: "404")
+      serverError: string;     // Server error range (default: "500-599")
     };
+    // Only used when useTtlByStatus=true
     cacheTtlByStatus?: {
-      [key: string]: number; // Maps status code ranges (e.g. "200-299") to TTL values
+      [key: string]: number;   // Maps status code ranges (e.g. "200-299") to TTL values
     };
     cacheability: boolean;
-    bypassParams?: string[]; // Query parameters that trigger cache bypass
+    bypassParams?: string[];   // Query parameters that trigger cache bypass
     cacheTags?: CacheTagsConfig;
   };
   
@@ -126,7 +131,31 @@ export interface ImageResizerConfig {
   storage: {
     priority: ('r2' | 'remote' | 'fallback')[];
     remoteUrl?: string;
+    remoteAuth?: {
+      enabled: boolean;
+      type: 'aws-s3' | 'bearer' | 'header' | 'query';
+      region?: string;                // For AWS_S3 type
+      service?: string;               // For AWS_S3 type
+      accessKeyVar?: string;          // Name of env var with access key
+      secretKeyVar?: string;          // Name of env var with secret key
+      signedUrlExpiration?: number;   // For query type
+      tokenHeaderName?: string;       // For bearer type
+      tokenSecret?: string;           // For bearer type
+      headers?: Record<string, string>; // For header type
+    };
     fallbackUrl?: string;
+    fallbackAuth?: {
+      enabled: boolean;
+      type: 'aws-s3' | 'bearer' | 'header' | 'query';
+      region?: string;                // For AWS_S3 type
+      service?: string;               // For AWS_S3 type
+      accessKeyVar?: string;          // Name of env var with access key
+      secretKeyVar?: string;          // Name of env var with secret key
+      signedUrlExpiration?: number;   // For query type
+      tokenHeaderName?: string;       // For bearer type
+      tokenSecret?: string;           // For bearer type
+      headers?: Record<string, string>; // For header type
+    };
     r2: {
       enabled: boolean;
       bindingName: string;
@@ -135,28 +164,26 @@ export interface ImageResizerConfig {
       userAgent?: string;
       headers?: Record<string, string>;
     };
-    // Authenticated origin settings
+    // Global auth settings (still used for origin-auth)
     auth?: {
       enabled: boolean;
-      // Use Cloudflare's origin-auth feature when true
       useOriginAuth?: boolean;       // When true, use Cloudflare's origin-auth feature
       sharePublicly?: boolean;       // When true, set origin-auth to "share-publicly"
-      // Original auth implementation
-      origins: Record<string, {
-        domain: string;
-        type: 'bearer' | 'basic' | 'header' | 'query';
-        tokenSecret?: string;         // For bearer token generation
-        tokenHeaderName?: string;     // Custom header name for bearer tokens
-        tokenParam?: string;          // Query parameter name for token auth
-        tokenExpiration?: number;     // Token expiration in seconds
-        username?: string;            // For basic auth
-        password?: string;            // For basic auth
-        headers?: Record<string, string>; // Custom headers for header-based auth
-        signedUrlExpiration?: number; // Expiration for signed URLs in seconds
-        hashAlgorithm?: string;       // Algorithm for signing URLs (default: sha256)
-      }>;
       securityLevel?: 'strict' | 'permissive'; // How to handle auth errors
       cacheTtl?: number;              // TTL for authenticated requests
+      origins?: Record<string, {
+        domain: string;
+        type: 'bearer' | 'basic' | 'header' | 'query' | 'aws-s3';
+        tokenHeaderName?: string;       // For bearer type
+        tokenParam?: string;            // For query type
+        tokenExpiration?: number;       // For bearer & query types
+        signedUrlExpiration?: number;   // For query type
+        headers?: Record<string, string>; // For header type
+        region?: string;                // For AWS S3/GCS auth
+        service?: string;               // For AWS S3/GCS auth
+        accessKeyEnvVar?: string;       // For AWS S3/GCS auth
+        secretKeyEnvVar?: string;       // For AWS S3/GCS auth
+      }>;
     };
   };
   
@@ -307,6 +334,19 @@ export const defaultConfig: ImageResizerConfig = {
       enabled: true,
       bindingName: 'IMAGES_BUCKET'
     },
+    remoteAuth: {
+      enabled: false,
+      type: 'aws-s3',
+      region: 'us-east-1',
+      service: 's3',
+      accessKeyVar: 'AWS_ACCESS_KEY_ID',
+      secretKeyVar: 'AWS_SECRET_ACCESS_KEY'
+    },
+    fallbackAuth: {
+      enabled: false,
+      type: 'bearer',
+      tokenHeaderName: 'Authorization'
+    },
     fetchOptions: {
       userAgent: 'Cloudflare-Image-Resizer/1.0',
       headers: {
@@ -317,7 +357,6 @@ export const defaultConfig: ImageResizerConfig = {
       enabled: false,
       useOriginAuth: false,
       sharePublicly: false,
-      origins: {},
       securityLevel: 'strict',
       cacheTtl: 3600
     }
@@ -484,13 +523,24 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
       fetchOptions: {
         userAgent: 'Cloudflare-Image-Resizer/1.0-DEV'
       },
+      remoteAuth: {
+        enabled: true,
+        type: 'aws-s3',
+        region: 'us-east-1',
+        service: 's3',
+        accessKeyVar: 'AWS_ACCESS_KEY_ID',
+        secretKeyVar: 'AWS_SECRET_ACCESS_KEY'
+      },
+      fallbackAuth: {
+        enabled: false,
+        type: 'bearer'
+      },
       auth: {
         enabled: true,
         useOriginAuth: true,
         sharePublicly: true,
         cacheTtl: 60, // Short TTL for development
-        securityLevel: 'permissive', // More permissive in development
-        origins: {} // Will be filled from AUTH_ORIGINS environment variable
+        securityLevel: 'permissive' // More permissive in development
       }
     }
   },
@@ -559,13 +609,24 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
       fetchOptions: {
         userAgent: 'Cloudflare-Image-Resizer/1.0-STAGING'
       },
+      remoteAuth: {
+        enabled: true,
+        type: 'aws-s3',
+        region: 'us-east-1',
+        service: 's3',
+        accessKeyVar: 'AWS_ACCESS_KEY_ID',
+        secretKeyVar: 'AWS_SECRET_ACCESS_KEY'
+      },
+      fallbackAuth: {
+        enabled: false,
+        type: 'bearer'
+      },
       auth: {
         enabled: true,
         useOriginAuth: true,
         sharePublicly: true,
         cacheTtl: 3600, // 1 hour for staging
-        securityLevel: 'strict',
-        origins: {} // Will be filled from AUTH_ORIGINS environment variable
+        securityLevel: 'strict'
       }
     }
   },
@@ -660,13 +721,24 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
       fetchOptions: {
         userAgent: 'Cloudflare-Image-Resizer/1.0-PROD'
       },
+      remoteAuth: {
+        enabled: true,
+        type: 'aws-s3',
+        region: 'us-east-1',
+        service: 's3',
+        accessKeyVar: 'AWS_ACCESS_KEY_ID',
+        secretKeyVar: 'AWS_SECRET_ACCESS_KEY'
+      },
+      fallbackAuth: {
+        enabled: false,
+        type: 'bearer'
+      },
       auth: {
         enabled: true,
         useOriginAuth: true,
         sharePublicly: true,
         cacheTtl: 86400, // 24 hours for production
-        securityLevel: 'strict',
-        origins: {} // Will be filled from AUTH_ORIGINS environment variable
+        securityLevel: 'strict'
       }
     }
   }
@@ -940,12 +1012,39 @@ export function getConfig(env: Env): ImageResizerConfig {
         enabled: env.AUTH_ENABLED === 'true',
         useOriginAuth: false,
         sharePublicly: false,
-        origins: {},
         securityLevel: 'strict',
         cacheTtl: 3600
       };
     } else {
       config.storage.auth.enabled = env.AUTH_ENABLED === 'true';
+    }
+  }
+  
+  // Configure Remote Auth from environment
+  if (env.REMOTE_AUTH_ENABLED) {
+    if (!config.storage.remoteAuth) {
+      config.storage.remoteAuth = {
+        enabled: env.REMOTE_AUTH_ENABLED === 'true',
+        type: (env.REMOTE_AUTH_TYPE || 'aws-s3') as 'aws-s3' | 'bearer' | 'header' | 'query',
+        region: env.REMOTE_AUTH_REGION || 'us-east-1',
+        service: env.REMOTE_AUTH_SERVICE || 's3',
+        accessKeyVar: env.REMOTE_AUTH_ACCESS_KEY_VAR || 'AWS_ACCESS_KEY_ID',
+        secretKeyVar: env.REMOTE_AUTH_SECRET_KEY_VAR || 'AWS_SECRET_ACCESS_KEY'
+      };
+    } else {
+      config.storage.remoteAuth.enabled = env.REMOTE_AUTH_ENABLED === 'true';
+    }
+  }
+  
+  // Configure Fallback Auth from environment
+  if (env.FALLBACK_AUTH_ENABLED) {
+    if (!config.storage.fallbackAuth) {
+      config.storage.fallbackAuth = {
+        enabled: env.FALLBACK_AUTH_ENABLED === 'true',
+        type: (env.FALLBACK_AUTH_TYPE || 'bearer') as 'aws-s3' | 'bearer' | 'header' | 'query'
+      };
+    } else {
+      config.storage.fallbackAuth.enabled = env.FALLBACK_AUTH_ENABLED === 'true';
     }
   }
   

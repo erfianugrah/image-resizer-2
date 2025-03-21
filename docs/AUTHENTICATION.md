@@ -80,12 +80,22 @@ Image Resizer also provides its own authentication implementation that supports:
 3. **Custom Header Authentication** - For API keys or custom headers
 4. **Query Parameter Authentication** - For signed URLs or token parameters
 
-### Security Considerations
+### Security Levels Explained
 
-Our custom authentication implementation offers two security levels:
+The `AUTH_SECURITY_LEVEL` setting determines how authentication failures are handled:
 
-- **Strict Mode** (`AUTH_SECURITY_LEVEL="strict"`) - Fails if authentication cannot be properly applied
-- **Permissive Mode** (`AUTH_SECURITY_LEVEL="permissive"`) - Falls back to unauthenticated requests if auth fails
+- **Strict Mode** (`AUTH_SECURITY_LEVEL="strict"`)
+  - More secure; enforces authentication requirements strictly
+  - If authentication fails (e.g., missing credentials, invalid token), the request fails with an error
+  - Recommended for staging and production environments
+  - Use when you want to ensure no unauthorized access is allowed
+
+- **Permissive Mode** (`AUTH_SECURITY_LEVEL="permissive"`)
+  - More flexible; allows continuation even when auth fails
+  - If authentication fails, the system attempts the request without authentication
+  - Only useful during development or testing
+  - Can help debug issues without being blocked by auth failures
+  - **WARNING**: Not recommended for production unless there's a specific need to prioritize availability over security
 
 ### Configuration Steps
 
@@ -104,38 +114,50 @@ Our custom authentication implementation offers two security levels:
    }
    ```
 
-2. **Define Authentication Domains**
+2. **Configure Authentication for Storage Endpoints**
 
-   Configure the domains that require authentication:
+   Configure authentication for remote and fallback URLs directly:
 
    ```javascript
    {
      "vars": {
        // ... other settings ...
        
-       /* Auth domain settings */
-       "AUTH_DOMAIN_SECURE": "secure.example.com",
-       "AUTH_DOMAIN_BASIC": "basic-auth.example.com", 
-       "AUTH_DOMAIN_API": "api.example.com",
-       "AUTH_DOMAIN_SIGNED": "signed.example.com"
+       /* Remote URL Auth Configuration */
+       "REMOTE_AUTH_ENABLED": "true",
+       "REMOTE_AUTH_TYPE": "aws-s3", // Options: aws-s3, bearer, header, query
+       "REMOTE_AUTH_REGION": "us-east-1",  // For AWS/GCS auth
+       "REMOTE_AUTH_SERVICE": "s3",        // "s3" for AWS/R2, "storage" for GCS
+       
+       /* Fallback URL Auth Configuration */
+       "FALLBACK_AUTH_ENABLED": "false",
+       "FALLBACK_AUTH_TYPE": "bearer"
      }
    }
    ```
 
-3. **Configure Authentication Types**
+   > **Note**: The new configuration ties auth directly to storage endpoints rather than using domain pattern matching, making it more intuitive and reliable.
 
-   Specify the authentication method for each domain:
+3. **Configure Authentication Parameters**
+
+   Specify additional parameters for your authentication methods:
 
    ```javascript
    {
      "vars": {
        // ... other settings ...
        
-       /* Auth type settings */
-       "AUTH_TYPE_SECURE": "bearer",   // Bearer token auth
-       "AUTH_TYPE_BASIC": "basic",     // Basic auth
-       "AUTH_TYPE_API": "header",      // Header-based auth
-       "AUTH_TYPE_SIGNED": "query"     // Query parameter auth
+       /* For AWS S3/GCS Authentication */
+       "REMOTE_AUTH_ACCESS_KEY_VAR": "AWS_ACCESS_KEY_ID",     // Env var name for access key
+       "REMOTE_AUTH_SECRET_KEY_VAR": "AWS_SECRET_ACCESS_KEY", // Env var name for secret key
+       
+       /* AWS/GCS Credentials */
+       "AWS_ACCESS_KEY_ID": "",      // Set this with your S3/GCS access key
+       "AWS_SECRET_ACCESS_KEY": "",  // Set this with your S3/GCS secret key
+       
+       /* For Bearer Token Auth */
+       "AUTH_TOKEN_HEADER_NAME": "Authorization",
+       "AUTH_TOKEN_EXPIRATION": "3600"
      }
    }
    ```
@@ -193,33 +215,41 @@ Our custom authentication implementation offers two security levels:
 
 ## Authentication Types Reference
 
+### AWS S3/GCS Authentication
+
+Sends signed authentication headers for S3/R2/GCS compatible storage.
+
+```javascript
+{
+  "REMOTE_AUTH_ENABLED": "true",
+  "REMOTE_AUTH_TYPE": "aws-s3",
+  "REMOTE_AUTH_REGION": "us-east-1",    // "auto" or appropriate region
+  "REMOTE_AUTH_SERVICE": "s3",          // "s3" for AWS/R2, "storage" for GCS
+  "AWS_ACCESS_KEY_ID": "your-access-key",
+  "AWS_SECRET_ACCESS_KEY": "your-secret-key"
+}
+```
+
+> **Important**: Requires `AUTH_USE_ORIGIN_AUTH` set to `true` to work properly.
+
 ### Bearer Token Authentication
 
 Sends an `Authorization: Bearer <token>` header with each request.
 
 ```javascript
 {
-  "AUTH_TYPE_SECURE": "bearer",
+  "REMOTE_AUTH_ENABLED": "true",
+  "REMOTE_AUTH_TYPE": "bearer",
   "AUTH_TOKEN_HEADER_NAME": "Authorization",
   "AUTH_TOKEN_EXPIRATION": "3600"
 }
 ```
 
-Secret: `AUTH_TOKEN_SECRET_SECURE`
+Secret: `AUTH_TOKEN_SECRET_SECURE` (for token-based auth that requires a secret)
 
 ### Basic Authentication
 
-Sends an `Authorization: Basic <credentials>` header with each request.
-
-```javascript
-{
-  "AUTH_TYPE_BASIC": "basic"
-}
-```
-
-Secrets:
-- `AUTH_BASIC_USERNAME_BASIC`
-- `AUTH_BASIC_PASSWORD_BASIC`
+> **Note**: Basic authentication is no longer directly supported. For services requiring Basic Auth, use Cloudflare's origin-auth feature by setting `AUTH_USE_ORIGIN_AUTH: "true"` and include the Authorization header in your original request.
 
 ### Header Authentication
 
@@ -247,6 +277,79 @@ Generates signed URLs with authentication query parameters.
 
 Secret: `AUTH_SIGNING_SECRET_SIGNED`
 
+## Understanding Auth Settings
+
+The image-resizer authentication system has two levels of configuration:
+
+### 1. Global Auth Settings
+
+These settings affect the overall auth behavior:
+
+```javascript
+"AUTH_ENABLED": "true",          // Master switch for authentication
+"AUTH_SECURITY_LEVEL": "strict", // strict or permissive
+"AUTH_CACHE_TTL": "3600",        // TTL for authenticated content
+"AUTH_USE_ORIGIN_AUTH": "true",  // Use Cloudflare's origin-auth feature
+"AUTH_SHARE_PUBLICLY": "true"    // Cache authenticated content publicly
+```
+
+### 2. Endpoint-Specific Auth Settings
+
+These settings control authentication for specific storage endpoints:
+
+```javascript
+/* Remote URL Authentication */
+"REMOTE_AUTH_ENABLED": "true",   // Enable auth for remote URL
+"REMOTE_AUTH_TYPE": "aws-s3",    // Auth type for remote URL
+// Type-specific settings...
+
+/* Fallback URL Authentication */
+"FALLBACK_AUTH_ENABLED": "false", // Enable auth for fallback URL
+"FALLBACK_AUTH_TYPE": "bearer",   // Auth type for fallback URL
+// Type-specific settings...
+```
+
+### Global vs. Endpoint Auth
+
+- **Global auth** (`AUTH_ENABLED`) must be enabled for any authentication to work
+- **Endpoint auth** (`REMOTE_AUTH_ENABLED`, `FALLBACK_AUTH_ENABLED`) enables auth for specific endpoints
+- It's possible to have global auth enabled but endpoint auth disabled for some endpoints
+- For S3/GCS auth to work, both global auth and the specific endpoint auth must be enabled
+
+## Authentication Configuration Changes
+
+### From Domain-Based to Endpoint-Based Auth
+
+The authentication system has been updated from a domain-based approach to an endpoint-based approach:
+
+**Old approach (domain-based):**
+- Defined domains that require authentication (`AUTH_DOMAIN_*`)
+- Assigned auth types to domains (`AUTH_TYPE_*`)
+- Authentication was matched based on URL domain patterns
+
+**New approach (endpoint-based):**
+- Auth is tied directly to storage endpoints (remote and fallback)
+- Configuration is more intuitive with `REMOTE_AUTH_*` and `FALLBACK_AUTH_*` settings
+- No need to manage complex domain patterns
+
+This change makes configuration more straightforward and eliminates confusion about which auth method applies to which endpoint.
+
+### Basic Auth Removal
+
+Basic authentication has been removed as a separate implementation. Instead:
+
+1. For S3/GCS authentication, use the `aws-s3` auth type with origin-auth
+2. For other services requiring Basic Auth, use Cloudflare's origin-auth feature with the Authorization header
+
+### AWS S3/GCS Authentication Improvement
+
+The AWS S3/GCS authentication now:
+
+1. Uses aws4fetch library for proper request signing
+2. Supports both S3/R2 and GCS (via S3-compatible API)
+3. Works in an async context
+4. Properly includes all required headers for authentication
+
 ## Security Considerations
 
 1. **Cache Visibility**: When using `sharePublicly: true`, transformed images will be publicly cached. Do not use this for sensitive images that should only be accessible to specific users.
@@ -256,6 +359,8 @@ Secret: `AUTH_SIGNING_SECRET_SIGNED`
 3. **Secret Management**: Always use Wrangler secrets for storing sensitive credentials. Never store them in your code or configuration files.
 
 4. **URL Signing Expiry**: For signed URLs, set a reasonable expiry time that balances security with usability.
+
+5. **AWS Credentials**: For AWS S3/GCS authentication, ensure credentials have minimal required permissions (read-only access to the specific bucket/path).
 
 ## Troubleshooting
 

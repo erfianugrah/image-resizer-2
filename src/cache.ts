@@ -565,29 +565,81 @@ export function applyCloudflareCache(
     }
   };
   
-  // Decide whether to use cacheTtl or cacheTtlByStatus based on config
+  /**
+   * IMPORTANT NOTE ON CLOUDFLARE CACHE CONFIGURATION:
+   * 
+   * Cloudflare's cache has two mutually exclusive modes:
+   * 
+   * 1. SIMPLE MODE (cacheTtl): One TTL for all responses regardless of status code
+   *    - Used when config.cache.useTtlByStatus = false
+   *    - Only config.cache.ttl.ok is used for Cloudflare's edge cache
+   *    - Other TTL values (clientError, serverError) are only used for Cache-Control headers
+   * 
+   * 2. STATUS-BASED MODE (cacheTtlByStatus): Different TTLs for different status code ranges
+   *    - Used when config.cache.useTtlByStatus = true
+   *    - Uses config.cache.cacheTtlByStatus which maps status code ranges to TTL values
+   *    - When this is true, config.cache.ttl.ok is IGNORED for Cloudflare's edge cache
+   * 
+   * You MUST choose one approach or the other - they CANNOT be combined!
+   */
   if (config.cache.useTtlByStatus && 
       config.cache.cacheTtlByStatus && 
       Object.keys(config.cache.cacheTtlByStatus).length > 0) {
-    // Use cacheTtlByStatus for more granular control
-    logger?.breadcrumb('Using cacheTtlByStatus for granular control', undefined, {
+    // STATUS-BASED CACHING: Different TTLs for different status codes
+    logger?.breadcrumb('Using cacheTtlByStatus for granular cache control', undefined, {
       statusRanges: Object.keys(config.cache.cacheTtlByStatus).join(',')
     });
+    
+    // Add detailed debug info for better visibility
+    if (logger && typeof logger.debug === 'function') {
+      const ttlMappings = Object.entries(config.cache.cacheTtlByStatus)
+        .map(([range, ttl]) => `${range}: ${ttl}s`)
+        .join(', ');
+      
+      logger.debug('Status-based cache TTLs', {
+        mode: 'cacheTtlByStatus',
+        mappings: ttlMappings
+      });
+    }
     
     result.cf = {
       ...result.cf,
       cacheTtlByStatus: config.cache.cacheTtlByStatus
     };
+    
+    // Add debug header to make the cache mode clear
+    if (config.debug?.enabled) {
+      // Add debug properties to result.cf
+      const cf = result.cf as Record<string, any>;
+      cf.cacheMode = 'status-based';
+      cf.statusRanges = Object.keys(config.cache.cacheTtlByStatus).join(',');
+    }
   } else {
-    // Use simple cacheTtl
+    // SIMPLE CACHING: One TTL for all responses
     logger?.breadcrumb('Using simple cacheTtl', undefined, {
       ttl: config.cache.ttl.ok
     });
+    
+    if (logger && typeof logger.debug === 'function') {
+      logger.debug('Simple cache TTL', {
+        mode: 'cacheTtl',
+        ttl: `${config.cache.ttl.ok}s`,
+        note: 'All status codes will use this TTL in Cloudflare cache'
+      });
+    }
     
     result.cf = {
       ...result.cf,
       cacheTtl: config.cache.ttl.ok
     };
+    
+    // Add debug header to make the cache mode clear
+    if (config.debug?.enabled) {
+      // Add debug properties to result.cf
+      const cf = result.cf as Record<string, any>;
+      cf.cacheMode = 'simple';
+      cf.simpleTtl = config.cache.ttl.ok;
+    }
   }
   
   // Add cache tags if available

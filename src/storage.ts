@@ -268,63 +268,120 @@ async function fetchFromRemote(
     // Check if authentication is required for this origin
     let finalUrl: string;
     
-    // If authentication is enabled, check if this path needs authentication
-    if (config.storage.auth?.enabled) {
-      // Check if we're using Cloudflare's origin-auth feature
-      if (config.storage.auth.useOriginAuth) {
-        // When using origin-auth, we just set the URL and let Cloudflare handle the auth
-        finalUrl = new URL(transformedPath, baseUrl).toString();
-        
-        // Set a custom cache TTL for authenticated requests if configured
-        if (config.storage.auth.cacheTtl) {
-          if (fetchOptions.cf && typeof fetchOptions.cf === 'object') {
-            (fetchOptions.cf as any).cacheTtl = config.storage.auth.cacheTtl;
+    // Set the base URL
+    finalUrl = new URL(transformedPath, baseUrl).toString();
+    
+    // Check if remote auth is enabled specifically for this remote URL
+    if (config.storage.remoteAuth?.enabled) {
+      logger.debug('Remote auth enabled', {
+        type: config.storage.remoteAuth.type,
+        url: finalUrl
+      });
+      
+      // Handle different auth types
+      if (config.storage.remoteAuth.type === 'aws-s3') {
+        // Check if we're using origin-auth
+        if (config.storage.auth?.useOriginAuth) {
+          // With origin-auth, we sign the headers and let Cloudflare pass them through
+          // Create an AWS-compatible signer
+          const accessKeyVar = config.storage.remoteAuth.accessKeyVar || 'AWS_ACCESS_KEY_ID';
+          const secretKeyVar = config.storage.remoteAuth.secretKeyVar || 'AWS_SECRET_ACCESS_KEY';
+          
+          // Access environment variables
+          const envRecord = env as unknown as Record<string, string | undefined>;
+          
+          const accessKey = envRecord[accessKeyVar];
+          const secretKey = envRecord[secretKeyVar];
+          
+          if (accessKey && secretKey) {
+            try {
+              // Import AwsClient
+              const { AwsClient } = await import('aws4fetch');
+              
+              // Setup AWS client
+              const aws = new AwsClient({
+                accessKeyId: accessKey,
+                secretAccessKey: secretKey,
+                service: config.storage.remoteAuth.service || 's3',
+                region: config.storage.remoteAuth.region || 'us-east-1'
+              });
+              
+              // Create a request to sign
+              const signRequest = new Request(finalUrl, {
+                method: 'GET'
+              });
+              
+              // Sign the request
+              const signedRequest = await aws.sign(signRequest);
+              
+              // Extract the headers and add them to fetch options
+              signedRequest.headers.forEach((value, key) => {
+                // Only include AWS specific headers
+                if (key.startsWith('x-amz-') || key === 'authorization') {
+                  if (fetchOptions.headers && typeof fetchOptions.headers === 'object') {
+                    (fetchOptions.headers as Record<string, string>)[key] = value;
+                  }
+                }
+              });
+              
+              logger.debug('Added AWS signed headers', {
+                url: finalUrl,
+                headerCount: Object.keys(fetchOptions.headers || {}).length
+              });
+            } catch (error) {
+              logger.error('Error signing AWS request', {
+                error: error instanceof Error ? error.message : String(error),
+                url: finalUrl
+              });
+              
+              // Continue without authentication if in permissive mode
+              if (config.storage.auth?.securityLevel !== 'permissive') {
+                return null;
+              }
+            }
+          } else {
+            logger.error('AWS credentials not found', {
+              accessKeyVar,
+              secretKeyVar
+            });
+            
+            // Continue without authentication if in permissive mode
+            if (config.storage.auth?.securityLevel !== 'permissive') {
+              return null;
+            }
           }
+        } else {
+          logger.warn('AWS S3 auth requires origin-auth to be enabled', {
+            url: finalUrl
+          });
         }
-        
-        // With origin-auth, Cloudflare will pass these headers through to the origin:
-        // Authorization, Cookie, x-amz-content-sha256, x-amz-date, x-ms-date, x-ms-version, 
-        // x-sa-date, cf-access-client-id, cf-access-client-secret
-        
-        // We don't need to add auth headers here, as these will be preserved from the original request
-        // and passed through to the origin by Cloudflare when using origin-auth
-      } else {
-        // Use our custom authentication implementation
-        // Construct the potential URL for authentication check
-        const potentialUrl = new URL(transformedPath, baseUrl).toString();
-        
-        // Authenticate the request
-        // Pass the env variable directly instead of using 'this'
-        const authResult = authenticateRequest(potentialUrl, config, env);
-        
-        // If authentication failed and we're in strict mode, return error
-        if (!authResult.success && config.storage.auth.securityLevel === 'strict') {
-          logger.error('Authentication failed for remote URL', { error: authResult.error });
-          return null;
-        }
-        
-        // Set the final URL from the authentication result
-        finalUrl = authResult.url;
-        
-        // Add any authentication headers
-        if (authResult.headers) {
-          Object.entries(authResult.headers).forEach(([key, value]) => {
+      } else if (config.storage.remoteAuth.type === 'bearer') {
+        // TODO: Implement bearer token auth
+        logger.warn('Bearer token auth not implemented yet');
+      } else if (config.storage.remoteAuth.type === 'header') {
+        // Add custom headers
+        if (config.storage.remoteAuth.headers) {
+          Object.entries(config.storage.remoteAuth.headers).forEach(([key, value]) => {
             if (fetchOptions.headers && typeof fetchOptions.headers === 'object') {
               (fetchOptions.headers as Record<string, string>)[key] = value;
             }
           });
         }
-        
-        // Set a custom cache TTL for authenticated requests if configured
-        if (config.storage.auth.cacheTtl) {
-          if (fetchOptions.cf && typeof fetchOptions.cf === 'object') {
-            (fetchOptions.cf as any).cacheTtl = config.storage.auth.cacheTtl;
-          }
+      } else if (config.storage.remoteAuth.type === 'query') {
+        // TODO: Add signed URL query params
+        logger.warn('Query auth not implemented yet');
+      }
+      
+      // Set cache TTL for authenticated requests
+      if (config.storage.auth?.cacheTtl) {
+        if (fetchOptions.cf && typeof fetchOptions.cf === 'object') {
+          (fetchOptions.cf as any).cacheTtl = config.storage.auth.cacheTtl;
         }
       }
     } else {
-      // Without authentication, use the original URL building approach with transformed path
-      finalUrl = new URL(transformedPath, baseUrl).toString();
+      logger.debug('Remote auth not enabled for this URL', {
+        url: finalUrl
+      });
     }
     
     // Fetch the image from the remote URL
@@ -402,63 +459,120 @@ async function fetchFromFallback(
     // Check if authentication is required for this origin
     let finalUrl: string;
     
-    // If authentication is enabled, check if this path needs authentication
-    if (config.storage.auth?.enabled) {
-      // Check if we're using Cloudflare's origin-auth feature
-      if (config.storage.auth.useOriginAuth) {
-        // When using origin-auth, we just set the URL and let Cloudflare handle the auth
-        finalUrl = new URL(transformedPath, fallbackUrl).toString();
-        
-        // Set a custom cache TTL for authenticated requests if configured
-        if (config.storage.auth.cacheTtl) {
-          if (fetchOptions.cf && typeof fetchOptions.cf === 'object') {
-            (fetchOptions.cf as any).cacheTtl = config.storage.auth.cacheTtl;
+    // Set the base URL
+    finalUrl = new URL(transformedPath, fallbackUrl).toString();
+    
+    // Check if fallback auth is enabled specifically for this URL
+    if (config.storage.fallbackAuth?.enabled) {
+      logger.debug('Fallback auth enabled', {
+        type: config.storage.fallbackAuth.type,
+        url: finalUrl
+      });
+      
+      // Handle different auth types
+      if (config.storage.fallbackAuth.type === 'aws-s3') {
+        // Check if we're using origin-auth
+        if (config.storage.auth?.useOriginAuth) {
+          // With origin-auth, we sign the headers and let Cloudflare pass them through
+          // Create an AWS-compatible signer
+          const accessKeyVar = config.storage.fallbackAuth.accessKeyVar || 'AWS_ACCESS_KEY_ID';
+          const secretKeyVar = config.storage.fallbackAuth.secretKeyVar || 'AWS_SECRET_ACCESS_KEY';
+          
+          // Access environment variables
+          const envRecord = env as unknown as Record<string, string | undefined>;
+          
+          const accessKey = envRecord[accessKeyVar];
+          const secretKey = envRecord[secretKeyVar];
+          
+          if (accessKey && secretKey) {
+            try {
+              // Import AwsClient
+              const { AwsClient } = await import('aws4fetch');
+              
+              // Setup AWS client
+              const aws = new AwsClient({
+                accessKeyId: accessKey,
+                secretAccessKey: secretKey,
+                service: config.storage.fallbackAuth.service || 's3',
+                region: config.storage.fallbackAuth.region || 'us-east-1'
+              });
+              
+              // Create a request to sign
+              const signRequest = new Request(finalUrl, {
+                method: 'GET'
+              });
+              
+              // Sign the request
+              const signedRequest = await aws.sign(signRequest);
+              
+              // Extract the headers and add them to fetch options
+              signedRequest.headers.forEach((value, key) => {
+                // Only include AWS specific headers
+                if (key.startsWith('x-amz-') || key === 'authorization') {
+                  if (fetchOptions.headers && typeof fetchOptions.headers === 'object') {
+                    (fetchOptions.headers as Record<string, string>)[key] = value;
+                  }
+                }
+              });
+              
+              logger.debug('Added AWS signed headers', {
+                url: finalUrl,
+                headerCount: Object.keys(fetchOptions.headers || {}).length
+              });
+            } catch (error) {
+              logger.error('Error signing AWS request', {
+                error: error instanceof Error ? error.message : String(error),
+                url: finalUrl
+              });
+              
+              // Continue without authentication if in permissive mode
+              if (config.storage.auth?.securityLevel !== 'permissive') {
+                return null;
+              }
+            }
+          } else {
+            logger.error('AWS credentials not found', {
+              accessKeyVar,
+              secretKeyVar
+            });
+            
+            // Continue without authentication if in permissive mode
+            if (config.storage.auth?.securityLevel !== 'permissive') {
+              return null;
+            }
           }
+        } else {
+          logger.warn('AWS S3 auth requires origin-auth to be enabled', {
+            url: finalUrl
+          });
         }
-        
-        // With origin-auth, Cloudflare will pass these headers through to the origin:
-        // Authorization, Cookie, x-amz-content-sha256, x-amz-date, x-ms-date, x-ms-version, 
-        // x-sa-date, cf-access-client-id, cf-access-client-secret
-        
-        // We don't need to add auth headers here, as these will be preserved from the original request
-        // and passed through to the origin by Cloudflare when using origin-auth
-      } else {
-        // Use our custom authentication implementation
-        // Construct the potential URL for authentication check
-        const potentialUrl = new URL(transformedPath, fallbackUrl).toString();
-        
-        // Authenticate the request
-        // Pass the env variable directly instead of using 'this'
-        const authResult = authenticateRequest(potentialUrl, config, env);
-        
-        // If authentication failed and we're in strict mode, return error
-        if (!authResult.success && config.storage.auth.securityLevel === 'strict') {
-          logger.error('Authentication failed for fallback URL', { error: authResult.error });
-          return null;
-        }
-        
-        // Set the final URL from the authentication result
-        finalUrl = authResult.url;
-        
-        // Add any authentication headers
-        if (authResult.headers) {
-          Object.entries(authResult.headers).forEach(([key, value]) => {
+      } else if (config.storage.fallbackAuth.type === 'bearer') {
+        // TODO: Implement bearer token auth
+        logger.warn('Bearer token auth not implemented yet');
+      } else if (config.storage.fallbackAuth.type === 'header') {
+        // Add custom headers
+        if (config.storage.fallbackAuth.headers) {
+          Object.entries(config.storage.fallbackAuth.headers).forEach(([key, value]) => {
             if (fetchOptions.headers && typeof fetchOptions.headers === 'object') {
               (fetchOptions.headers as Record<string, string>)[key] = value;
             }
           });
         }
-        
-        // Set a custom cache TTL for authenticated requests if configured
-        if (config.storage.auth.cacheTtl) {
-          if (fetchOptions.cf && typeof fetchOptions.cf === 'object') {
-            (fetchOptions.cf as any).cacheTtl = config.storage.auth.cacheTtl;
-          }
+      } else if (config.storage.fallbackAuth.type === 'query') {
+        // TODO: Add signed URL query params
+        logger.warn('Query auth not implemented yet');
+      }
+      
+      // Set cache TTL for authenticated requests
+      if (config.storage.auth?.cacheTtl) {
+        if (fetchOptions.cf && typeof fetchOptions.cf === 'object') {
+          (fetchOptions.cf as any).cacheTtl = config.storage.auth.cacheTtl;
         }
       }
     } else {
-      // Without authentication, use the original URL building approach with transformed path
-      finalUrl = new URL(transformedPath, fallbackUrl).toString();
+      logger.debug('Fallback auth not enabled for this URL', {
+        url: finalUrl
+      });
     }
     
     // Fetch the image from the fallback URL

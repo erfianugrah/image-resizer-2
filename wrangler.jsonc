@@ -3,324 +3,417 @@
  * https://developers.cloudflare.com/workers/wrangler/configuration/
  */
 {
-	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "image-resizer-2",
-	"main": "src/index.ts",
-	"compatibility_date": "2025-03-10",
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
-	"assets": {
-		"binding": "ASSETS",
-		"directory": "./public"
-	},
-	"observability": {
-		"enabled": true
-	},
-	"account_id": "25f21f141824546aa72c74451a11b419",
-	/**
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "image-resizer-2",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-03-10",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "assets": {
+    "binding": "ASSETS",
+    "directory": "./public"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "account_id": "25f21f141824546aa72c74451a11b419",
+  /**
    * Image Resizer Variables
    */
-	"vars": {
-		"ENVIRONMENT": "development",
-		"DEBUG": "true",
-		"REMOTE_URL": "https://example.com/images",
-		"FALLBACK_URL": "https://placehold.co",
-		"STORAGE_PRIORITY": "r2,remote,fallback", // Default storage priority order
-		"ENABLE_AKAMAI_COMPATIBILITY": "true", // Enable Akamai compatibility in development
-		"LOGGING_LEVEL": "DEBUG",
-		"LOGGING_STRUCTURED": "true",
-		"LOGGING_TIMESTAMP": "true",
-		"LOGGING_BREADCRUMBS_ENABLED": "true",
-		"CACHE_TAGS_ENABLED": "true",
-		"CACHE_TAGS_PREFIX": "img-dev-",
-		"CACHE_TAGS_CUSTOM": "dev,test",
-		"CACHE_TAGS_PARSE_METADATA": "true",
-		"CACHE_TTL_OK": "60",
-		"CACHE_TTL_CLIENT_ERROR": "10",
-		"CACHE_TTL_SERVER_ERROR": "5",
-		"CACHE_TTL_REMOTE_FETCH": "60",
-		"CACHE_TTL_R2_HEADERS": "60",
-		"CACHE_METHOD": "cf",
-		"CACHE_EVERYTHING": "true",
-		"CACHE_USE_TTL_BY_STATUS": "true",
-		"CACHE_STATUS_SUCCESS_RANGE": "200-299",
-		"CACHE_STATUS_REDIRECT_RANGE": "301-302,307",
-		"CACHE_STATUS_NOTFOUND_RANGE": "404,410",
-		"CACHE_STATUS_ERROR_RANGE": "500-503,507",
-		"CACHE_TTL_STATUS_SUCCESS": "60",
-		"CACHE_TTL_STATUS_REDIRECT": "30",
-		"CACHE_TTL_STATUS_NOTFOUND": "10",
-		"CACHE_TTL_STATUS_ERROR": "5",
-		"FORMAT_QUALITY_WEBP": "80",
-		"FORMAT_QUALITY_AVIF": "75",
-		"FORMAT_QUALITY_JPEG": "80",
-		"FORMAT_QUALITY_PNG": "85",
-		"DEFAULT_QUALITY": "80",
-		"DEFAULT_FIT": "scale-down",
-		"USER_AGENT": "Cloudflare-Image-Resizer/1.0-DEV",
-		/* Path transformations for all storage types */
-		"PATH_TRANSFORMS": {
-			"images": {
-				"prefix": "",
-				"removePrefix": true
-			},
-			"assets": {
-				"prefix": "img/",
-				"removePrefix": true,
-				/* Origin-specific transforms */
-				"r2": {
-					"prefix": "img/",
-					"removePrefix": true
-				},
-				"remote": {
-					"prefix": "assets/",
-					"removePrefix": true
-				},
-				"fallback": {
-					"prefix": "public/",
-					"removePrefix": true
-				}
-			},
-			"content": {
-				"prefix": "content-images/",
-				"removePrefix": true
-			}
-		},
-		/* Authentication settings */
-		"AUTH_ENABLED": "true",
-		"AUTH_SECURITY_LEVEL": "permissive",
-		"AUTH_CACHE_TTL": "60",
-		"AUTH_USE_ORIGIN_AUTH": "true",
-		"AUTH_SHARE_PUBLICLY": "true",
-		/* Auth domain settings */
-		"AUTH_DOMAIN_SECURE": "secure.example.com",
-		"AUTH_DOMAIN_BASIC": "basic-auth.example.com",
-		"AUTH_DOMAIN_API": "api.example.com",
-		"AUTH_DOMAIN_SIGNED": "signed.example.com",
-		/* Auth type settings */
-		"AUTH_TYPE_SECURE": "bearer",
-		"AUTH_TYPE_BASIC": "basic",
-		"AUTH_TYPE_API": "header",
-		"AUTH_TYPE_SIGNED": "query",
-		/* Auth parameter settings */
-		"AUTH_TOKEN_HEADER_NAME": "Authorization",
-		"AUTH_TOKEN_PARAM_NAME": "token",
-		"AUTH_TOKEN_EXPIRATION": "3600",
-		"AUTH_SIGNED_EXPIRATION": "86400"
-	},
-	/**
+  "vars": {
+    "ENVIRONMENT": "development",
+    "DEBUG": "true",
+    "REMOTE_URL": "https://example.com/images",
+    "FALLBACK_URL": "https://placehold.co",
+    "STORAGE_PRIORITY": "r2,remote,fallback", // Default storage priority order
+    "ENABLE_AKAMAI_COMPATIBILITY": "true", // Enable Akamai compatibility in development
+    "LOGGING_LEVEL": "DEBUG",
+    "LOGGING_STRUCTURED": "true",
+    "LOGGING_TIMESTAMP": "true",
+    "LOGGING_BREADCRUMBS_ENABLED": "true",
+    
+    /* Cache Tags Configuration */
+    "CACHE_TAGS_ENABLED": "true",
+    "CACHE_TAGS_PREFIX": "img-dev-",
+    "CACHE_TAGS_CUSTOM": "dev,test",
+    "CACHE_TAGS_PARSE_METADATA": "true",
+    
+    /**
+     * CACHE TTL CONFIGURATION
+     * ----------------------
+     * Cloudflare cache has two MUTUALLY EXCLUSIVE modes:
+     *
+     * 1. SIMPLE MODE (when CACHE_USE_TTL_BY_STATUS = false)
+     *    - Only CACHE_TTL_OK is used for Cloudflare's edge cache
+     *    - Other TTL values used only for Cache-Control headers
+     *
+     * 2. STATUS-BASED MODE (when CACHE_USE_TTL_BY_STATUS = true)
+     *    - Uses status ranges mapped to TTLs via CACHE_TTL_STATUS_*
+     *    - CACHE_TTL_OK is IGNORED for Cloudflare's edge cache in this mode
+     */
+    
+    /* Cache-Control Header TTLs (always used regardless of mode) */
+    "CACHE_TTL_OK": "60",            // TTL for 2xx responses (seconds)
+    "CACHE_TTL_CLIENT_ERROR": "10",  // TTL for 4xx responses (seconds)
+    "CACHE_TTL_SERVER_ERROR": "5",   // TTL for 5xx responses (seconds)
+    "CACHE_TTL_REMOTE_FETCH": "60",  // TTL for remote fetches (seconds)
+    "CACHE_TTL_R2_HEADERS": "60",    // TTL for R2 headers (seconds)
+    
+    /* Cache Method and Settings */
+    "CACHE_METHOD": "cf",            // cf, cache-api, or none
+    "CACHE_EVERYTHING": "true",      // Cache all content types
+    "CACHE_USE_TTL_BY_STATUS": "true", // Use status-based caching (see above)
+    
+    /* Status Code Ranges (for status-based caching) */
+    "CACHE_STATUS_SUCCESS_RANGE": "200-299",
+    "CACHE_STATUS_REDIRECT_RANGE": "301-302,307",
+    "CACHE_STATUS_NOTFOUND_RANGE": "404,410",
+    "CACHE_STATUS_ERROR_RANGE": "500-503,507",
+    
+    /* Status-Based TTLs (only used when CACHE_USE_TTL_BY_STATUS = true) */
+    "CACHE_TTL_STATUS_SUCCESS": "60",   // TTL for success responses (seconds)
+    "CACHE_TTL_STATUS_REDIRECT": "30",  // TTL for redirect responses (seconds)
+    "CACHE_TTL_STATUS_NOTFOUND": "10",  // TTL for not found responses (seconds)
+    "CACHE_TTL_STATUS_ERROR": "5",      // TTL for error responses (seconds)
+    
+    /* Image Format Quality Settings */
+    "FORMAT_QUALITY_WEBP": "80",
+    "FORMAT_QUALITY_AVIF": "75",
+    "FORMAT_QUALITY_JPEG": "80",
+    "FORMAT_QUALITY_PNG": "85",
+    "DEFAULT_QUALITY": "80",
+    "DEFAULT_FIT": "scale-down",
+    "USER_AGENT": "Cloudflare-Image-Resizer/1.0-DEV",
+    
+    /* Path transformations for all storage types */
+    "PATH_TRANSFORMS": {
+      "images": {
+        "prefix": "",
+        "removePrefix": true
+      },
+      "assets": {
+        "prefix": "img/",
+        "removePrefix": true,
+        /* Origin-specific transforms */
+        "r2": {
+          "prefix": "img/",
+          "removePrefix": true
+        },
+        "remote": {
+          "prefix": "assets/",
+          "removePrefix": true
+        },
+        "fallback": {
+          "prefix": "public/",
+          "removePrefix": true
+        }
+      },
+      "content": {
+        "prefix": "content-images/",
+        "removePrefix": true
+      }
+    },
+    
+    /**
+     * AUTHENTICATION SETTINGS
+     * ----------------------
+     * The auth system supports multiple authentication types with
+     * direct configuration for remote and fallback URLs
+     */
+    /* Global Auth Settings */
+    "AUTH_ENABLED": "true",
+    "AUTH_SECURITY_LEVEL": "permissive", // permissive: continue if auth fails, strict: fail if auth fails
+    "AUTH_CACHE_TTL": "60",             // TTL for authenticated requests
+    "AUTH_USE_ORIGIN_AUTH": "true",     // Use Cloudflare's origin-auth feature to pass auth headers
+    "AUTH_SHARE_PUBLICLY": "true",      // Allow Cloudflare to cache authenticated content publicly
+    
+    /* Remote URL Auth Configuration */
+    "REMOTE_AUTH_ENABLED": "true",
+    "REMOTE_AUTH_TYPE": "aws-s3",       // Options: aws-s3, bearer, header, query
+    "REMOTE_AUTH_REGION": "us-east-1",  // For S3/GCS auth
+    "REMOTE_AUTH_SERVICE": "s3",        // "s3" for AWS/R2, "storage" for GCS
+    "REMOTE_AUTH_ACCESS_KEY_VAR": "AWS_ACCESS_KEY_ID",     // Env var name for access key
+    "REMOTE_AUTH_SECRET_KEY_VAR": "AWS_SECRET_ACCESS_KEY", // Env var name for secret key
+    
+    /* Fallback URL Auth Configuration */
+    "FALLBACK_AUTH_ENABLED": "false",   // Enable auth for fallback URL
+    "FALLBACK_AUTH_TYPE": "bearer",     // Options: aws-s3, bearer, header, query
+    
+    /* Complete fallback auth settings (used when FALLBACK_AUTH_ENABLED=true) */
+    "FALLBACK_AUTH_REGION": "us-east-1",                       // Region for S3/GCS auth
+    "FALLBACK_AUTH_SERVICE": "s3",                             // "s3" for AWS/R2, "storage" for GCS
+    "FALLBACK_AUTH_ACCESS_KEY_VAR": "FALLBACK_AWS_ACCESS_KEY", // Env var name for fallback access key
+    "FALLBACK_AUTH_SECRET_KEY_VAR": "FALLBACK_AWS_SECRET_KEY", // Env var name for fallback secret key
+    "FALLBACK_AUTH_TOKEN_HEADER": "Authorization",             // Header for bearer auth
+    "FALLBACK_AUTH_CUSTOM_HEADERS": {},                        // Custom headers for header auth
+    
+    /* AWS/S3/GCS Credentials - use Wrangler secrets for production */
+    "AWS_ACCESS_KEY_ID": "",            // Your S3/GCS access key
+    "AWS_SECRET_ACCESS_KEY": "",        // Your S3/GCS secret key
+    
+    /* Token Auth Settings - only needed for bearer/query auth types */
+    "AUTH_TOKEN_HEADER_NAME": "Authorization", // Header name for bearer tokens
+    "AUTH_TOKEN_PARAM_NAME": "token",          // URL param name for signed URLs
+    "AUTH_TOKEN_EXPIRATION": "3600",           // Token lifetime in seconds
+    "AUTH_SIGNED_EXPIRATION": "86400"          // Signed URL lifetime in seconds
+  },
+  /**
    * Smart Placement for optimal performance
    */
-	"placement": {
-		"mode": "smart"
-	},
-	/**
+  "placement": {
+    "mode": "smart"
+  },
+  /**
    * R2 Binding for image storage
    * In production, you would create an R2 bucket and bind it here
    */
-	"r2_buckets": [
-		{
-			"binding": "IMAGES_BUCKET",
-			"bucket_name": "images",
-			"preview_bucket_name": "images-dev"
-		}
-	],
-	/**
+  "r2_buckets": [
+    {
+      "binding": "IMAGES_BUCKET",
+      "bucket_name": "images",
+      "preview_bucket_name": "images-dev"
+    }
+  ],
+  /**
    * Environment-specific configurations
    */
-	"env": {
-		"staging": {
-			"vars": {
-				"ENVIRONMENT": "staging",
-				"DEBUG": "true",
-				"REMOTE_URL": "https://example.com/images",
-				"FALLBACK_URL": "https://placehold.co",
-				"STORAGE_PRIORITY": "r2,remote,fallback", // Default storage priority order
-				"ENABLE_AKAMAI_COMPATIBILITY": "true", // Enable in staging for testing
-				"LOGGING_LEVEL": "INFO",
-				"LOGGING_STRUCTURED": "true",
-				"LOGGING_TIMESTAMP": "true",
-				"LOGGING_BREADCRUMBS_ENABLED": "true",
-				"CACHE_TAGS_ENABLED": "true",
-				"CACHE_TAGS_PREFIX": "img-staging-",
-				"CACHE_TAGS_CUSTOM": "staging,test",
-				"CACHE_TAGS_PARSE_METADATA": "true",
-				"CACHE_TTL_OK": "3600",
-				"CACHE_TTL_CLIENT_ERROR": "30",
-				"CACHE_TTL_SERVER_ERROR": "5",
-				"CACHE_TTL_REMOTE_FETCH": "1800",
-				"CACHE_TTL_R2_HEADERS": "3600",
-				"CACHE_METHOD": "cache-api",
-				/* Path transformations for all storage types */
-				"PATH_TRANSFORMS": {
-					"images": {
-						"prefix": "",
-						"removePrefix": true
-					},
-					"assets": {
-						"prefix": "img/",
-						"removePrefix": true,
-						/* Origin-specific transforms */
-						"r2": {
-							"prefix": "img/",
-							"removePrefix": true
-						},
-						"remote": {
-							"prefix": "assets/",
-							"removePrefix": true
-						},
-						"fallback": {
-							"prefix": "public/",
-							"removePrefix": true
-						}
-					},
-					"content": {
-						"prefix": "content-images/",
-						"removePrefix": true
-					}
-				},
-				"CACHE_EVERYTHING": "true",
-				"CACHE_USE_TTL_BY_STATUS": "false",
-				"CACHE_STATUS_SUCCESS_RANGE": "200-206,226",
-				"CACHE_STATUS_REDIRECT_RANGE": "301-302",
-				"CACHE_STATUS_NOTFOUND_RANGE": "404",
-				"CACHE_STATUS_ERROR_RANGE": "500-504",
-				"CACHE_TTL_STATUS_SUCCESS": "3600",
-				"CACHE_TTL_STATUS_REDIRECT": "1800",
-				"CACHE_TTL_STATUS_NOTFOUND": "30",
-				"CACHE_TTL_STATUS_ERROR": "5",
-				"FORMAT_QUALITY_WEBP": "85",
-				"FORMAT_QUALITY_AVIF": "80",
-				"FORMAT_QUALITY_JPEG": "85",
-				"FORMAT_QUALITY_PNG": "90",
-				"DEFAULT_QUALITY": "85",
-				"DEFAULT_FIT": "scale-down",
-				"USER_AGENT": "Cloudflare-Image-Resizer/1.0-STAGING",
-				/* Authentication settings */
-				"AUTH_ENABLED": "true",
-				"AUTH_SECURITY_LEVEL": "strict",
-				"AUTH_CACHE_TTL": "3600",
-				"AUTH_USE_ORIGIN_AUTH": "true",
-				"AUTH_SHARE_PUBLICLY": "true",
-				/* Auth domain settings */
-				"AUTH_DOMAIN_SECURE": "secure.example.com",
-				"AUTH_DOMAIN_BASIC": "basic-auth.example.com",
-				"AUTH_DOMAIN_API": "api.example.com",
-				"AUTH_DOMAIN_SIGNED": "signed.example.com",
-				/* Auth type settings */
-				"AUTH_TYPE_SECURE": "bearer",
-				"AUTH_TYPE_BASIC": "basic",
-				"AUTH_TYPE_API": "header",
-				"AUTH_TYPE_SIGNED": "query",
-				/* Auth parameter settings */
-				"AUTH_TOKEN_HEADER_NAME": "Authorization",
-				"AUTH_TOKEN_PARAM_NAME": "token",
-				"AUTH_TOKEN_EXPIRATION": "3600",
-				"AUTH_SIGNED_EXPIRATION": "86400"
-			}
-		},
-		"production": {
-			"vars": {
-				"ENVIRONMENT": "production",
-				"DEBUG": "true",
-				"REMOTE_URL": "https://cdn.erfianugrah.com",
-				"FALLBACK_URL": "https://cdn.erfianugrah.com",
-				"STORAGE_PRIORITY": "remote,fallback", // Default storage priority order
-				"ENABLE_AKAMAI_COMPATIBILITY": "true", // Enabled in production
-				"LOGGING_LEVEL": "DEBUG",
-				"LOGGING_STRUCTURED": "true",
-				"LOGGING_TIMESTAMP": "true",
-				"LOGGING_BREADCRUMBS_ENABLED": "true",
-				"CACHE_TAGS_ENABLED": "true",
-				"CACHE_TAGS_PREFIX": "img-prod-",
-				"CACHE_TAGS_CUSTOM": "prod,site1",
-				"CACHE_TAGS_PARSE_METADATA": "true",
-				"CACHE_TTL_OK": "604800",
-				"CACHE_TTL_CLIENT_ERROR": "60",
-				"CACHE_TTL_SERVER_ERROR": "10",
-				"CACHE_TTL_REMOTE_FETCH": "86400",
-				"CACHE_TTL_R2_HEADERS": "604800",
-				"CACHE_METHOD": "cf",
-				/* Path transformations for all storage types */
-				"PATH_TRANSFORMS": {
-					"images": {
-						"prefix": "",
-						"removePrefix": true
-					},
-					"assets": {
-						"prefix": "img/",
-						"removePrefix": true,
-						/* Origin-specific transforms */
-						"r2": {
-							"prefix": "img/",
-							"removePrefix": true
-						},
-						"remote": {
-							"prefix": "assets/",
-							"removePrefix": true
-						},
-						"fallback": {
-							"prefix": "public/",
-							"removePrefix": true
-						}
-					},
-					"content": {
-						"prefix": "content-images/",
-						"removePrefix": true
-					}
-				},
-				"CACHE_EVERYTHING": "true",
-				"CACHE_USE_TTL_BY_STATUS": "false",
-				"CACHE_STATUS_SUCCESS_RANGE": "200-206,226",
-				"CACHE_STATUS_REDIRECT_RANGE": "301-302,307-308",
-				"CACHE_STATUS_NOTFOUND_RANGE": "404,410,451",
-				"CACHE_STATUS_ERROR_RANGE": "500-504",
-				"CACHE_TTL_STATUS_SUCCESS": "604800",
-				"CACHE_TTL_STATUS_REDIRECT": "86400",
-				"CACHE_TTL_STATUS_NOTFOUND": "60",
-				"CACHE_TTL_STATUS_ERROR": "10",
-				"FORMAT_QUALITY_WEBP": "85",
-				"FORMAT_QUALITY_AVIF": "80",
-				"FORMAT_QUALITY_JPEG": "85",
-				"FORMAT_QUALITY_PNG": "90",
-				"DEFAULT_QUALITY": "85",
-				"DEFAULT_FIT": "scale-down",
-				"USER_AGENT": "Cloudflare-Image-Resizer/1.0-PROD",
-				/* Authentication settings */
-				"AUTH_ENABLED": "false",
-				"AUTH_SECURITY_LEVEL": "strict",
-				"AUTH_CACHE_TTL": "86400",
-				"AUTH_USE_ORIGIN_AUTH": "true",
-				"AUTH_SHARE_PUBLICLY": "true",
-				/* Auth domain settings */
-				"AUTH_DOMAIN_SECURE": "secure.example.com",
-				"AUTH_DOMAIN_BASIC": "basic-auth.example.com",
-				"AUTH_DOMAIN_API": "api.example.com",
-				"AUTH_DOMAIN_SIGNED": "signed.example.com",
-				/* Auth type settings */
-				"AUTH_TYPE_SECURE": "bearer",
-				"AUTH_TYPE_BASIC": "basic",
-				"AUTH_TYPE_API": "header",
-				"AUTH_TYPE_SIGNED": "query",
-				/* Auth parameter settings */
-				"AUTH_TOKEN_HEADER_NAME": "Authorization",
-				"AUTH_TOKEN_PARAM_NAME": "token",
-				"AUTH_TOKEN_EXPIRATION": "3600",
-				"AUTH_SIGNED_EXPIRATION": "86400"
-			},
-			"r2_buckets": [
-				{
-					"binding": "IMAGES_BUCKET",
-					"bucket_name": "images"
-				}
-			]
-		}
-	},
-	"routes": [
-		{
-			"pattern": "images.erfi.dev/*",
-			"zone_id": "d6260a9cd0c27db1e9c0a453b2e4761e"
-		}
-	]
+  "env": {
+    "staging": {
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "DEBUG": "true",
+        "REMOTE_URL": "https://example.com/images",
+        "FALLBACK_URL": "https://placehold.co",
+        "STORAGE_PRIORITY": "r2,remote,fallback", // Default storage priority order
+        "ENABLE_AKAMAI_COMPATIBILITY": "true", // Enable in staging for testing
+        "LOGGING_LEVEL": "INFO",
+        "LOGGING_STRUCTURED": "true",
+        "LOGGING_TIMESTAMP": "true",
+        "LOGGING_BREADCRUMBS_ENABLED": "true",
+        "CACHE_TAGS_ENABLED": "true",
+        "CACHE_TAGS_PREFIX": "img-staging-",
+        "CACHE_TAGS_CUSTOM": "staging,test",
+        "CACHE_TAGS_PARSE_METADATA": "true",
+        "CACHE_TTL_OK": "3600",
+        "CACHE_TTL_CLIENT_ERROR": "30",
+        "CACHE_TTL_SERVER_ERROR": "5",
+        "CACHE_TTL_REMOTE_FETCH": "1800",
+        "CACHE_TTL_R2_HEADERS": "3600",
+        "CACHE_METHOD": "cache-api",
+        
+        /* Path transformations for all storage types */
+        "PATH_TRANSFORMS": {
+          "images": {
+            "prefix": "",
+            "removePrefix": true
+          },
+          "assets": {
+            "prefix": "img/",
+            "removePrefix": true,
+            /* Origin-specific transforms */
+            "r2": {
+              "prefix": "img/",
+              "removePrefix": true
+            },
+            "remote": {
+              "prefix": "assets/",
+              "removePrefix": true
+            },
+            "fallback": {
+              "prefix": "public/",
+              "removePrefix": true
+            }
+          },
+          "content": {
+            "prefix": "content-images/",
+            "removePrefix": true
+          }
+        },
+        "CACHE_EVERYTHING": "true",
+        "CACHE_USE_TTL_BY_STATUS": "false",
+        "CACHE_STATUS_SUCCESS_RANGE": "200-206,226",
+        "CACHE_STATUS_REDIRECT_RANGE": "301-302",
+        "CACHE_STATUS_NOTFOUND_RANGE": "404",
+        "CACHE_STATUS_ERROR_RANGE": "500-504",
+        "CACHE_TTL_STATUS_SUCCESS": "3600",
+        "CACHE_TTL_STATUS_REDIRECT": "1800",
+        "CACHE_TTL_STATUS_NOTFOUND": "30",
+        "CACHE_TTL_STATUS_ERROR": "5",
+        "FORMAT_QUALITY_WEBP": "85",
+        "FORMAT_QUALITY_AVIF": "80",
+        "FORMAT_QUALITY_JPEG": "85",
+        "FORMAT_QUALITY_PNG": "90",
+        "DEFAULT_QUALITY": "85",
+        "DEFAULT_FIT": "scale-down",
+        "USER_AGENT": "Cloudflare-Image-Resizer/1.0-STAGING",
+        
+        /**
+         * AUTHENTICATION SETTINGS - STAGING
+         * -------------------------------
+         * Strict security for staging environment
+         */
+        /* Global Auth Settings */
+        "AUTH_ENABLED": "true",
+        "AUTH_SECURITY_LEVEL": "strict",    // strict: fail if auth fails (more secure)
+        "AUTH_CACHE_TTL": "3600",          // 1 hour TTL for authenticated requests
+        "AUTH_USE_ORIGIN_AUTH": "true",    // Use Cloudflare's origin-auth feature
+        "AUTH_SHARE_PUBLICLY": "true",     // Allow Cloudflare to cache authenticated content
+        
+        /* Remote URL Auth Configuration */
+        "REMOTE_AUTH_ENABLED": "true",
+        "REMOTE_AUTH_TYPE": "aws-s3",      // Options: aws-s3, bearer, header, query
+        "REMOTE_AUTH_REGION": "us-east-1", // For S3/GCS auth
+        "REMOTE_AUTH_SERVICE": "s3",       // "s3" for AWS/R2, "storage" for GCS
+        "REMOTE_AUTH_ACCESS_KEY_VAR": "AWS_ACCESS_KEY_ID",
+        "REMOTE_AUTH_SECRET_KEY_VAR": "AWS_SECRET_ACCESS_KEY",
+        
+        /* Fallback URL Auth Configuration */
+        "FALLBACK_AUTH_ENABLED": "false",  // Disable auth for fallback URL
+        "FALLBACK_AUTH_TYPE": "bearer",    // Not used when disabled
+        
+        /* Complete fallback auth settings (used when FALLBACK_AUTH_ENABLED=true) */
+        "FALLBACK_AUTH_REGION": "us-east-1",                       // Region for S3/GCS auth
+        "FALLBACK_AUTH_SERVICE": "s3",                             // "s3" for AWS/R2, "storage" for GCS
+        "FALLBACK_AUTH_ACCESS_KEY_VAR": "FALLBACK_AWS_ACCESS_KEY", // Env var for fallback access key
+        "FALLBACK_AUTH_SECRET_KEY_VAR": "FALLBACK_AWS_SECRET_KEY", // Env var for fallback secret key
+        "FALLBACK_AUTH_TOKEN_HEADER": "Authorization",             // Header for bearer auth
+        "FALLBACK_AUTH_CUSTOM_HEADERS": {},                        // Custom headers for header auth
+        
+        /* AWS/S3/GCS Credentials - use Wrangler secrets for production */
+        "AWS_ACCESS_KEY_ID": "",           // Use `wrangler secret put AWS_ACCESS_KEY_ID`
+        "AWS_SECRET_ACCESS_KEY": "",       // Use `wrangler secret put AWS_SECRET_ACCESS_KEY`
+        
+        /* Token Auth Settings */
+        "AUTH_TOKEN_HEADER_NAME": "Authorization",
+        "AUTH_TOKEN_PARAM_NAME": "token",
+        "AUTH_TOKEN_EXPIRATION": "3600",
+        "AUTH_SIGNED_EXPIRATION": "86400"
+      }
+    },
+    "production": {
+      "vars": {
+        "ENVIRONMENT": "production",
+        "DEBUG": "true",
+        "REMOTE_URL": "https://cdn.erfianugrah.com",
+        "FALLBACK_URL": "https://cdn.erfianugrah.com",
+        "STORAGE_PRIORITY": "remote,fallback", // Default storage priority order
+        "ENABLE_AKAMAI_COMPATIBILITY": "true", // Enabled in production
+        "LOGGING_LEVEL": "DEBUG",
+        "LOGGING_STRUCTURED": "true",
+        "LOGGING_TIMESTAMP": "true",
+        "LOGGING_BREADCRUMBS_ENABLED": "true",
+        "CACHE_TAGS_ENABLED": "true",
+        "CACHE_TAGS_PREFIX": "img-prod-",
+        "CACHE_TAGS_CUSTOM": "prod,site1",
+        "CACHE_TAGS_PARSE_METADATA": "true",
+        "CACHE_TTL_OK": "604800",
+        "CACHE_TTL_CLIENT_ERROR": "60",
+        "CACHE_TTL_SERVER_ERROR": "10",
+        "CACHE_TTL_REMOTE_FETCH": "86400",
+        "CACHE_TTL_R2_HEADERS": "604800",
+        "CACHE_METHOD": "cf",
+        
+        /* Path transformations for all storage types */
+        "PATH_TRANSFORMS": {
+          "images": {
+            "prefix": "",
+            "removePrefix": true
+          },
+          "assets": {
+            "prefix": "img/",
+            "removePrefix": true,
+            /* Origin-specific transforms */
+            "r2": {
+              "prefix": "img/",
+              "removePrefix": true
+            },
+            "remote": {
+              "prefix": "assets/",
+              "removePrefix": true
+            },
+            "fallback": {
+              "prefix": "public/",
+              "removePrefix": true
+            }
+          },
+          "content": {
+            "prefix": "content-images/",
+            "removePrefix": true
+          }
+        },
+        "CACHE_EVERYTHING": "true",
+        "CACHE_USE_TTL_BY_STATUS": "false",
+        "CACHE_STATUS_SUCCESS_RANGE": "200-206,226",
+        "CACHE_STATUS_REDIRECT_RANGE": "301-302,307-308",
+        "CACHE_STATUS_NOTFOUND_RANGE": "404,410,451",
+        "CACHE_STATUS_ERROR_RANGE": "500-504",
+        "CACHE_TTL_STATUS_SUCCESS": "604800",
+        "CACHE_TTL_STATUS_REDIRECT": "86400",
+        "CACHE_TTL_STATUS_NOTFOUND": "60",
+        "CACHE_TTL_STATUS_ERROR": "10",
+        "FORMAT_QUALITY_WEBP": "85",
+        "FORMAT_QUALITY_AVIF": "80",
+        "FORMAT_QUALITY_JPEG": "85",
+        "FORMAT_QUALITY_PNG": "90",
+        "DEFAULT_QUALITY": "85",
+        "DEFAULT_FIT": "scale-down",
+        "USER_AGENT": "Cloudflare-Image-Resizer/1.0-PROD",
+        
+        /**
+         * AUTHENTICATION SETTINGS - PRODUCTION
+         * ---------------------------------
+         * Note: Global auth is disabled but remote-specific auth is enabled
+         */
+        /* Global Auth Settings */
+        "AUTH_ENABLED": "false",          // Global auth is disabled in production
+        "AUTH_SECURITY_LEVEL": "strict",  // strict: fail if auth fails (more secure)
+        "AUTH_CACHE_TTL": "86400",        // 1 day TTL for authenticated requests
+        "AUTH_USE_ORIGIN_AUTH": "true",   // Use Cloudflare's origin-auth feature
+        "AUTH_SHARE_PUBLICLY": "true",    // Allow Cloudflare to cache authenticated content
+        
+        /* Remote URL Auth Configuration */
+        "REMOTE_AUTH_ENABLED": "true",    // Enable auth specifically for remote URL
+        "REMOTE_AUTH_TYPE": "aws-s3",     // AWS S3/R2/GCS compatible authentication
+        "REMOTE_AUTH_REGION": "us-east-1", 
+        "REMOTE_AUTH_SERVICE": "s3",      // "s3" for AWS/R2, "storage" for GCS
+        "REMOTE_AUTH_ACCESS_KEY_VAR": "AWS_ACCESS_KEY_ID",
+        "REMOTE_AUTH_SECRET_KEY_VAR": "AWS_SECRET_ACCESS_KEY",
+        
+        /* Fallback URL Auth Configuration */
+        "FALLBACK_AUTH_ENABLED": "false", // Auth disabled for fallback URL
+        "FALLBACK_AUTH_TYPE": "bearer",   // Not used when disabled
+        
+        /* Complete fallback auth settings (used when FALLBACK_AUTH_ENABLED=true) */
+        "FALLBACK_AUTH_REGION": "us-east-1",                       // Region for S3/GCS auth
+        "FALLBACK_AUTH_SERVICE": "s3",                             // "s3" for AWS/R2, "storage" for GCS
+        "FALLBACK_AUTH_ACCESS_KEY_VAR": "FALLBACK_AWS_ACCESS_KEY", // Env var for fallback access key
+        "FALLBACK_AUTH_SECRET_KEY_VAR": "FALLBACK_AWS_SECRET_KEY", // Env var for fallback secret key
+        "FALLBACK_AUTH_TOKEN_HEADER": "Authorization",             // Header for bearer auth
+        "FALLBACK_AUTH_CUSTOM_HEADERS": {},                        // Custom headers for header auth
+        
+        /* AWS/S3/GCS Credentials - MUST use Wrangler secrets in production */
+        "AWS_ACCESS_KEY_ID": "",          // IMPORTANT: Set with `wrangler secret put AWS_ACCESS_KEY_ID`
+        "AWS_SECRET_ACCESS_KEY": "",      // IMPORTANT: Set with `wrangler secret put AWS_SECRET_ACCESS_KEY`
+        
+        /* Token Auth Settings */
+        "AUTH_TOKEN_HEADER_NAME": "Authorization",
+        "AUTH_TOKEN_PARAM_NAME": "token",
+        "AUTH_TOKEN_EXPIRATION": "3600",
+        "AUTH_SIGNED_EXPIRATION": "86400"
+      },
+      "r2_buckets": [
+        {
+          "binding": "IMAGES_BUCKET",
+          "bucket_name": "images"
+        }
+      ]
+    }
+  },
+  "routes": [
+    {
+      "pattern": "images.erfi.dev/*",
+      "zone_id": "d6260a9cd0c27db1e9c0a453b2e4761e"
+    }
+  ]
 }
