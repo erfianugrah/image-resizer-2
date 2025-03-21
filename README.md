@@ -162,6 +162,7 @@ This project implements a simplified architecture compared to the original image
 │   ├── storage.ts             # Storage utilities (R2, remote)
 │   ├── cache.ts               # Caching utilities
 │   ├── debug.ts               # Debug headers
+│   ├── types.ts               # TypeScript type definitions
 │   └── utils/                 # Utility functions
 │       ├── path.ts            # Path handling utilities
 │       ├── errors.ts          # Error handling utilities
@@ -178,6 +179,8 @@ This project implements a simplified architecture compared to the original image
 │   ├── DIAGNOSING_TIMEOUTS.md # Guide for fixing 524 timeout errors
 │   ├── INTERCEPTOR_PATTERN.md # Explanation of the Cloudflare subrequest handling
 │   └── SETUP.md               # Setup documentation
+├── public/                    # Static assets for watermarks
+│   └── watermarks/           # Watermark images
 └── wrangler.jsonc             # Cloudflare Workers configuration
 ```
 
@@ -186,7 +189,7 @@ This project implements a simplified architecture compared to the original image
 ### Prerequisites
 
 - Node.js (version 18 or later)
-- Wrangler CLI (Cloudflare Workers toolkit)
+- Wrangler CLI (version 4.2.0 or later)
 
 ### Installation
 
@@ -219,14 +222,25 @@ npm test
 vitest run
 ```
 
-### Deployment
-
-Deploy to Cloudflare Workers:
+Run a specific test:
 
 ```bash
-npm run deploy
-# or
-wrangler deploy
+npm run test:watch -- -t "test name"
+```
+
+### Deployment
+
+Deploy to different environments:
+
+```bash
+# Development
+npm run deploy:dev
+
+# Staging
+npm run deploy:staging
+
+# Production
+npm run deploy:prod
 ```
 
 ## Usage
@@ -292,6 +306,12 @@ See [Cross-Origin Path Transformations](docs/CROSS_ORIGIN_PATH_TRANSFORMS.md) fo
 - `metadata`: Metadata handling (`keep`, `copyright`, `none`)
 - `derivative`: Predefined transformation template
 - `sharpen`: Sharpening level (0.0-10.0)
+- `brightness`: Brightness adjustment (-100 to 100)
+- `contrast`: Contrast adjustment (-100 to 100)
+- `saturation`: Saturation adjustment (-100 to 100, -100=grayscale)
+- `blur`: Blur effect (0.5-100.0)
+
+For a complete list, see the [Transformation Guide](docs/TRANSFORMATION.md).
 
 ### Built-in Derivatives
 
@@ -299,6 +319,10 @@ See [Cross-Origin Path Transformations](docs/CROSS_ORIGIN_PATH_TRANSFORMS.md) fo
 - `avatar`: Square profile picture with face detection (180×180px)
 - `banner`: Wide header image (1600×400px)
 - `product`: Product image with white background (800×800px)
+- `og`: Open Graph/social media preview image (1200×630px)
+- `twitter`: Twitter card image (1200×600px)
+- `mobile`: Mobile-optimized image (480px width)
+- `desktop`: Desktop-optimized image (1440px width)
 
 ## Testing with Different Storage Sources
 
@@ -419,162 +443,20 @@ If you're experiencing 524 timeout errors, see our [Diagnosing Timeouts](docs/DI
 - `AUTH_USE_ORIGIN_AUTH`: Use Cloudflare's origin-auth feature (`true`/`false`)
 - `AUTH_SHARE_PUBLICLY`: Share authenticated images publicly (`true`/`false`)
 
-#### Auth Domain Settings
-- `AUTH_DOMAIN_SECURE`: Domain for secure origin (bearer token auth)
-- `AUTH_DOMAIN_BASIC`: Domain for basic auth origin
-- `AUTH_DOMAIN_API`: Domain for API origin (header-based auth)
-- `AUTH_DOMAIN_SIGNED`: Domain for signed URL origin
+For complete authentication documentation, see [AUTHENTICATION.md](docs/AUTHENTICATION.md).
 
-#### Auth Type Settings
-- `AUTH_TYPE_SECURE`: Auth type for secure origin (`bearer`, `basic`, `header`, `query`)
-- `AUTH_TYPE_BASIC`: Auth type for basic auth origin
-- `AUTH_TYPE_API`: Auth type for API origin
-- `AUTH_TYPE_SIGNED`: Auth type for signed URL origin
+## Documentation
 
-#### Auth Parameter Settings
-- `AUTH_TOKEN_HEADER_NAME`: Custom header name for token auth
-- `AUTH_TOKEN_PARAM_NAME`: Parameter name for signed URLs
-- `AUTH_TOKEN_EXPIRATION`: Token expiration in seconds
-- `AUTH_SIGNED_EXPIRATION`: Signed URL expiration in seconds
+For more detailed documentation, please refer to the following resources:
 
-#### Auth Secrets (via Wrangler Secrets)
-The following secrets should be set using Wrangler:
-- `AUTH_TOKEN_SECRET_[ORIGIN_ID]`: Bearer token secret for the specified origin
-- `AUTH_BASIC_USERNAME_[ORIGIN_ID]`: Username for basic auth for the specified origin
-- `AUTH_BASIC_PASSWORD_[ORIGIN_ID]`: Password for basic auth for the specified origin
-- `AUTH_API_KEY_[ORIGIN_ID]`: API key for header-based auth for the specified origin
-- `AUTH_SIGNING_SECRET_[ORIGIN_ID]`: Signing secret for query auth for the specified origin
-
-For example, to set a secret for a secure origin with ID "secure":
-```bash
-wrangler secret put AUTH_TOKEN_SECRET_SECURE
-```
-
-## Authenticated Origins
-
-The image resizer supports fetching images from origins that require authentication. This feature is particularly useful when you need to access images from protected storage or APIs.
-
-### Cloudflare Origin-Auth Feature (Recommended)
-
-For best performance and compatibility, the image resizer supports Cloudflare's built-in `origin-auth` feature for image resizing. This is the recommended approach for accessing authenticated origins.
-
-#### How Cloudflare Origin-Auth Works
-
-Cloudflare image transformations cache resized images to aid performance. When using `origin-auth` with the `share-publicly` option, Cloudflare will:
-
-1. Pass authentication headers to the origin when fetching the original image
-2. Cache the transformed image in Cloudflare's public cache
-3. Serve the cached image to subsequent visitors without requiring authentication
-
-#### Supported Authentication Headers
-
-When using `origin-auth`, the following headers are automatically passed through to the origin:
-
-- `Authorization` - For bearer tokens, Basic Auth, etc.
-- `Cookie` - For cookie-based authentication
-- `x-amz-content-sha256`, `x-amz-date` - For AWS S3
-- `x-ms-date`, `x-ms-version` - For Azure Storage
-- `x-sa-date` - For SecureAuth
-- `cf-access-client-id`, `cf-access-client-secret` - For Cloudflare Access
-
-#### Origin-Auth Configuration
-
-Enable origin-auth in your `wrangler.jsonc` environment settings:
-
-```javascript
-"vars": {
-  // ... other settings ...
-  "AUTH_ENABLED": "true",
-  "AUTH_USE_ORIGIN_AUTH": "true",
-  "AUTH_SHARE_PUBLICLY": "true"
-}
-```
-
-### Custom Authentication Implementation (Alternative)
-
-The image resizer also includes a custom authentication implementation that can be used as an alternative to Cloudflare's origin-auth feature.
-
-#### Authentication Types
-
-- **Bearer Token**: Uses JWT or similar bearer tokens in the `Authorization` header
-- **Basic Auth**: Uses username/password credentials in the `Authorization` header
-- **Custom Headers**: Uses custom headers for authentication
-- **Query Parameters**: Adds signed query parameters to the URL
-
-#### Custom Auth Configuration
-
-Configure authenticated origins in your `wrangler.jsonc` file:
-
-```javascript
-"vars": {
-  // ... other settings ...
-  
-  /* Authentication settings */
-  "AUTH_ENABLED": "true",
-  "AUTH_SECURITY_LEVEL": "strict",
-  "AUTH_CACHE_TTL": "3600",
-  "AUTH_USE_ORIGIN_AUTH": "true",  // Set to false to use custom auth
-  "AUTH_SHARE_PUBLICLY": "true",
-  
-  /* Auth domain settings */
-  "AUTH_DOMAIN_SECURE": "protected-images.example.com",
-  "AUTH_DOMAIN_BASIC": "basic-auth.example.com", 
-  "AUTH_DOMAIN_API": "api.example.com",
-  "AUTH_DOMAIN_SIGNED": "signed.example.com",
-  
-  /* Auth type settings */
-  "AUTH_TYPE_SECURE": "bearer",
-  "AUTH_TYPE_BASIC": "basic",
-  "AUTH_TYPE_API": "header",
-  "AUTH_TYPE_SIGNED": "query",
-  
-  /* Auth parameter settings */
-  "AUTH_TOKEN_HEADER_NAME": "Authorization",
-  "AUTH_TOKEN_PARAM_NAME": "token",
-  "AUTH_TOKEN_EXPIRATION": "3600",
-  "AUTH_SIGNED_EXPIRATION": "86400"
-}
-```
-
-Then, set your sensitive authentication credentials as Wrangler secrets:
-
-```bash
-# Bearer token secrets
-wrangler secret put AUTH_TOKEN_SECRET_SECURE
-
-# Basic auth credentials
-wrangler secret put AUTH_BASIC_USERNAME_BASIC
-wrangler secret put AUTH_BASIC_PASSWORD_BASIC
-
-# API key for header-based auth
-wrangler secret put AUTH_API_KEY_API
-
-# Signing secret for query auth
-wrangler secret put AUTH_SIGNING_SECRET_SIGNED
-```
-
-For local development, you can create a `.dev.vars` file with your development secrets:
-
-```
-AUTH_TOKEN_SECRET_SECURE=your-dev-token-secret-here
-AUTH_BASIC_USERNAME_BASIC=your-dev-username-here
-AUTH_BASIC_PASSWORD_BASIC=your-dev-password-here
-AUTH_API_KEY_API=your-dev-api-key-here
-AUTH_SIGNING_SECRET_SIGNED=your-dev-signing-secret-here
-```
-
-### Security Level
-
-- **Strict Mode**: Fails if authentication cannot be properly applied
-- **Permissive Mode**: Falls back to unauthenticated requests if auth fails
-
-### Security Considerations
-
-When using authenticated origins, be aware of these important security considerations:
-
-1. **Public Caching**: When `sharePublicly` is set to `true`, the transformed images will be publicly cached. Do not use this for sensitive images that should only be accessible to specific users.
-
-2. **Authenticated Origins**: Only use this feature for origins where all images can be publicly shared once transformed. The authentication is only used to fetch the original image from the origin.
+- [Setup Guide](docs/SETUP.md) - Installation and configuration
+- [Transformation Guide](docs/TRANSFORMATION.md) - Image transformation options
+- [Architecture Documentation](docs/ARCHITECTURE.md) - System design
+- [Authentication Guide](docs/AUTHENTICATION.md) - Secure origins
+- [Akamai Compatibility](docs/AKAMAI_COMPATIBILITY.md) - Migration from Akamai
+- [Cache Tags Documentation](docs/CACHE_TAGS.md) - Cache management
+- [Logging Documentation](docs/LOGGING.md) - Structured logging
+- [Interceptor Pattern](docs/INTERCEPTOR_PATTERN.md) - Handling large images
 
 ## License
 

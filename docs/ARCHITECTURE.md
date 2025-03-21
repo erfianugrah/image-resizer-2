@@ -1,10 +1,10 @@
 # Image Resizer 2 Architecture
 
-This document outlines the architecture of the Image Resizer service, providing developers with a clear understanding of how the different components work together.
+This document details the technical architecture of the Image Resizer service, outlining implementation specifics for developers working with the codebase.
 
-## Architectural Overview
+## Architecture Overview
 
-The Image Resizer service is built on Cloudflare Workers and leverages Cloudflare's Image Resizing service to transform images on the fly. The service is designed to be simple, efficient, and flexible.
+Built on Cloudflare Workers, the Image Resizer integrates with Cloudflare's Image Resizing API to perform on-demand image transformations. The architecture prioritizes performance, scalability, and edge processing capabilities.
 
 ```mermaid
 graph TD
@@ -30,64 +30,265 @@ graph TD
     JB -->|Header Auth| JB3[Custom Headers]
     JB -->|Query Auth| JB4[Signed URLs]
     end
+
+    subgraph "Akamai Compatibility"
+    B -->|Akamai Format?| Z[Akamai Detector]
+    Z -->|Yes| Y[Parameter Translator]
+    Y -->|Convert| X[Cloudflare Parameters]
+    X --> C
+    end
+
+    subgraph "Interceptor Pattern"
+    B -->|Cloudflare Subrequest?| V[Subrequest Detector]
+    V -->|Yes| U[Direct Image Service]
+    U --> K
+    end
 ```
 
 ## Core Components
 
 ### 1. Request Handler (`index.ts`)
 
-The entry point for all requests. Responsible for:
-- Initializing configuration
-- Routing requests to appropriate handlers
-- Error handling and response generation
+Central request handler implementing the FetchEvent lifecycle:
+- Initializes configuration with environment-specific settings
+- Establishes logger instances with configurable verbosity
+- Routes request flow between component modules
+- Implements comprehensive error handling and status code mapping
+- Captures performance metrics for monitoring
+- Detects Akamai parameter formats and invokes translation
+- Parses path/query parameters for transform instructions
+
+Technical implementation:
+- Breadcrumb tracing via correlation IDs for request flow monitoring
+- Custom error classes with appropriate HTTP status mapping
+- Dynamic storage selection based on configured priority chain
+- Dual parameter parsing for standard and Akamai formats
 
 ### 2. Configuration Manager (`config.ts`)
 
-Manages all configuration settings from:
-- Environment variables
-- Default configurations
-- Environment-specific overrides (development, staging, production)
+Hierarchical configuration system that integrates settings from:
+- Environment variables (highest precedence)
+- Environment-specific config (development/staging/production)
+- Base default configuration (lowest precedence)
+
+Technical implementation:
+- Deep recursive merging with type preservation
+- TypeScript interfaces for type-safe configuration access
+- Runtime environment detection for automatic switching
+- Strongly-typed getter methods with default fallbacks
+- JSON schema validation for configuration integrity
+- Environment variable type coercion (string→number, string→boolean)
 
 ### 3. Path Analysis (`utils/path.ts`)
 
-Extracts transformation parameters from the URL:
-- Query parameters (`?width=800&height=600`)
-- Path parameters (`/_width=800/_height=600/image.jpg`)
-- Path templates (`/thumbnail/image.jpg`)
-- Derivatives and preset handling
+URL parameter extraction engine supporting multiple syntaxes:
+- Standard query parameters (`?width=800&height=600`)
+- Path segment parameters (`/_width=800/_height=600/image.jpg`)
+- Named derivatives (`/thumbnail/image.jpg`)
+- Template-based transformations
+
+Implementation details:
+- Regular expression-based parameter extraction
+- Multi-format parameter normalization
+- Automatic type inference and conversion
+- Derivative resolution via config lookup
+- Path transformation mapping for storage backends
+
+```mermaid
+flowchart LR
+    A[Request URL] --> B{Parameter Type}
+    B -->|Query| C[Extract from search params]
+    B -->|Path| D[Extract from path segments]
+    B -->|Derivative| E[Lookup from config]
+    B -->|Template| F[Extract via regex capture]
+    C & D & E & F --> G[Normalize Types]
+    G --> H[Merge Params]
+    H --> I[Final Transform Options]
+```
 
 ### 4. Storage Service (`storage.ts`)
 
-Handles image retrieval from multiple sources:
-- R2 buckets (Cloudflare's object storage)
-- Remote URLs
-- Fallback URLs
-- Implements priority order for sources
+Multi-source storage interface implementing prioritized access to:
+- Cloudflare R2 object storage (direct bucket access)
+- Remote HTTP endpoints (authenticated URLs)
+- Fallback origins (alternate endpoints)
+- Prioritized retrieval chain with failover support
+
+Technical capabilities:
+- HTTP/2 content negotiation with Accept headers
+- Byte range request forwarding with Range headers
+- Conditional fetch support (ETag/If-Modified-Since)
+- Integrated authentication for protected sources
+- Progressive fallback with structured error recovery
+- Binary metadata extraction and propagation
+- Request timing instrumentation
+- Storage-specific path transformation
+
+```mermaid
+flowchart TD
+    A[Image Request] --> B{Storage Priority}
+    B -->|1st| C[Primary Storage]
+    B -->|2nd| D[Secondary Storage]
+    B -->|3rd| E[Fallback Storage]
+    
+    C --> F{Source Type}
+    F -->|R2| G[R2 Bucket Get]
+    F -->|Remote| H[Fetch with Headers]
+    F -->|Fallback| I[Origin Fetch]
+    
+    G & H & I --> J{Success?}
+    J -->|Yes| K[Return Image]
+    J -->|No| L{Try Next?}
+    L -->|Yes| M[Next Priority]
+    L -->|No| N[Return Error]
+    
+    M --> F
+```
 
 ### 5. Authentication Service (`utils/auth.ts`)
 
-Secures access to protected image origins:
-- Cloudflare's origin-auth feature integration
-- Custom authentication implementation:
-  - Bearer token authentication
-  - Basic authentication
-  - Custom header authentication
-  - Signed URL authentication
-- Secrets management via Wrangler
+Security layer for accessing protected image origins:
+- Native integration with Cloudflare origin-auth
+- Pluggable authentication strategies:
+  - JWT/Bearer token implementation
+  - Basic auth with base64 encoding
+  - Custom header injection (API keys)
+  - Query parameter signing (HMAC)
+- Secrets loaded from Wrangler configuration
+
+Technical implementation:
+```mermaid
+sequenceDiagram
+    participant Request
+    participant AuthService
+    participant SecretManager
+    participant OriginRequest
+    
+    Request->>AuthService: fetchFromAuthenticatedSource(url)
+    AuthService->>AuthService: detectAuthRequirement(url)
+    AuthService->>AuthService: selectAuthStrategy(origin)
+    
+    alt Bearer Token
+        AuthService->>SecretManager: getTokenSecret(origin)
+        SecretManager->>AuthService: tokenSecret
+        AuthService->>AuthService: generateJWT(tokenSecret)
+        AuthService->>OriginRequest: addAuthHeader('Authorization', 'Bearer ' + jwt)
+    else Basic Auth
+        AuthService->>SecretManager: getCredentials(origin)
+        SecretManager->>AuthService: username, password
+        AuthService->>AuthService: encodeBase64(username + ':' + password)
+        AuthService->>OriginRequest: addAuthHeader('Authorization', 'Basic ' + encoded)
+    else API Key
+        AuthService->>SecretManager: getApiKey(origin)
+        SecretManager->>AuthService: apiKey
+        AuthService->>OriginRequest: addAuthHeader(apiKeyHeader, apiKey)
+    else Signed URL
+        AuthService->>SecretManager: getSigningSecret(origin)
+        SecretManager->>AuthService: signingSecret
+        AuthService->>AuthService: calculateHMAC(url, signingSecret)
+        AuthService->>OriginRequest: appendSignature(url, signature)
+    end
+    
+    OriginRequest->>AuthService: authenticatedResponse
+    AuthService->>Request: response
+```
 
 ### 6. Image Transformation (`transform.ts`)
 
-Applies transformations to images by:
-- Building transformation options from request parameters
-- Constructing the `cf.image` object
-- Handling format conversion, resizing, quality settings, etc.
+Core transformation engine that:
+- Normalizes parameter input from multiple sources
+- Builds Cloudflare-compatible transformation options
+- Handles edge processing via the `cf.image` API
+- Applies derivative template expansion
+- Implements client-aware responsive sizing
+
+Technical implementation details:
+```mermaid
+flowchart TD
+    A[Transformation Request] --> B[Parameter Normalization]
+    B --> C[Client Hint Processing]
+    C --> D{Responsive Parameters?}
+    D -->|Yes| E[Client-adaptive sizing]
+    D -->|No| F[Static Parameters]
+    
+    E --> G[Device Analysis]
+    G --> H[Network Condition Detection]
+    H --> I[DPR Calculation]
+    
+    F & I --> J[Parameter Validation]
+    J --> K[cf.image Option Construction]
+    K --> L[Image Transformation]
+    
+    subgraph "Format Auto-selection"
+        M[Check Accept Header]
+        N[Detect Animation]
+        O[Analyze Transparency]
+        P[Select Optimal Format]
+    end
+    
+    L --> Q[Transformed Response]
+```
+
+Advanced optimization techniques:
+- MIME type-based format selection using Accept headers
+- Responsive dimensions based on viewport and DPR
+- Network-aware quality adjustment (Save-Data, RTT, Downlink)
+- Device-specific transformation templates
+- Automatic orientation correction (EXIF)
 
 ### 7. Caching Service (`cache.ts`)
 
-Optimizes performance through intelligent caching:
-- Configurable TTL based on status codes
-- Cache tag support for purging
-- Cloudflare Cache API integration
+Multi-layer caching implementation with:
+- HTTP status-based TTL configuration
+- Tag-based cache invalidation system
+- Dual caching strategy (Cloudflare and Cache API)
+- Fine-grained debug bypass controls
+
+Cache tag implementation details:
+```mermaid
+flowchart TD
+    A[Image Response] --> B[Tag Generation]
+    
+    B --> C[Path-based Tags]
+    B --> D[Config-based Tags]
+    B --> E[Metadata Tags]
+    
+    C --> C1["path:{normalized-path}"]
+    C --> C2["file:{filename}"]
+    C --> C3["ext:{extension}"]
+    
+    D --> D1["env:{environment}"]
+    D --> D2["custom:{tag-list}"]
+    
+    E --> E1[Parse X-Meta-Tags]
+    E1 --> E2["meta:{parsed-tags}"]
+    
+    C1 & C2 & C3 & D1 & D2 & E2 --> F[Tag Collection]
+    F --> G[Apply Prefix]
+    G --> H[Add Cache-Tag Header]
+    
+    A --> I{Status Code?}
+    I -->|200-299| J[Success TTL]
+    I -->|400-499| K[Client Error TTL]
+    I -->|500-599| L[Server Error TTL]
+    
+    J & K & L --> M[Set Cache-Control]
+    H & M --> N[Cache Response]
+    
+    style C1 fill:#e6f7ff,stroke:#0099ff,stroke-width:1px
+    style C2 fill:#e6f7ff,stroke:#0099ff,stroke-width:1px
+    style C3 fill:#e6f7ff,stroke:#0099ff,stroke-width:1px
+    style D1 fill:#fff0cc,stroke:#e6b32e,stroke-width:1px
+    style D2 fill:#fff0cc,stroke:#e6b32e,stroke-width:1px
+    style E2 fill:#f2e6ff,stroke:#9933cc,stroke-width:1px
+```
+
+Technical implementation:
+- Automated cache tag generation based on URL structure
+- Environment-specific tag prefixing for isolation
+- HTTP header-based tag extraction from upstream responses
+- Configurable TTL mapping by status code ranges
+- Cache-Control header manipulation and validation
 
 ### 8. Debug Tools (`debug.ts`)
 
@@ -95,34 +296,123 @@ Provides debugging capabilities:
 - Response headers for troubleshooting
 - Performance metrics
 - Configuration information
+- HTML debug reports
+
+Debug features:
+- Configurable debug header visibility
+- Environment-specific debug settings
+- Detailed performance metrics
+- Configuration visibility
+- Request and response details
+
+### 9. Akamai Compatibility (`utils/akamai-compatibility.ts`)
+
+Enables seamless migration from Akamai Image Manager:
+- Detects Akamai-style URL parameters
+- Translates parameters to Cloudflare Image Resizing format
+- Supports advanced Akamai features
+- Maintains backward compatibility
+
+Supported Akamai parameters:
+- `im.resize` for basic resizing
+- `im.crop` for cropping
+- `im.quality` for quality adjustment
+- Advanced features like blur, mirror/flip, composite, and conditional transforms
+- Translation of Akamai-specific parameters to Cloudflare equivalents
+
+### 10. Logging System (`utils/logging.ts`)
+
+Provides comprehensive logging capabilities:
+- Multiple log levels (DEBUG, INFO, WARN, ERROR)
+- Structured logging in JSON format
+- Request breadcrumb tracking
+- Performance metrics
+- Configurable log formats and destinations
+
+Breadcrumb implementation:
+- Tracks key events throughout the request lifecycle
+- Records timing information for performance analysis
+- Maintains context between components
+- Enables detailed debugging of request flow
 
 ## Data Flow
 
 1. **Request Ingestion**
    - Client makes a request for an image with transformation parameters
-   - Worker receives the request and initializes the configuration
+   - Worker receives the request and initializes the configuration and loggers
+   - For debug requests, the system generates an HTML report
+   - For Akamai-compatible URLs, parameters are translated
 
 2. **Parameter Extraction**
    - Path analyzer extracts transformation parameters from URL
    - Path templates and derivatives are resolved
+   - Query parameters are merged with path parameters
 
 3. **Storage Selection**
    - Based on configuration priorities, the system selects whether to fetch from R2, remote URL, or fallback
+   - The chosen storage provider attempts to retrieve the image
+   - If a storage provider fails, the system falls back to the next provider in the priority list
 
 4. **Authentication**
    - If the source requires authentication, the auth service applies the appropriate authentication method
    - Secrets are retrieved from environment variables or Wrangler secrets
+   - The system handles authentication failures according to the security level setting
 
 5. **Image Retrieval**
    - The storage service fetches the original image from the selected source
+   - Content type, size, and other metadata are extracted
+   - For Cloudflare subrequests, the original image is returned directly
 
 6. **Transformation**
-   - The transform service applies requested transformations using Cloudflare's Image Resizing service
+   - The transform service builds transformation options from parameters and client hints
+   - Cloudflare's Image Resizing service applies the transformations
+   - Format conversion, resizing, and quality adjustments are applied
 
 7. **Caching & Response**
    - The transformed image is cached according to the caching policy
+   - Cache tags are added for purging
    - Debug headers are added if enabled
    - The response is sent back to the client
+
+## Interceptor Pattern
+
+The interceptor pattern handles Cloudflare's two-stage image processing:
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Worker
+    participant CloudflareImageResizing as Cloudflare Image Resizing
+    participant Storage
+
+    Client->>Worker: Request image with parameters
+    
+    alt Not a Cloudflare Subrequest
+        Worker->>Storage: Fetch original image
+        Storage->>Worker: Return original image
+        Worker->>CloudflareImageResizing: Request transformation
+        CloudflareImageResizing->>Worker: New subrequest (with via:image-resizing header)
+        
+        Worker->>Storage: Fetch original image (detected as subrequest)
+        Storage->>Worker: Return original image
+        Worker->>CloudflareImageResizing: Return original without transformation
+        
+        CloudflareImageResizing->>Worker: Return transformed image
+        Worker->>Client: Return transformed image
+    else Is a Cloudflare Subrequest
+        Worker->>Storage: Fetch original image
+        Storage->>Worker: Return original image
+        Worker->>CloudflareImageResizing: Return original without transformation
+    end
+```
+
+1. Initial request: User requests an image with transformation parameters
+2. Cloudflare subrequest: Cloudflare's Image Resizing service makes a separate request for the original
+3. Subrequest detection: Worker detects the "via: image-resizing" header on subrequests
+4. Direct service: For subrequests, the original image is served directly without transformations
+5. Transformed result: User receives the final transformed image
+
+This pattern prevents infinite loops and optimizes performance for large images.
 
 ## Authentication Flow
 
@@ -171,3 +461,47 @@ Configuration follows a layered approach:
 4. **Wrangler secrets**: For sensitive authentication credentials
 
 This provides a flexible system where configurations can be defined at different levels according to their sensitivity and specificity.
+
+## Error Handling
+
+The system implements a comprehensive error handling strategy:
+
+- Custom error types for different error scenarios
+- Appropriate HTTP status codes for different error conditions
+- Informative error messages for debugging
+- Fallback mechanisms for handling storage failures
+- Security-conscious error reporting
+
+Error types include:
+
+- **ValidationError**: For invalid parameters or paths
+- **NotFoundError**: For missing images
+- **StorageError**: For storage access issues
+- **TransformError**: For image transformation problems
+- **AuthError**: For authentication failures
+- **UnexpectedError**: For unknown error conditions
+
+## Performance Considerations
+
+The system is designed for optimal performance:
+
+- **Caching Strategy**: Efficient caching with appropriate TTLs
+- **Parallel Processing**: Where possible, operations are performed in parallel
+- **Early Returns**: System returns as soon as possible for special cases
+- **Cloudflare Integration**: Tight integration with Cloudflare services
+- **Resource Optimization**: Minimal memory and CPU usage
+- **Timeout Prevention**: Interceptor pattern prevents 524 timeout errors
+- **Responsive Sizing**: Optimal image sizes based on client capabilities
+- **Format Optimization**: Best format selection for browser support and performance
+
+## Security Features
+
+Security is a primary concern in the design:
+
+- **Authenticated Origins**: Secure access to protected image sources
+- **Secret Management**: Secure handling of authentication credentials
+- **Configurable Security Level**: Strict or permissive authentication enforcement
+- **Input Validation**: Thorough validation of all user inputs
+- **Error Information**: Careful control of error information exposure
+- **Cache Security**: Configurable public caching of authenticated content
+- **Cloudflare Origin-Auth**: Support for Cloudflare's secure origin authentication
