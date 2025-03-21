@@ -377,7 +377,7 @@ describe('Akamai Compatibility Module', () => {
         // Call translateAkamaiParams with the URL
         const result = translateAkamaiParams(url);
         
-        expect(result.flip).toBe(true);
+        expect(result.flip).toBe('h');
         expect(result.flop).toBeUndefined();
       });
       
@@ -391,8 +391,8 @@ describe('Akamai Compatibility Module', () => {
         // Call translateAkamaiParams with the URL
         const result = translateAkamaiParams(url);
         
-        expect(result.flop).toBe(true);
-        expect(result.flip).toBeUndefined();
+        expect(result.flip).toBe('v');
+        expect(result.flop).toBeUndefined();
       });
       
       it('handles both horizontal and vertical mirror', () => {
@@ -405,8 +405,8 @@ describe('Akamai Compatibility Module', () => {
         // Call translateAkamaiParams with the URL
         const result = translateAkamaiParams(url);
         
-        expect(result.flip).toBe(true);
-        expect(result.flop).toBe(true);
+        expect(result.flip).toBe('hv');
+        expect(result.flop).toBeUndefined();
       });
       
       it('supports shorthand notation', () => {
@@ -419,7 +419,7 @@ describe('Akamai Compatibility Module', () => {
         // Call translateAkamaiParams with the URL
         const result = translateAkamaiParams(url);
         
-        expect(result.flip).toBe(true);
+        expect(result.flip).toBe('h');
       });
     });
     
@@ -528,7 +528,7 @@ describe('Akamai Compatibility Module', () => {
         
         expect(result.width).toBe(800);
         expect(result.blur).toBe(25);
-        expect(result.flip).toBe(true);
+        expect(result.flip).toBe('h');
         expect(result.draw).toBeDefined();
         expect(result.draw[0].url).toBe('/watermarks/logo.png');
       });

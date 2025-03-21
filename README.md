@@ -31,7 +31,7 @@ This service enhances your Cloudflare Workers setup with advanced image handling
 - **Derivatives**: Template-based transformations for common use cases
 - **Path Templates**: Maps URL path segments to derivative templates
 - **Path Transformations**: Normalizes directory structures for flexible storage
-- **Authenticated Origins**: Access images from origins that require authentication (bearer tokens, basic auth, custom headers, or signed URLs)
+- **Authenticated Origins**: Access images from origins that require authentication (bearer tokens, custom headers, signed URLs, or AWS/GCS signatures)
 - **Comprehensive Logging**: Advanced logging system with configurable levels and structured output
 - **Breadcrumb Tracing**: End-to-end request tracing with performance metrics for diagnostics
 - **Interceptor Pattern**: Special handling for large images to prevent timeouts
@@ -442,6 +442,8 @@ If you're experiencing 524 timeout errors, see our [Diagnosing Timeouts](docs/DI
 - `AUTH_CACHE_TTL`: TTL for authenticated requests (in seconds)
 - `AUTH_USE_ORIGIN_AUTH`: Use Cloudflare's origin-auth feature (`true`/`false`)
 - `AUTH_SHARE_PUBLICLY`: Share authenticated images publicly (`true`/`false`)
+
+> **Note**: Basic authentication is deprecated in favor of Cloudflare's origin-auth feature and AWS S3/GCS authentication. The authentication system is now fully asynchronous to properly support AWS request signing.
 
 For complete authentication documentation, see [AUTHENTICATION.md](docs/AUTHENTICATION.md).
 

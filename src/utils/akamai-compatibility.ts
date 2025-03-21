@@ -494,6 +494,58 @@ export function translateAkamaiParams(url: URL, config?: any): TransformOptions 
     cfParams.anim = false;
   }
   
+  // Handle explicit animation parameter
+  const imAnim = url.searchParams.get('im.anim');
+  if (imAnim !== null) {
+    if (imAnim.toLowerCase() === 'true') {
+      cfParams.anim = true;
+    } else if (imAnim.toLowerCase() === 'false') {
+      cfParams.anim = false;
+    }
+  }
+  
+  // Handle gamma parameter
+  const imGamma = url.searchParams.get('im.gamma');
+  if (imGamma) {
+    const gamma = parseFloat(imGamma);
+    if (!isNaN(gamma) && gamma > 0) {
+      cfParams.gamma = gamma;
+    }
+  }
+  
+  // Handle border parameter
+  const imBorder = url.searchParams.get('im.border');
+  if (imBorder) {
+    try {
+      // Parse border values width,color
+      const borderParts = imBorder.split(',');
+      if (borderParts.length >= 1) {
+        const borderWidth = parseInt(borderParts[0]);
+        let borderColor = borderParts[1] || '#000000';
+        
+        if (!isNaN(borderWidth) && borderWidth > 0) {
+          cfParams.border = {
+            width: borderWidth,
+            color: borderColor
+          };
+        }
+      }
+    } catch (error) {
+      logger.warn('Failed to parse im.border parameter', { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  }
+  
+  // Handle dpr parameter
+  const imDpr = url.searchParams.get('im.dpr');
+  if (imDpr) {
+    const dpr = parseFloat(imDpr);
+    if (!isNaN(dpr) && dpr > 0) {
+      cfParams.dpr = dpr;
+    }
+  }
+  
   // Only process advanced features if enabled
   let advancedFeaturesEnabled = config?.features?.enableAkamaiAdvancedFeatures === true;
   try {
@@ -537,21 +589,18 @@ export function translateAkamaiParams(url: URL, config?: any): TransformOptions 
   // Handle metadata
   const imMetadata = url.searchParams.get('im.metadata');
   if (imMetadata) {
-    switch (imMetadata.toLowerCase()) {
-    case 'none':
-    case 'no': 
+    const metadataValue = imMetadata.toLowerCase();
+    if (metadataValue === 'none' || metadataValue === 'no') {
       cfParams.metadata = 'none';
-      break;
-    case 'copyright':
-    case 'minimal':
+    } else if (metadataValue === 'copyright' || metadataValue === 'minimal') {
       cfParams.metadata = 'copyright';
-      break;
-    case 'all':
-    case 'keep':
+    } else if (metadataValue === 'all' || metadataValue === 'keep') {
       cfParams.metadata = 'keep';
-      break;
-    default:
+    } else {
       cfParams.metadata = 'none'; // Default to none
+      logger.debug('Unknown metadata value, defaulting to none', { 
+        originalValue: imMetadata 
+      });
     }
   }
   
@@ -613,24 +662,26 @@ export function translateAkamaiParams(url: URL, config?: any): TransformOptions 
       const mirrorValue = imMirror.toLowerCase().trim();
       
       if (mirrorValue === 'horizontal' || mirrorValue === 'h') {
-        cfParams.flip = true;
+        cfParams.flip = 'h';
         logger.debug('Set horizontal mirror/flip');
         logger.breadcrumb('Applied horizontal mirror/flip', undefined, {
-          originalValue: imMirror
+          originalValue: imMirror,
+          cfValue: 'h'
         });
       } else if (mirrorValue === 'vertical' || mirrorValue === 'v') {
-        cfParams.flop = true;
+        cfParams.flip = 'v';
         logger.debug('Set vertical mirror/flip');
         logger.breadcrumb('Applied vertical mirror/flip', undefined, {
-          originalValue: imMirror
+          originalValue: imMirror,
+          cfValue: 'v'
         });
       } else if (mirrorValue === 'both' || mirrorValue === 'hv' || mirrorValue === 'vh') {
         // Both horizontal and vertical
-        cfParams.flip = true;
-        cfParams.flop = true;
+        cfParams.flip = 'hv';
         logger.debug('Set both horizontal and vertical mirror/flip');
         logger.breadcrumb('Applied both horizontal and vertical mirror/flip', undefined, {
-          originalValue: imMirror
+          originalValue: imMirror,
+          cfValue: 'hv'
         });
       }
     } catch (error) {
@@ -666,7 +717,22 @@ export function translateAkamaiParams(url: URL, config?: any): TransformOptions 
       }
       
       // Create draw object
-      const drawObj: Record<string, any> = {
+      // Define with the correct interface structure required for TransformOptions.draw
+      const drawObj: {
+        url: string;
+        width?: number;
+        height?: number;
+        fit?: string;
+        gravity?: string;
+        opacity?: number;
+        repeat?: boolean | "x" | "y";
+        top?: number;
+        left?: number;
+        bottom?: number;
+        right?: number;
+        background?: string;
+        rotate?: number;
+      } = {
         url: compositeParams.url,
       };
       
@@ -765,6 +831,19 @@ export function translateAkamaiParams(url: URL, config?: any): TransformOptions 
     hasBlur: !!cfParams.blur,
     hasMirror: !!(cfParams.flip || cfParams.flop),
     hasWatermark: !!(cfParams.draw && cfParams.draw.length > 0),
+    flip: cfParams.flip,
+    rotate: cfParams.rotate,
+    brightness: cfParams.brightness,
+    contrast: cfParams.contrast,
+    saturation: cfParams.saturation,
+    anim: cfParams.anim,
+    gamma: cfParams.gamma,
+    border: cfParams.border ? JSON.stringify(cfParams.border) : undefined,
+    dpr: cfParams.dpr,
+    background: cfParams.background,
+    metadata: cfParams.metadata,
+    trim: cfParams.trim,
+    sharpen: cfParams.sharpen,
     allParams: Object.keys(cfParams).join(',')
   });
   

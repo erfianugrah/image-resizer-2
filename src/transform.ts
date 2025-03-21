@@ -51,24 +51,42 @@ export function setLogger(configuredLogger: Logger): void {
 export interface TransformOptions {
   width?: number;
   height?: number;
-  fit?: string;
-  gravity?: string;
+  fit?: 'scale-down' | 'contain' | 'cover' | 'crop' | 'pad' | string;
+  gravity?: 'auto' | 'center' | 'top' | 'bottom' | 'left' | 'right' | 'north' | 'south' | 'east' | 'west' | 'north-east' | 'north-west' | 'south-east' | 'south-west' | 'face' | string;
   quality?: number;
-  format?: string;
+  format?: 'avif' | 'webp' | 'json' | 'jpeg' | 'png' | 'gif' | 'auto' | string;
   background?: string;
   dpr?: number;
-  metadata?: string;
+  metadata?: 'none' | 'copyright' | 'keep' | string;
   sharpen?: number;
-  trim?: number | boolean | string;
-  rotate?: number;
+  trim?: string; // Format: "top;right;bottom;left" in pixels
+  rotate?: 90 | 180 | 270 | number; // Cloudflare only supports 90, 180, and 270 degree rotations
   brightness?: number;
   contrast?: number;
   saturation?: number;
   derivative?: string;
-  blur?: number;
-  flip?: boolean;
-  flop?: boolean;
-  draw?: any[];  // For watermarks and overlays
+  anim?: boolean;  // Controls animation preservation (true = preserve, false = first frame only)
+  blur?: number;  // Value between 1 and 250
+  border?: { color: string; width?: number; top?: number; right?: number; bottom?: number; left?: number };
+  compression?: 'fast';  // Reduces latency at cost of quality
+  gamma?: number;  // Value > 0, 1.0 = no change, 0.5 = darker, 2.0 = lighter
+  flip?: string | boolean;  // Valid values: 'h' (horizontal), 'v' (vertical), 'hv' (both), or true for backwards compatibility
+  flop?: boolean;  // Deprecated - use flip='v' instead for vertical flipping
+  draw?: Array<{
+    url: string;
+    width?: number;
+    height?: number;
+    fit?: string;
+    gravity?: string;
+    opacity?: number;
+    repeat?: boolean | 'x' | 'y';
+    top?: number;
+    left?: number;
+    bottom?: number;
+    right?: number;
+    background?: string;
+    rotate?: number;
+  }>;  // For watermarks and overlays
   'origin-auth'?: 'share-publicly';
   _conditions?: any[]; // For conditional transformations (internal use)
   _customEffects?: any[]; // For custom effects (internal use)
@@ -310,8 +328,11 @@ function getFormat(
 /**
  * Determine browser format support based on browser and version
  * This is a fallback when caniuse-api is not available
+ * 
+ * @param browser - Object containing browser name and version
+ * @param callback - Callback function receiving WebP and AVIF support status
  */
-function detectFormatSupportFromBrowser(
+export function detectFormatSupportFromBrowser(
   browser: { name: string; version: string },
   callback: (webpSupported: boolean, avifSupported: boolean) => void
 ): void {
@@ -398,8 +419,11 @@ function detectFormatSupportFromBrowser(
 
 /**
  * Extract browser name and version from User-Agent string
+ * 
+ * @param userAgent - The User-Agent string to parse
+ * @returns Object with browser name and version, or null if not recognized
  */
-function getBrowserInfo(userAgent: string): { name: string; version: string } | null {
+export function getBrowserInfo(userAgent: string): { name: string; version: string } | null {
   try {
     // Add a debug log to see the raw User-Agent
     logger.debug('Parsing browser info from User-Agent', { userAgent });
@@ -791,6 +815,394 @@ export function buildTransformOptions(
     }
   });
   
+  // Validate the blur parameter
+  if (result.blur !== undefined) {
+    const blurValue = Number(result.blur);
+    if (isNaN(blurValue) || blurValue < 1 || blurValue > 250) {
+      if (!isNaN(blurValue)) {
+        // Clamp to valid range
+        result.blur = Math.max(1, Math.min(250, blurValue));
+        logger.breadcrumb('Clamped blur value to valid range (1-250)', undefined, {
+          originalValue: blurValue,
+          clampedValue: result.blur
+        });
+      } else {
+        // Not a valid number, remove it
+        logger.warn('Invalid blur value, must be between 1 and 250', {
+          value: result.blur
+        });
+        delete result.blur;
+      }
+    }
+  }
+  
+  // Validate gamma parameter
+  if (result.gamma !== undefined) {
+    const gammaValue = Number(result.gamma);
+    if (isNaN(gammaValue) || gammaValue <= 0) {
+      logger.warn('Invalid gamma value, must be a positive number', {
+        value: result.gamma
+      });
+      delete result.gamma;
+    }
+  }
+  
+  // Validate the anim parameter
+  if (result.anim !== undefined && typeof result.anim !== 'boolean') {
+    // Convert string 'true'/'false' to boolean
+    if (result.anim === 'true') {
+      result.anim = true;
+      logger.breadcrumb('Converted anim="true" to boolean true', undefined, {
+        originalValue: "true"
+      });
+    } else if (result.anim === 'false') {
+      result.anim = false;
+      logger.breadcrumb('Converted anim="false" to boolean false', undefined, {
+        originalValue: "false"
+      });
+    } else {
+      logger.warn('Invalid anim value, must be boolean', {
+        value: result.anim
+      });
+      delete result.anim;
+    }
+  }
+  
+  // Validate the compression parameter
+  if (result.compression !== undefined && result.compression !== 'fast') {
+    logger.warn('Invalid compression value, only "fast" is supported', {
+      value: result.compression
+    });
+    
+    // Use a safer approach with explicit string check
+    if (result.compression && typeof result.compression === 'string') {
+      // Now TypeScript knows compression is a string
+      const compressionStr: string = result.compression;
+      if (compressionStr.toLowerCase() === 'fast') {
+        result.compression = 'fast';
+      } else {
+        delete result.compression;
+      }
+    } else {
+      delete result.compression;
+    }
+  }
+  
+  // Validate the draw array for watermarks and overlays
+  if (result.draw && Array.isArray(result.draw)) {
+    const validDrawItems = [];
+    
+    for (let i = 0; i < result.draw.length; i++) {
+      const drawItem = result.draw[i];
+      
+      // Each draw item must have a URL
+      if (!drawItem.url) {
+        logger.warn(`Draw item at index ${i} missing required 'url' property, skipping`, {
+          drawItem: JSON.stringify(drawItem)
+        });
+        continue;
+      }
+      
+      // Validate numeric properties
+      if (drawItem.width !== undefined && (isNaN(Number(drawItem.width)) || Number(drawItem.width) <= 0)) {
+        logger.warn(`Invalid width in draw item at index ${i}, must be a positive number`, {
+          width: drawItem.width
+        });
+        delete drawItem.width;
+      }
+      
+      if (drawItem.height !== undefined && (isNaN(Number(drawItem.height)) || Number(drawItem.height) <= 0)) {
+        logger.warn(`Invalid height in draw item at index ${i}, must be a positive number`, {
+          height: drawItem.height
+        });
+        delete drawItem.height;
+      }
+      
+      // Validate positioning - can't have both left/right or top/bottom
+      if (drawItem.left !== undefined && drawItem.right !== undefined) {
+        logger.warn(`Draw item at index ${i} has both 'left' and 'right' set, which is invalid. Removing 'right'`, {
+          left: drawItem.left,
+          right: drawItem.right
+        });
+        delete drawItem.right;
+      }
+      
+      if (drawItem.top !== undefined && drawItem.bottom !== undefined) {
+        logger.warn(`Draw item at index ${i} has both 'top' and 'bottom' set, which is invalid. Removing 'bottom'`, {
+          top: drawItem.top,
+          bottom: drawItem.bottom
+        });
+        delete drawItem.bottom;
+      }
+      
+      // Validate opacity
+      if (drawItem.opacity !== undefined) {
+        const opacity = Number(drawItem.opacity);
+        if (isNaN(opacity) || opacity < 0 || opacity > 1) {
+          if (!isNaN(opacity)) {
+            // Clamp to valid range
+            drawItem.opacity = Math.max(0, Math.min(1, opacity));
+            logger.breadcrumb(`Clamped opacity in draw item at index ${i} to valid range (0-1)`, undefined, {
+              originalValue: opacity,
+              clampedValue: drawItem.opacity
+            });
+          } else {
+            logger.warn(`Invalid opacity in draw item at index ${i}, must be between 0 and 1`, {
+              opacity
+            });
+            delete drawItem.opacity;
+          }
+        }
+      }
+      
+      // Validate repeat - must be boolean or 'x' or 'y'
+      if (drawItem.repeat !== undefined && 
+          drawItem.repeat !== true && 
+          drawItem.repeat !== false && 
+          drawItem.repeat !== 'x' && 
+          drawItem.repeat !== 'y') {
+        
+        // Convert string "true"/"false" to boolean
+        if (drawItem.repeat === 'true') {
+          drawItem.repeat = true;
+        } else if (drawItem.repeat === 'false') {
+          drawItem.repeat = false;
+        } else {
+          logger.warn(`Invalid repeat value in draw item at index ${i}, must be boolean or 'x' or 'y'`, {
+            repeat: drawItem.repeat
+          });
+          delete drawItem.repeat;
+        }
+      }
+      
+      // Ensure fit value is valid
+      if (drawItem.fit !== undefined) {
+        const validFitValues = ['scale-down', 'contain', 'cover', 'crop', 'pad'];
+        const fitValue = String(drawItem.fit).toLowerCase();
+        
+        if (!validFitValues.includes(fitValue)) {
+          logger.warn(`Invalid fit value in draw item at index ${i}, defaulting to 'contain'`, {
+            fit: drawItem.fit
+          });
+          drawItem.fit = 'contain';
+        }
+      }
+      
+      // If gravity is provided, validate it
+      if (drawItem.gravity !== undefined) {
+        const validGravityValues = ['auto', 'center', 'top', 'bottom', 'left', 'right', 'north', 'south', 'east', 'west', 'north-east', 'north-west', 'south-east', 'south-west', 'face'];
+        
+        // If gravity is an object with x,y coordinates, it's valid
+        if (typeof drawItem.gravity === 'object' && 
+            drawItem.gravity !== null && 
+            'x' in drawItem.gravity && 
+            'y' in drawItem.gravity) {
+          // It's a valid coordinate object, keep it
+        } else if (typeof drawItem.gravity === 'string') {
+          // Check if it's a valid string value
+          const gravityValue = drawItem.gravity.toLowerCase();
+          
+          if (!validGravityValues.includes(gravityValue)) {
+            logger.warn(`Invalid gravity value in draw item at index ${i}, defaulting to 'center'`, {
+              gravity: drawItem.gravity
+            });
+            drawItem.gravity = 'center';
+          }
+        } else {
+          // Not a valid gravity value
+          logger.warn(`Invalid gravity type in draw item at index ${i}, must be string or {x,y} object`, {
+            gravity: drawItem.gravity,
+            type: typeof drawItem.gravity
+          });
+          delete drawItem.gravity;
+        }
+      }
+      
+      // Add this item to the validated array
+      validDrawItems.push(drawItem);
+      
+      logger.breadcrumb(`Validated draw item at index ${i}`, undefined, {
+        url: drawItem.url,
+        hasWidth: !!drawItem.width,
+        hasHeight: !!drawItem.height,
+        position: drawItem.top !== undefined ? 'top' : 
+                 drawItem.bottom !== undefined ? 'bottom' : 
+                 drawItem.left !== undefined ? 'left' : 
+                 drawItem.right !== undefined ? 'right' : 'center',
+        opacity: drawItem.opacity,
+        repeat: drawItem.repeat
+      });
+    }
+    
+    // Replace the draw array with only valid items
+    if (validDrawItems.length > 0) {
+      result.draw = validDrawItems;
+      logger.breadcrumb('Validated draw array', undefined, {
+        itemCount: validDrawItems.length,
+        items: validDrawItems.map(item => item.url).join(', ')
+      });
+    } else {
+      // If no valid items, remove the draw array
+      logger.warn('No valid draw items found, removing draw array', {
+        originalCount: result.draw.length
+      });
+      delete result.draw;
+    }
+  }
+  
+  // Validate the metadata parameter
+  if (result.metadata !== undefined && typeof result.metadata === 'string') {
+    const validMetadataValues = ['none', 'copyright', 'keep'];
+    const metadataValue = result.metadata.toLowerCase();
+    
+    if (!validMetadataValues.includes(metadataValue)) {
+      logger.warn('Invalid metadata value, defaulting to none', {
+        originalValue: result.metadata
+      });
+      result.metadata = 'none';
+    }
+  }
+  
+  // Validate the fit parameter
+  if (result.fit !== undefined && typeof result.fit === 'string') {
+    const validFitValues = ['scale-down', 'contain', 'cover', 'crop', 'pad'];
+    const fitValue = result.fit.toLowerCase();
+    
+    if (!validFitValues.includes(fitValue)) {
+      logger.warn('Invalid fit value, defaulting to scale-down', {
+        originalValue: result.fit
+      });
+      result.fit = 'scale-down';
+    }
+  }
+  
+  // Validate the format parameter
+  if (result.format !== undefined && typeof result.format === 'string') {
+    const validFormats = ['avif', 'webp', 'json', 'jpeg', 'png', 'gif', 'auto'];
+    const formatValue = result.format.toLowerCase();
+    
+    if (!validFormats.includes(formatValue)) {
+      logger.warn('Invalid format value, defaulting to auto', {
+        originalValue: result.format
+      });
+      result.format = 'auto';
+    }
+  }
+  
+  // Validate the trim parameter format
+  if (result.trim !== undefined) {
+    // If trim is not a string in the expected format, we need to fix it
+    if (typeof result.trim !== 'string' || !result.trim.includes(';')) {
+      logger.warn('Invalid trim parameter format', { 
+        trim: result.trim,
+        type: typeof result.trim
+      });
+      // If it's not in the correct format, remove it to avoid API errors
+      delete result.trim;
+    }
+  }
+
+  // Process flip parameter to ensure it's in the correct format
+  if (result.flip !== undefined) {
+    // Convert boolean true to string 'h' (horizontal) for backwards compatibility
+    if (result.flip === true) {
+      result.flip = 'h';
+      logger.breadcrumb('Converted flip=true to flip=h', undefined, {
+        originalValue: true,
+        updatedValue: 'h'
+      });
+    } else if (typeof result.flip === 'string') {
+      // Map old values to new values
+      const flipValue = result.flip.toLowerCase();
+      if (flipValue === 'horizontal') {
+        result.flip = 'h';
+        logger.breadcrumb('Converted flip=horizontal to flip=h', undefined, {
+          originalValue: flipValue,
+          updatedValue: 'h'
+        });
+      } else if (flipValue === 'vertical') {
+        result.flip = 'v';
+        logger.breadcrumb('Converted flip=vertical to flip=v', undefined, {
+          originalValue: flipValue,
+          updatedValue: 'v'
+        });
+      } else if (flipValue === 'both') {
+        result.flip = 'hv';
+        logger.breadcrumb('Converted flip=both to flip=hv', undefined, {
+          originalValue: flipValue,
+          updatedValue: 'hv'
+        });
+      } else if (!['h', 'v', 'hv'].includes(flipValue)) {
+        // Default to h if we got an invalid string value
+        result.flip = 'h';
+        logger.breadcrumb('Converted invalid flip value to h', undefined, {
+          originalValue: flipValue,
+          updatedValue: 'h'
+        });
+      }
+    }
+  }
+
+  // Validate the rotate parameter
+  if (result.rotate !== undefined) {
+    const rotation = Number(result.rotate);
+    if (isNaN(rotation) || ![90, 180, 270].includes(rotation)) {
+      logger.warn('Invalid rotation value, Cloudflare only supports 90, 180, and 270 degrees', {
+        originalValue: result.rotate
+      });
+      
+      // Try to normalize to a valid value
+      if (!isNaN(rotation)) {
+        // Normalize to 0, 90, 180, or 270
+        const normalizedRotation = ((rotation % 360) + 360) % 360;
+        
+        // Round to the nearest valid value
+        if (normalizedRotation > 45 && normalizedRotation <= 135) {
+          result.rotate = 90;
+        } else if (normalizedRotation > 135 && normalizedRotation <= 225) {
+          result.rotate = 180;
+        } else if (normalizedRotation > 225 && normalizedRotation <= 315) {
+          result.rotate = 270;
+        } else {
+          // If close to 0 or 360, remove rotation
+          delete result.rotate;
+        }
+        
+        logger.breadcrumb('Normalized rotation value', undefined, {
+          originalValue: rotation,
+          normalizedValue: result.rotate || 'removed'
+        });
+      } else {
+        // Not a valid number, remove it
+        delete result.rotate;
+      }
+    }
+  }
+
+  // Handle legacy flop parameter
+  if (result.flop === true) {
+    // If only flop is true, set flip to v (vertical)
+    if (!result.flip) {
+      result.flip = 'v';
+      logger.breadcrumb('Converted flop=true to flip=v', undefined, {
+        originalValue: 'flop=true',
+        updatedValue: 'flip=v'
+      });
+    } 
+    // If both flip and flop are true, set flip to hv (both)
+    else if (result.flip === 'h' || 
+             (typeof result.flip === 'string' && result.flip === 'true') || 
+             (typeof result.flip === 'boolean' && result.flip === true)) {
+      result.flip = 'hv';
+      logger.breadcrumb('Converted flip=h + flop=true to flip=hv', undefined, {
+        originalValue: 'flip=h,flop=true',
+        updatedValue: 'flip=hv'
+      });
+    }
+    // Remove the flop parameter as we've converted it to flip
+    delete result.flop;
+  }
+  
   // Add origin-auth configuration if enabled
   if (config.storage.auth?.enabled && config.storage.auth.useOriginAuth) {
     if (config.storage.auth.sharePublicly) {
@@ -803,9 +1215,30 @@ export function buildTransformOptions(
     finalOptionsCount: Object.keys(result).length,
     hasWidth: !!result.width,
     hasHeight: !!result.height,
+    width: result.width,
+    height: result.height,
     format: result.format,
     quality: result.quality,
     fit: result.fit,
+    flip: result.flip,
+    hasFlip: !!result.flip,
+    rotate: result.rotate,
+    hasRotate: !!result.rotate,
+    metadata: result.metadata,
+    trim: result.trim,
+    hasTrim: !!result.trim,
+    blur: result.blur,
+    brightness: result.brightness,
+    contrast: result.contrast,
+    saturation: result.saturation,
+    anim: result.anim,
+    gamma: result.gamma,
+    compression: result.compression,
+    border: result.border ? JSON.stringify(result.border) : undefined,
+    sharpen: result.sharpen,
+    dpr: result.dpr,
+    background: result.background,
+    allParams: Object.keys(result).join(',')
   });
   
   return result;
@@ -908,9 +1341,32 @@ export async function transformImage(
       cfOptions: JSON.stringify(fetchOptionsWithCache.cf),
       hasWidth: !!transformOptions.width,
       hasHeight: !!transformOptions.height,
+      width: transformOptions.width,
+      height: transformOptions.height,
       hasFit: !!transformOptions.fit,
+      fit: transformOptions.fit,
       format: transformOptions.format,
-      quality: transformOptions.quality
+      quality: transformOptions.quality,
+      flip: transformOptions.flip,
+      hasFlip: !!transformOptions.flip,
+      flipType: transformOptions.flip ? typeof transformOptions.flip : 'none',
+      rotate: transformOptions.rotate,
+      hasRotate: !!transformOptions.rotate,
+      metadata: transformOptions.metadata,
+      trim: transformOptions.trim,
+      hasTrim: !!transformOptions.trim,
+      anim: transformOptions.anim,
+      blur: transformOptions.blur,
+      brightness: transformOptions.brightness,
+      contrast: transformOptions.contrast,
+      gamma: transformOptions.gamma,
+      saturation: transformOptions.saturation,
+      compression: transformOptions.compression,
+      sharpen: transformOptions.sharpen,
+      dpr: transformOptions.dpr,
+      border: transformOptions.border ? JSON.stringify(transformOptions.border) : undefined,
+      background: transformOptions.background,
+      imageSourceSize: storageResult.size ? Math.round(storageResult.size / 1024) + 'KB' : 'unknown'
     });
     
     const fetchStart = Date.now();

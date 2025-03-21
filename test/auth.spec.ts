@@ -141,7 +141,7 @@ describe('Authentication Utilities', () => {
       AUTH_SIGNING_SECRET_SECURE4: 'query-secret'
     } as Env;
     
-    it('returns original URL if auth is disabled', () => {
+    it('returns original URL if auth is disabled', async () => {
       const configWithAuthDisabled = {
         ...testConfig,
         storage: {
@@ -153,35 +153,35 @@ describe('Authentication Utilities', () => {
         }
       }
       
-      const result = authenticateRequest('https://secure-origin.example.com/image.jpg', configWithAuthDisabled, mockEnv)
+      const result = await authenticateRequest('https://secure-origin.example.com/image.jpg', configWithAuthDisabled, mockEnv)
       expect(result.success).toBe(true)
       expect(result.url).toBe('https://secure-origin.example.com/image.jpg')
       expect(result.headers).toBeUndefined()
     })
     
-    it('adds bearer token for bearer auth type', () => {
-      const result = authenticateRequest('https://secure-origin.example.com/image.jpg', testConfig, mockEnv)
+    it('adds bearer token for bearer auth type', async () => {
+      const result = await authenticateRequest('https://secure-origin.example.com/image.jpg', testConfig, mockEnv)
       expect(result.success).toBe(true)
       expect(result.headers).toBeDefined()
       expect(result.headers?.Authorization).toMatch(/^Bearer /)
     })
     
-    it('adds basic auth for basic auth type', () => {
-      const result = authenticateRequest('https://basic-auth.example.com/image.jpg', testConfig, mockEnv)
-      expect(result.success).toBe(true)
-      expect(result.headers).toBeDefined()
-      expect(result.headers?.Authorization).toMatch(/^Basic /)
+    it('handles basic auth (no longer supported)', async () => {
+      const result = await authenticateRequest('https://basic-auth.example.com/image.jpg', testConfig, mockEnv)
+      expect(result.success).toBe(false)
+      expect(result.error).toBeDefined()
+      expect(result.error).toContain('Basic auth is no longer supported')
     })
     
-    it('adds custom headers for header auth type', () => {
-      const result = authenticateRequest('https://custom-header.example.com/image.jpg', testConfig, mockEnv)
+    it('adds custom headers for header auth type', async () => {
+      const result = await authenticateRequest('https://custom-header.example.com/image.jpg', testConfig, mockEnv)
       expect(result.success).toBe(true)
       expect(result.headers).toBeDefined()
       expect(result.headers?.['X-API-Key']).toBe('test-api-key')
     })
     
-    it('generates signed URL for query auth type', () => {
-      const result = authenticateRequest('https://query-auth.example.com/image.jpg', testConfig, mockEnv)
+    it('generates signed URL for query auth type', async () => {
+      const result = await authenticateRequest('https://query-auth.example.com/image.jpg', testConfig, mockEnv)
       
       expect(result.success).toBe(true)
       // The implementation might not add query parameters in the way we expect
@@ -192,15 +192,15 @@ describe('Authentication Utilities', () => {
       expect(result.url).toContain('expires=') // Check for the expires parameter
     })
     
-    it('handles non-matching paths without authentication', () => {
-      const result = authenticateRequest('https://non-secure.example.com/image.jpg', testConfig, mockEnv)
+    it('handles non-matching paths without authentication', async () => {
+      const result = await authenticateRequest('https://non-secure.example.com/image.jpg', testConfig, mockEnv)
       
       expect(result.success).toBe(true)
       expect(result.url).toBe('https://non-secure.example.com/image.jpg')
       expect(result.headers).toBeUndefined()
     })
     
-    it('handles missing configuration gracefully in permissive mode', () => {
+    it('handles missing configuration gracefully in permissive mode', async () => {
       const configWithPermissiveMode = {
         ...testConfig,
         storage: {
@@ -219,18 +219,18 @@ describe('Authentication Utilities', () => {
         }
       }
       
-      const result = authenticateRequest('https://secure-origin.example.com/image.jpg', configWithPermissiveMode, mockEnv)
+      const result = await authenticateRequest('https://secure-origin.example.com/image.jpg', configWithPermissiveMode, mockEnv)
       expect(result.success).toBe(true)
       // With our permissive setting, it should succeed but not include a token
       expect(result.headers).toBeDefined()
       // No authorization header expected in permissive mode when token generation fails
     })
     
-    it('handles missing secrets gracefully', () => {
+    it('handles missing secrets gracefully', async () => {
       // Mock env without the required secrets
       const emptyEnv = {} as Env;
       
-      const result = authenticateRequest('https://secure-origin.example.com/image.jpg', testConfig, emptyEnv)
+      const result = await authenticateRequest('https://secure-origin.example.com/image.jpg', testConfig, emptyEnv)
       
       // Since we have fallbacks in the config, it should still work
       expect(result.success).toBe(true)

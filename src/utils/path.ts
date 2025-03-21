@@ -202,8 +202,11 @@ export function parseQueryOptions(
   // Parameters that can be boolean or numeric
   const booleanOrNumericParams = ['trim', 'strip', 'sharpen'];
   
+  // Parameters that accept string values or can be parsed as boolean
+  const stringOrBooleanParams = ['flip'];
+  
   // Parameters that are boolean only
-  const booleanParams = ['anim', 'strip', 'flip', 'flop'];
+  const booleanParams = ['anim', 'strip', 'flop'];
   
   // Process 'auto' or numeric parameters
   autoOrNumericParams.forEach(param => {
@@ -275,6 +278,32 @@ export function parseQueryOptions(
     }
   });
   
+  // Process string or boolean parameters
+  stringOrBooleanParams.forEach(param => {
+    if (searchParams.has(param)) {
+      const value = searchParams.get(param) || '';
+      
+      // For flip parameter, special handling to allow string values
+      if (param === 'flip') {
+        const lowerValue = value.toLowerCase();
+        if (lowerValue === 'true') {
+          options[param] = true;
+        } else if (lowerValue === 'false') {
+          options[param] = false;
+        } else if (['h', 'v', 'hv', 'horizontal', 'vertical', 'both'].includes(lowerValue)) {
+          // Pass through valid string values
+          options[param] = lowerValue;
+        } else if (lowerValue) {
+          // Default invalid values to 'h' (horizontal)
+          options[param] = 'h';
+          logger.breadcrumb(`Converted invalid ${param} value to h`, undefined, {
+            originalValue: lowerValue
+          });
+        }
+      }
+    }
+  });
+  
   // Handle special case for draw (overlays/watermarks)
   if (searchParams.has('draw')) {
     try {
@@ -296,7 +325,10 @@ export function parseQueryOptions(
     hasWidth: options.width !== undefined,
     hasHeight: options.height !== undefined,
     hasFormat: options.format !== undefined,
-    hasBlur: options.blur !== undefined
+    hasBlur: options.blur !== undefined,
+    hasFlip: options.flip !== undefined,
+    flipValue: options.flip !== undefined ? 
+      (typeof options.flip === 'string' ? options.flip : String(options.flip)) : 'undefined'
   });
   
   return options;

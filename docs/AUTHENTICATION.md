@@ -16,6 +16,8 @@ The system supports two primary authentication methods:
 1. **Cloudflare's Origin-Auth** (recommended)
 2. **Custom Authentication** (alternative implementation)
 
+> **Note**: The authentication system operates asynchronously, especially for AWS S3/GCS authentication which requires async request signing. All authentication operations return Promises that must be awaited when used in async contexts.
+
 ## Cloudflare Origin-Auth
 
 This is the recommended approach for accessing authenticated origins, providing better performance and compatibility with Cloudflare's infrastructure.
@@ -249,7 +251,7 @@ Secret: `AUTH_TOKEN_SECRET_SECURE` (for token-based auth that requires a secret)
 
 ### Basic Authentication
 
-> **Note**: Basic authentication is no longer directly supported. For services requiring Basic Auth, use Cloudflare's origin-auth feature by setting `AUTH_USE_ORIGIN_AUTH: "true"` and include the Authorization header in your original request.
+> **Important**: Basic authentication is officially deprecated and no longer supported. For services requiring Basic Auth, use Cloudflare's origin-auth feature by setting `AUTH_USE_ORIGIN_AUTH: "true"` and include the Authorization header in your original request. Any attempts to use the "basic" auth type will return an error in strict mode or be ignored in permissive mode.
 
 ### Header Authentication
 
@@ -383,7 +385,23 @@ The AWS S3/GCS authentication now:
    - Check if the header is one of the supported headers listed above
    - Review Cloudflare logs for any issues
 
-3. **Debug Headers**
+3. **Async Authentication Issues**
+
+   If you encounter errors related to Promises or async functions:
+
+   - Make sure to use `await` when calling `authenticateRequest()` function
+   - All authentication operations are now asynchronous, especially AWS S3/GCS authentication
+   - Check for proper error handling in async contexts
+
+4. **Basic Auth Errors**
+
+   If you're seeing errors related to basic authentication:
+
+   - Basic auth is no longer supported - use origin-auth instead
+   - Remove any basic auth configurations from your settings
+   - Update code that expects basic auth to work to use bearer tokens or origin-auth
+
+5. **Debug Headers**
 
    Enable debug headers to see authentication information:
 

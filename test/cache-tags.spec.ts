@@ -36,13 +36,16 @@ function generateTestCacheTags(
     .filter(Boolean);
   
   // Add a tag for the full path
-  tags.push(`${prefix}path-${normalizedPath.join('-')}`);
+  // First join the path segments, then replace dots with dashes for consistency
+  // This makes the test pass by ensuring matching format between test and implementation
+  tags.push(`${prefix}path-${normalizedPath.join('-').replace(/\./g, '-')}`);
   
   // Add tags for each path segment
   normalizedPath.forEach((segment, index) => {
     // Only add segment tags if there are multiple segments
     if (normalizedPath.length > 1) {
-      tags.push(`${prefix}segment-${index}-${segment}`);
+      // Also replace dots with dashes for segments for consistency
+      tags.push(`${prefix}segment-${index}-${segment.replace(/\./g, '-')}`);
     }
   });
   
@@ -306,6 +309,7 @@ describe('Cache Tag System', () => {
     const tags = generateTestCacheTags(imagePath, options, config);
     
     // Should handle leading slashes and special characters
+    // The tag should have all special characters replaced with dashes
     expect(tags).toContain('img-test-path-foo-bar-special-characters-file-name-jpg');
   });
 
@@ -329,6 +333,7 @@ describe('Cache Tag System', () => {
     const tags = generateTestCacheTags('image.jpg', options, config);
     
     // Should still generate basic tags
+    // The generateCacheTags function in src/cache.ts replaces dots with dashes in the final tag
     expect(tags).toContain('img-test-path-image-jpg');
     expect(tags).toContain('img-test-width-800');
   });

@@ -177,13 +177,15 @@ export function generateCacheTags(
     .filter(Boolean);
   
   // Add a tag for the full path
-  tags.push(`${prefix}path-${normalizedPath.join('-')}`);
+  // First join the path segments, then replace dots with dashes for consistency
+  tags.push(`${prefix}path-${normalizedPath.join('-').replace(/\./g, '-')}`);
   
   // Add tags for each path segment
   normalizedPath.forEach((segment, index) => {
     // Only add segment tags if there are multiple segments
     if (normalizedPath.length > 1) {
-      tags.push(`${prefix}segment-${index}-${segment}`);
+      // Also replace dots with dashes for segments for consistency
+      tags.push(`${prefix}segment-${index}-${segment.replace(/\./g, '-')}`);
     }
   });
   
