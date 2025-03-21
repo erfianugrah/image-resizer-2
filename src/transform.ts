@@ -13,6 +13,29 @@ import { createLogger, Logger, defaultLogger } from './utils/logging';
 // Use default logger until a configured one is provided
 let logger: Logger = defaultLogger;
 
+// Note: We dynamically import caniuse-api to avoid test failures
+// and make it optional to prevent breaking existing functionality
+let caniuseApi: any = null;
+let isCaniuseLoading = false;
+
+// Attempt to load caniuse-api at module initialization
+try {
+  // Import at module level for faster initial load
+  // This will be caught and handled if it fails
+  import('caniuse-api').then(module => {
+    caniuseApi = module;
+    logger.debug('caniuse-api loaded successfully at module initialization');
+  }).catch(err => {
+    logger.debug('caniuse-api failed to load at module initialization', { 
+      error: err instanceof Error ? err.message : String(err) 
+    });
+  });
+} catch (error) {
+  logger.debug('caniuse-api not available', { 
+    error: error instanceof Error ? error.message : String(error) 
+  });
+}
+
 /**
  * Set the logger for the transform module
  * 
@@ -142,8 +165,10 @@ function getResponsiveWidth(
   return width;
 }
 
+// Using caniuse-api for browser feature detection
+
 /**
- * Get image format based on request Accept header and configuration
+ * Get image format based on request Accept header, User-Agent, and configuration
  */
 function getFormat(
   request: Request,
@@ -156,12 +181,88 @@ function getFormat(
     return options.format;
   }
   
-  // Get the Accept header to determine browser support
+  // Get headers to determine browser support
   const acceptHeader = request.headers.get('Accept') || '';
+  const userAgent = request.headers.get('User-Agent') || '';
   
-  // Check for format support in the browser
-  const supportsWebP = acceptHeader.includes('image/webp');
-  const supportsAVIF = acceptHeader.includes('image/avif');
+  // First check Accept header (most reliable when present)
+  let supportsWebP = acceptHeader.includes('image/webp');
+  let supportsAVIF = acceptHeader.includes('image/avif');
+  
+  // If not explicitly in Accept header, use User-Agent detection
+  if (!supportsWebP || !supportsAVIF) {
+    try {
+      // Extract browser and version from User-Agent
+      const browser = getBrowserInfo(userAgent);
+      
+      if (browser) {
+        logger.debug('Detected browser from User-Agent', { 
+          browserName: browser.name, 
+          browserVersion: browser.version 
+        });
+        
+        // Try to use caniuse-api if available or try loading it if not already loading
+        if (caniuseApi) {
+          // Use already loaded caniuse-api
+          try {
+            if (!supportsWebP) {
+              supportsWebP = caniuseApi.isSupported('webp', browser.name + ' ' + browser.version);
+            }
+            
+            if (!supportsAVIF) {
+              supportsAVIF = caniuseApi.isSupported('avif', browser.name + ' ' + browser.version);
+            }
+            
+            logger.debug('Format support detected by caniuse', { supportsWebP, supportsAVIF });
+          } catch (apiError) {
+            logger.debug('Error using caniuse-api', { 
+              error: apiError instanceof Error ? apiError.message : String(apiError) 
+            });
+          }
+        } else if (!isCaniuseLoading) {
+          // Try loading caniuse-api if not already loading
+          isCaniuseLoading = true;
+          logger.debug('Attempting to load caniuse-api on demand');
+          
+          try {
+            // We can't await this in a non-async function, but we'll
+            // prepare for future requests by loading the module
+            import('caniuse-api').then(module => {
+              caniuseApi = module;
+              isCaniuseLoading = false;
+              logger.debug('caniuse-api loaded successfully on demand');
+            }).catch(err => {
+              isCaniuseLoading = false;
+              logger.debug('Failed to load caniuse-api dynamically', { 
+                error: err instanceof Error ? err.message : String(err) 
+              });
+            });
+          } catch (importError) {
+            isCaniuseLoading = false;
+            logger.debug('Dynamic import of caniuse-api failed', { 
+              error: importError instanceof Error ? importError.message : String(importError) 
+            });
+          }
+        }
+        
+        // Use fallback detection for this request if caniuse-api is not yet available
+        if (!caniuseApi) {
+          detectFormatSupportFromBrowser(browser, (webpSupported, avifSupported) => {
+            if (!supportsWebP) supportsWebP = webpSupported;
+            if (!supportsAVIF) supportsAVIF = avifSupported;
+          });
+          
+          logger.debug('Format support detected by fallback rules', { supportsWebP, supportsAVIF });
+        }
+      } else {
+        logger.debug('Could not parse browser info from User-Agent', { userAgent });
+      }
+    } catch (error) {
+      logger.warn('Error in browser detection for format support', { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  }
   
   // Determine the original format from content type
   let originalFormat = 'jpeg';
@@ -181,26 +282,239 @@ function getFormat(
   
   // Choose the optimal format
   if (options.format === 'auto' || !options.format) {
-    if (supportsAVIF) {
-      return 'avif';
-    } else if (supportsWebP) {
-      return 'webp';
-    } else if (originalFormat === 'gif' && options.width && options.width < 100) {
+    // Special format handling based on original format
+    if (originalFormat === 'gif' && options.width && options.width < 100) {
       // For small animated thumbnails, keep gif
       return 'gif';
     } else if (originalFormat === 'svg') {
       // For SVGs, keep as SVG unless we're specifically changing dimensions
       return (options.width || options.height) ? 'png' : 'svg';
     } else if (originalFormat === 'png' && contentType && contentType.includes('png')) {
-      // Check if the PNG might have transparency (simplistic check)
+      // Check if the PNG might have transparency
       return 'png';
     }
     
-    // Default to WebP if supported, otherwise JPEG
-    return supportsWebP ? 'webp' : 'jpeg';
+    // For other formats, prioritize based on support and efficiency
+    if (supportsAVIF) {
+      return 'avif';
+    } else if (supportsWebP) {
+      return 'webp';
+    } else {
+      return 'jpeg'; // Fallback to JPEG
+    }
   }
   
   return options.format || config.responsive.format;
+}
+
+/**
+ * Determine browser format support based on browser and version
+ * This is a fallback when caniuse-api is not available
+ */
+function detectFormatSupportFromBrowser(
+  browser: { name: string; version: string },
+  callback: (webpSupported: boolean, avifSupported: boolean) => void
+): void {
+  const { name, version } = browser;
+  const versionNumber = parseFloat(version);
+  
+  let webpSupported = false;
+  let avifSupported = false;
+  
+  // WebP is supported in:
+  // - Chrome 32+ (Jan 2014)
+  // - Firefox 65+ (Jan 2019)
+  // - Edge 18+ (Nov 2018)
+  // - Safari 14+ (Sep 2020)
+  // - Opera 19+ (Jan 2014)
+  // - Samsung Internet 4+ (April 2016)
+  // - iOS Safari 14+ (Sep 2020)
+  // - Chrome for Android 32+ (Jan 2014)
+  if (
+    (name === 'chrome' && versionNumber >= 32) || 
+    (name === 'firefox' && versionNumber >= 65) || 
+    (name === 'edge' && versionNumber >= 18) || 
+    (name === 'safari' && versionNumber >= 14) ||
+    (name === 'opera' && versionNumber >= 19) ||
+    (name === 'samsung' && versionNumber >= 4) ||
+    // Add mobile browser support
+    (name === 'ios_saf' && versionNumber >= 14) ||
+    (name === 'and_chr' && versionNumber >= 32) ||
+    (name === 'and_ff' && versionNumber >= 65) ||
+    // Microsoft Edge (Chromium-based - similar support to Chrome)
+    (name === 'edge_chromium' && versionNumber >= 79)
+  ) {
+    webpSupported = true;
+  }
+  
+  // AVIF is supported in:
+  // - Chrome 85+ (Aug 2020)
+  // - Firefox 93+ (Oct 2021)
+  // - Safari 16.4+ (Mar 2023)
+  // - Opera 71+ (Aug 2020)
+  // - Edge 90+ (Apr 2021, Chromium-based)
+  // - Chrome for Android 92+ (Jul 2021)
+  if (
+    (name === 'chrome' && versionNumber >= 85) || 
+    (name === 'firefox' && versionNumber >= 93) || 
+    (name === 'safari' && versionNumber >= 16.4) ||
+    (name === 'opera' && versionNumber >= 71) ||
+    (name === 'edge' && versionNumber >= 90) ||
+    (name === 'edge_chromium' && versionNumber >= 90) ||
+    // Add mobile browser support
+    (name === 'and_chr' && versionNumber >= 92) ||
+    (name === 'samsung' && versionNumber >= 16) ||
+    (name === 'ios_saf' && versionNumber >= 16.4)
+  ) {
+    avifSupported = true;
+  }
+  
+  // Default for modern browsers - if we couldn't identify specifically but it's recent
+  // Consider WebP supported for any browser from 2020 onwards as a safe assumption
+  if (!webpSupported && !avifSupported) {
+    try {
+      // Extract year from version if it's in the format "Chrome/92.0.4515.159"
+      const fullVersion = browser.version;
+      const versionParts = fullVersion.split('.');
+      if (versionParts.length >= 3) {
+        const buildNumber = parseInt(versionParts[2], 10);
+        // High build numbers usually indicate recent browsers
+        if (buildNumber > 4000) {
+          webpSupported = true;
+          logger.debug('Assuming WebP support based on high build number', {
+            browser: name,
+            version: fullVersion,
+            buildNumber
+          });
+        }
+      }
+    } catch (e) {
+      // Ignore errors in this additional heuristic
+    }
+  }
+  
+  callback(webpSupported, avifSupported);
+}
+
+/**
+ * Extract browser name and version from User-Agent string
+ */
+function getBrowserInfo(userAgent: string): { name: string; version: string } | null {
+  try {
+    // Add a debug log to see the raw User-Agent
+    logger.debug('Parsing browser info from User-Agent', { userAgent });
+    
+    // Check for mobile devices first since they often include multiple browser identifiers
+    
+    // iOS devices
+    let match = userAgent.match(/iPad|iPhone|iPod/i);
+    if (match) {
+      // iOS Safari
+      const versionMatch = userAgent.match(/OS (\d+[_\.]\d+)/i);
+      if (versionMatch) {
+        // Convert version format from 14_0 to 14.0
+        const version = versionMatch[1].replace('_', '.');
+        return { name: 'ios_saf', version };
+      }
+      
+      // If we can't determine iOS version, use Safari version if available
+      const safariMatch = userAgent.match(/Version\/(\d+\.\d+)/i);
+      if (safariMatch) {
+        return { name: 'ios_saf', version: safariMatch[1] };
+      }
+      
+      // If no version info, return a safe default
+      return { name: 'ios_saf', version: '9.0' };
+    }
+    
+    // Android devices
+    if (userAgent.includes('Android')) {
+      // Chrome for Android
+      match = userAgent.match(/Chrome\/(\d+\.\d+)/i);
+      if (match) {
+        return { name: 'and_chr', version: match[1] };
+      }
+      
+      // Firefox for Android
+      match = userAgent.match(/Firefox\/(\d+\.\d+)/i);
+      if (match) {
+        return { name: 'and_ff', version: match[1] };
+      }
+      
+      // Android browser or WebView
+      match = userAgent.match(/Android (\d+\.\d+)/i);
+      if (match) {
+        return { name: 'android', version: match[1] };
+      }
+    }
+    
+    // Now handle desktop browsers
+    
+    // Edge (Chromium-based)
+    match = userAgent.match(/Edg(e)?\/(\d+\.\d+)/i);
+    if (match) {
+      // When Edge is Chromium-based, it's 79+
+      const version = match[2];
+      const versionNumber = parseFloat(version);
+      if (versionNumber >= 79) {
+        return { name: 'edge_chromium', version };
+      }
+      return { name: 'edge', version };
+    }
+    
+    // Chrome, Chromium
+    match = userAgent.match(/(Chrome|Chromium)\/(\d+\.\d+)/i);
+    if (match) {
+      return { name: 'chrome', version: match[2] };
+    }
+    
+    // Firefox
+    match = userAgent.match(/Firefox\/(\d+\.\d+)/i);
+    if (match) {
+      return { name: 'firefox', version: match[1] };
+    }
+    
+    // Safari
+    match = userAgent.match(/Version\/(\d+\.\d+).*Safari/i);
+    if (match && userAgent.includes('Safari')) {
+      return { name: 'safari', version: match[1] };
+    }
+    
+    // Opera
+    match = userAgent.match(/OPR\/(\d+\.\d+)/i);
+    if (match) {
+      return { name: 'opera', version: match[1] };
+    }
+    
+    // Internet Explorer
+    match = userAgent.match(/MSIE (\d+\.\d+)/i) || userAgent.match(/Trident.*rv:(\d+\.\d+)/i);
+    if (match) {
+      return { name: 'ie', version: match[1] };
+    }
+    
+    // Samsung Internet
+    match = userAgent.match(/SamsungBrowser\/(\d+\.\d+)/i);
+    if (match) {
+      return { name: 'samsung', version: match[1] };
+    }
+    
+    // Brave (identifies as Chrome)
+    if (userAgent.includes('Brave')) {
+      match = userAgent.match(/Chrome\/(\d+\.\d+)/i);
+      if (match) {
+        return { name: 'chrome', version: match[1] }; // Treat as Chrome for compatibility
+      }
+    }
+    
+    logger.debug('Could not identify browser from User-Agent', { userAgent });
+    return null;
+  } catch (error) {
+    logger.warn('Error parsing browser info from User-Agent', { 
+      userAgent,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return null;
+  }
 }
 
 /**
