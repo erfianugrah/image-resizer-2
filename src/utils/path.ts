@@ -157,10 +157,17 @@ export function extractDerivative(
 
 /**
  * Parse query parameters for image options
+ * 
+ * Extracts and normalizes parameters for Cloudflare Image Resizing from URL query parameters.
+ * Handles all supported Cloudflare Worker image transformation options.
+ * 
+ * @see https://developers.cloudflare.com/images/image-resizing/resize-with-workers/
+ * @param searchParams - URLSearchParams object containing the query parameters
+ * @returns Record with parsed and normalized transformation options
  */
 export function parseQueryOptions(
   searchParams: URLSearchParams
-): Record<string, string | number | boolean> {
+): Record<string, any> {
   // Use default console log until we can dynamically import the logger
   // This avoids circular dependencies during initialization
   const logger = {
@@ -173,88 +180,86 @@ export function parseQueryOptions(
     paramCount: Array.from(searchParams.keys()).length
   });
   
-  const options: Record<string, string | number | boolean> = {};
+  const options: Record<string, any> = {};
   
-  // Process common transformation parameters
-  if (searchParams.has('width')) {
-    const widthParam = searchParams.get('width') || '';
-    if (widthParam === 'auto') {
-      options.width = 'auto' as any; // Cast to any to handle 'auto' string
-      logger.breadcrumb('Setting width to auto');
-    } else {
-      const width = parseInt(widthParam, 10);
-      if (!isNaN(width)) {
-        options.width = width;
-        logger.breadcrumb('Setting width', undefined, { width });
-      }
-    }
-  }
+  // Define parameter categories for systematic processing
   
-  if (searchParams.has('height')) {
-    const heightParam = searchParams.get('height') || '';
-    if (heightParam === 'auto') {
-      options.height = 'auto' as any; // Cast to any to handle 'auto' string
-    } else {
-      const height = parseInt(heightParam, 10);
-      if (!isNaN(height)) {
-        options.height = height;
-      }
-    }
-  }
+  // Parameters that can be 'auto' or numeric
+  const autoOrNumericParams = ['width', 'height', 'quality'];
   
-  if (searchParams.has('quality')) {
-    const qualityParam = searchParams.get('quality') || '';
-    if (qualityParam === 'auto') {
-      options.quality = 'auto' as any; // Cast to any to handle 'auto' string
-    } else {
-      const quality = parseInt(qualityParam, 10);
-      if (!isNaN(quality)) {
-        options.quality = quality;
-      }
-    }
-  }
+  // Parameters that should be parsed as numbers
+  const numericParams = [
+    'blur', 'brightness', 'contrast', 'dpr', 'gamma', 
+    'rotate', 'saturation', 'sharpen'
+  ];
   
-  if (searchParams.has('fit')) {
-    options.fit = searchParams.get('fit') || '';
-  }
+  // Parameters that should be parsed as strings
+  const stringParams = [
+    'fit', 'format', 'gravity', 'metadata', 'background',
+    'derivative', 'origin-auth'
+  ];
   
-  if (searchParams.has('format')) {
-    options.format = searchParams.get('format') || '';
-  }
+  // Parameters that can be boolean or numeric
+  const booleanOrNumericParams = ['trim', 'strip', 'sharpen'];
   
-  if (searchParams.has('derivative')) {
-    options.derivative = searchParams.get('derivative') || '';
-  }
+  // Parameters that are boolean only
+  const booleanParams = ['anim', 'strip', 'flip', 'flop'];
   
-  if (searchParams.has('background')) {
-    options.background = searchParams.get('background') || '';
-  }
-  
-  if (searchParams.has('metadata')) {
-    options.metadata = searchParams.get('metadata') || '';
-  }
-  
-  if (searchParams.has('gravity')) {
-    options.gravity = searchParams.get('gravity') || '';
-  }
-  
-  if (searchParams.has('dpr')) {
-    const dpr = parseFloat(searchParams.get('dpr') || '');
-    if (!isNaN(dpr)) {
-      options.dpr = dpr;
-    }
-  }
-  
-  // Process boolean parameters
-  ['trim', 'sharpen'].forEach(param => {
+  // Process 'auto' or numeric parameters
+  autoOrNumericParams.forEach(param => {
     if (searchParams.has(param)) {
-      const value = searchParams.get(param);
-      if (value === 'true') {
+      const paramValue = searchParams.get(param) || '';
+      if (paramValue.toLowerCase() === 'auto') {
+        options[param] = 'auto' as any;
+        if (param === 'width') {
+          logger.breadcrumb(`Setting ${param} to auto`);
+        }
+      } else {
+        const numValue = parseInt(paramValue, 10);
+        if (!isNaN(numValue)) {
+          options[param] = numValue;
+          if (param === 'width') {
+            logger.breadcrumb(`Setting ${param}`, undefined, { [param]: numValue });
+          }
+        }
+      }
+    }
+  });
+  
+  // Process numeric parameters
+  numericParams.forEach(param => {
+    if (searchParams.has(param)) {
+      const paramValue = searchParams.get(param) || '';
+      const numValue = parseFloat(paramValue);
+      if (!isNaN(numValue)) {
+        options[param] = numValue;
+        if (param === 'blur') {
+          logger.breadcrumb(`Setting ${param}`, undefined, { [param]: numValue });
+        }
+      }
+    }
+  });
+  
+  // Process string parameters
+  stringParams.forEach(param => {
+    if (searchParams.has(param)) {
+      const value = searchParams.get(param) || '';
+      if (value) {
+        options[param] = value;
+      }
+    }
+  });
+  
+  // Process boolean or numeric parameters
+  booleanOrNumericParams.forEach(param => {
+    if (searchParams.has(param)) {
+      const value = searchParams.get(param) || '';
+      if (value.toLowerCase() === 'true') {
         options[param] = true;
-      } else if (value === 'false') {
+      } else if (value.toLowerCase() === 'false') {
         options[param] = false;
       } else {
-        const numValue = parseFloat(value || '');
+        const numValue = parseFloat(value);
         if (!isNaN(numValue)) {
           options[param] = numValue;
         }
@@ -262,11 +267,36 @@ export function parseQueryOptions(
     }
   });
   
+  // Process boolean parameters
+  booleanParams.forEach(param => {
+    if (searchParams.has(param)) {
+      const value = searchParams.get(param) || '';
+      options[param] = value.toLowerCase() !== 'false';
+    }
+  });
+  
+  // Handle special case for draw (overlays/watermarks)
+  if (searchParams.has('draw')) {
+    try {
+      const drawValue = searchParams.get('draw') || '';
+      // Attempt to parse as JSON
+      const drawData = JSON.parse(drawValue);
+      options.draw = Array.isArray(drawData) ? drawData : [drawData];
+      logger.breadcrumb('Parsed draw parameter', undefined, { 
+        drawItems: options.draw.length
+      });
+    } catch (e) {
+      logger.breadcrumb('Failed to parse draw parameter as JSON');
+      // If not valid JSON, skip this parameter
+    }
+  }
+  
   logger.breadcrumb('Completed parsing query options', undefined, {
     optionCount: Object.keys(options).length,
     hasWidth: options.width !== undefined,
     hasHeight: options.height !== undefined,
-    hasFormat: options.format !== undefined
+    hasFormat: options.format !== undefined,
+    hasBlur: options.blur !== undefined
   });
   
   return options;
