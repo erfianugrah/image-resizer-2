@@ -42,7 +42,13 @@ export interface TransformOptions {
   contrast?: number;
   saturation?: number;
   derivative?: string;
+  blur?: number;
+  flip?: boolean;
+  flop?: boolean;
+  draw?: any[];  // For watermarks and overlays
   'origin-auth'?: 'share-publicly';
+  _conditions?: any[]; // For conditional transformations (internal use)
+  _customEffects?: any[]; // For custom effects (internal use)
   [key: string]: any;
 }
 
@@ -421,6 +427,48 @@ export function buildTransformOptions(
     transformOptions.metadata = config.responsive.metadata;
   }
   
+  // Process conditions based on image properties if available
+  if (transformOptions._conditions) {
+    logger.breadcrumb('Processing conditional transformations', undefined, {
+      conditionCount: transformOptions._conditions.length,
+      conditionTypes: transformOptions._conditions.map(c => c.type).join(',')
+    });
+    
+    try {
+      // Process each condition
+      for (const condition of transformOptions._conditions) {
+        if (condition.type === 'dimension') {
+          // Parse and apply dimension condition
+          logger.breadcrumb('Processing dimension condition', undefined, {
+            condition: condition.condition
+          });
+          
+          const dimensionResult = applyDimensionCondition(condition.condition, storageResult);
+          
+          // Merge resulting options
+          if (dimensionResult && Object.keys(dimensionResult).length > 0) {
+            logger.breadcrumb('Applying conditional transformation', undefined, {
+              appliedParams: Object.keys(dimensionResult).join(',')
+            });
+            
+            Object.keys(dimensionResult).forEach(key => {
+              transformOptions[key] = dimensionResult[key];
+            });
+          } else {
+            logger.breadcrumb('Condition not met or no transformation specified');
+          }
+        }
+      }
+    } catch (error) {
+      logger.error('Error processing conditional transformations', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+    
+    // Remove condition metadata to avoid sending it to Cloudflare
+    delete transformOptions._conditions;
+  }
+  
   // Clean up any undefined or null values
   const result: TransformOptions = {};
   Object.keys(transformOptions).forEach(key => {
@@ -633,5 +681,251 @@ export async function transformImage(
     
     // In case of error, return the original image
     return originalResponse;
+  }
+}
+
+/**
+ * Apply a dimension condition to transform options
+ * 
+ * @param condition The dimension condition string (e.g. "width>500,im.resize=width:300")
+ * @param storageResult The storage result with image metadata
+ * @returns TransformOptions to apply if the condition is met
+ */
+function applyDimensionCondition(condition: string, storageResult: StorageResult): TransformOptions {
+  // Format: condition,transform (e.g. width>500,im.resize=width:300)
+  const parts = condition.split(',', 2);
+  if (parts.length !== 2) {
+    logger.breadcrumb('Invalid condition format, expected condition,transform', undefined, {
+      condition
+    });
+    return {};
+  }
+  
+  const [conditionPart, transformPart] = parts;
+  
+  // Parse condition
+  const match = conditionPart.match(/^(width|height|ratio|format)([<>=]+)([0-9.]+)$/);
+  if (!match) {
+    logger.breadcrumb('Invalid condition syntax', undefined, {
+      conditionPart
+    });
+    return {};
+  }
+  
+  const [_, property, operator, valueStr] = match;
+  const value = parseFloat(valueStr);
+  
+  // Get image dimensions from headers or metadata
+  let width: number | undefined;
+  let height: number | undefined;
+  
+  // Try to get dimensions from content length, CF object, or estimate from size
+  if (storageResult.width && storageResult.height) {
+    width = storageResult.width;
+    height = storageResult.height;
+    logger.breadcrumb('Using dimensions from storage result', undefined, { width, height });
+  } else {
+    // Attempt to parse from headers
+    const contentType = storageResult.contentType;
+    const contentLength = storageResult.size;
+    
+    if (contentType && contentLength) {
+      // Make a rough estimate based on content type and size
+      // This is a very rough heuristic and should be replaced with actual metadata
+      const isJpeg = contentType.includes('jpeg') || contentType.includes('jpg');
+      const isPng = contentType.includes('png');
+      
+      if (isJpeg || isPng) {
+        // Very rough estimate based on file size
+        // Assuming an average of 0.25 bytes per pixel for JPEG and 1 byte per pixel for PNG
+        const bytesPerPixel = isJpeg ? 0.25 : 1;
+        const estimatedPixels = contentLength / bytesPerPixel;
+        
+        // Guess dimensions assuming a 4:3 aspect ratio
+        const estimatedWidth = Math.sqrt(estimatedPixels * (4/3));
+        const estimatedHeight = estimatedWidth * (3/4);
+        
+        width = Math.round(estimatedWidth);
+        height = Math.round(estimatedHeight);
+        
+        logger.breadcrumb('Using estimated dimensions from file size', undefined, {
+          width,
+          height,
+          contentType,
+          contentLength,
+          estimation: 'very rough'
+        });
+      }
+    }
+  }
+  
+  // If we still don't have dimensions, we can't evaluate the condition
+  if ((property === 'width' || property === 'height' || property === 'ratio') && 
+      (width === undefined || height === undefined)) {
+    logger.breadcrumb('Cannot evaluate dimension condition, no dimensions available');
+    return {};
+  }
+  
+  // Check condition
+  let conditionMet = false;
+  
+  if (property === 'width' && width !== undefined) {
+    conditionMet = evaluateCondition(width, operator, value);
+    logger.breadcrumb('Evaluated width condition', undefined, {
+      actualWidth: width,
+      operator,
+      expectedValue: value,
+      result: conditionMet
+    });
+  } else if (property === 'height' && height !== undefined) {
+    conditionMet = evaluateCondition(height, operator, value);
+    logger.breadcrumb('Evaluated height condition', undefined, {
+      actualHeight: height,
+      operator,
+      expectedValue: value,
+      result: conditionMet
+    });
+  } else if (property === 'ratio' && width !== undefined && height !== undefined) {
+    const ratio = width / height;
+    conditionMet = evaluateCondition(ratio, operator, value);
+    logger.breadcrumb('Evaluated ratio condition', undefined, {
+      actualRatio: ratio.toFixed(3),
+      operator,
+      expectedValue: value,
+      result: conditionMet
+    });
+  }
+  
+  // If condition is met, parse and apply the transformation
+  if (conditionMet && transformPart) {
+    logger.breadcrumb('Condition met, applying transformation', undefined, {
+      transform: transformPart
+    });
+    
+    // If transformation starts with "im.", it's in Akamai format
+    if (transformPart.startsWith('im.')) {
+      try {
+        // We'll use the existing akamai-compatibility module to parse these
+        // To avoid circular dependencies, we'll create a URL with the parameters
+        const mockUrl = new URL(`https://example.com/?${transformPart}`);
+        
+        // Import the translateAkamaiParams function dynamically to avoid circular dependencies
+        // This is a simplified version - in a real implementation, consider using a shared service
+        // or dependency injection pattern to avoid the dynamic import
+        const params: Record<string, string> = {};
+        for (const [key, value] of mockUrl.searchParams.entries()) {
+          if (key.startsWith('im.')) {
+            params[key.slice(3)] = value; // Remove the "im." prefix
+          }
+        }
+        
+        // Convert Akamai-style parameters to Cloudflare style
+        const result: TransformOptions = {};
+        
+        // Handle resize parameter (width, height, fit mode)
+        if (params.resize) {
+          const resizeParams = params.resize.split(',');
+          for (const param of resizeParams) {
+            const [key, value] = param.includes(':') 
+              ? param.split(':') 
+              : param.includes('=') 
+                ? param.split('=')
+                : [param, ''];
+                
+            if (key === 'width') {
+              result.width = parseInt(value, 10);
+            } else if (key === 'height') {
+              result.height = parseInt(value, 10);
+            } else if (key === 'mode') {
+              // Map Akamai fit modes to Cloudflare
+              switch(value) {
+                case 'fit': result.fit = 'contain'; break;
+                case 'stretch': result.fit = 'scale-down'; break;
+                case 'fill': result.fit = 'cover'; break;
+                case 'crop': result.fit = 'crop'; break;
+                case 'pad': result.fit = 'pad'; break;
+              }
+            }
+          }
+        }
+        
+        // Handle format parameter
+        if (params.format) {
+          result.format = params.format;
+        }
+        
+        // Handle quality parameter
+        if (params.quality) {
+          if (params.quality.match(/^\d+$/)) {
+            result.quality = parseInt(params.quality, 10);
+          } else {
+            // Map named quality levels
+            switch (params.quality.toLowerCase()) {
+              case 'low': result.quality = 50; break;
+              case 'medium': result.quality = 75; break;
+              case 'high': result.quality = 90; break;
+              default: result.quality = 85;
+            }
+          }
+        }
+        
+        return result;
+      } catch (error) {
+        logger.error('Error parsing Akamai parameters in condition', {
+          error: error instanceof Error ? error.message : String(error),
+          transform: transformPart
+        });
+        return {};
+      }
+    } else {
+      // Handle Cloudflare format directly (key=value,key2=value2)
+      try {
+        const result: TransformOptions = {};
+        const params = transformPart.split(',');
+        
+        for (const param of params) {
+          const [key, value] = param.split('=');
+          if (key && value) {
+            // Convert numeric values
+            if (['width', 'height', 'quality', 'sharpen', 'blur'].includes(key.trim())) {
+              result[key.trim()] = parseInt(value.trim(), 10);
+            } else if (['brightness', 'contrast', 'saturation'].includes(key.trim())) {
+              result[key.trim()] = parseFloat(value.trim());
+            } else if (['flip', 'flop'].includes(key.trim())) {
+              result[key.trim()] = value.trim().toLowerCase() === 'true';
+            } else {
+              result[key.trim()] = value.trim();
+            }
+          }
+        }
+        
+        return result;
+      } catch (error) {
+        logger.error('Error parsing Cloudflare parameters in condition', {
+          error: error instanceof Error ? error.message : String(error),
+          transform: transformPart
+        });
+        return {};
+      }
+    }
+  }
+  
+  // If condition is not met or there was an error, return empty object
+  return {};
+}
+
+/**
+ * Helper to evaluate comparison conditions
+ */
+function evaluateCondition(actual: number, operator: string, expected: number): boolean {
+  switch (operator) {
+    case '>': return actual > expected;
+    case '>=': return actual >= expected;
+    case '<': return actual < expected;
+    case '<=': return actual <= expected;
+    case '=':
+    case '==': return actual === expected;
+    case '!=': return actual !== expected;
+    default: return false;
   }
 }

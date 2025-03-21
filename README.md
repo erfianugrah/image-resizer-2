@@ -35,6 +35,7 @@ This service enhances your Cloudflare Workers setup with advanced image handling
 - **Comprehensive Logging**: Advanced logging system with configurable levels and structured output
 - **Breadcrumb Tracing**: End-to-end request tracing with performance metrics for diagnostics
 - **Interceptor Pattern**: Special handling for large images to prevent timeouts
+- **Akamai Compatibility**: Support for Akamai Image Manager URL parameters for seamless migration, including advanced features like blur, watermarking, mirror/flip, and conditional transformations
 
 ## Live Demo Examples
 
@@ -117,6 +118,28 @@ Demo URL: [https://images.erfi.dev/banner/Granna_1.JPG](https://images.erfi.dev/
 [Debug HTML Report](https://images.erfi.dev/debug-report?url=https://images.erfi.dev/Granna_1.JPG&width=500)
 
 Debug Header Example: Add `?debug=true` to any image URL
+
+### Akamai Compatibility Examples
+
+#### Basic Akamai Parameters
+![Akamai Resize](https://images.erfi.dev/Granna_1.JPG?im.resize=width:400,height:300,mode:fit&im.quality=80)
+
+Demo URL: [https://images.erfi.dev/Granna_1.JPG?im.resize=width:400,height:300,mode:fit&im.quality=80](https://images.erfi.dev/Granna_1.JPG?im.resize=width:400,height:300,mode:fit&im.quality=80)
+
+#### Advanced Features - Blur
+![Akamai Blur](https://images.erfi.dev/Granna_1.JPG?im.blur=20&im.resize=width:400)
+
+Demo URL: [https://images.erfi.dev/Granna_1.JPG?im.blur=20&im.resize=width:400](https://images.erfi.dev/Granna_1.JPG?im.blur=20&im.resize=width:400)
+
+#### Advanced Features - Mirror
+![Akamai Mirror](https://images.erfi.dev/Granna_1.JPG?im.mirror=horizontal&im.resize=width:400)
+
+Demo URL: [https://images.erfi.dev/Granna_1.JPG?im.mirror=horizontal&im.resize=width:400](https://images.erfi.dev/Granna_1.JPG?im.mirror=horizontal&im.resize=width:400)
+
+#### Advanced Features - Conditional Transformations
+![Conditional Transform](https://images.erfi.dev/Granna_1.JPG?im.if-dimension=width>800,im.resize=width:400&debug=true)
+
+Demo URL: [https://images.erfi.dev/Granna_1.JPG?im.if-dimension=width>800,im.resize=width:400&debug=true](https://images.erfi.dev/Granna_1.JPG?im.if-dimension=width>800,im.resize=width:400&debug=true)
 
 ## Architecture
 
@@ -359,6 +382,8 @@ This pattern ensures proper integration with Cloudflare's Image Resizing service
 - `FALLBACK_URL`: Base URL for fallback images
 - `DERIVATIVES`: JSON string of custom derivatives
 - `STORAGE_PRIORITY`: Comma-separated list of storage priorities (e.g., "r2,remote,fallback")
+- `ENABLE_AKAMAI_COMPATIBILITY`: Enable Akamai Image Manager parameter support (`true`/`false`)
+- `ENABLE_AKAMAI_ADVANCED_FEATURES`: Enable advanced Akamai features like blur, mirror, composite, and conditional transformations (`true`/`false`)
 
 ### Cache Configuration
 

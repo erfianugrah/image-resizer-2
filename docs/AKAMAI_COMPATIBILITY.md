@@ -9,7 +9,7 @@ The Akamai compatibility module enables seamless migration from Akamai Image Man
 - **Automatic Parameter Translation**: Converts Akamai's URL parameters to Cloudflare format
 - **Multiple URL Format Support**: Works with both query parameters and path-based formats
 - **Complete Feature Support**: All major Akamai parameters are supported
-- **Full AspectCrop Implementation**: Fully implements Akamai's powerful AspectCrop feature
+- **Advanced Transformation Support**: Implements Akamai's powerful transformations including AspectCrop, Composite, and more
 - **Zero Client Changes**: No need to update references in your websites or applications
 - **Minimal Performance Impact**: Efficient parameter translation with negligible overhead
 - **Detailed Debugging**: Comprehensive debug information for troubleshooting
@@ -65,28 +65,88 @@ The following table shows the mapping between Akamai Image Manager parameters an
 | `im.background=X` | `background=X` | Background color for padding/transparency |
 | `im.metadata=none/copyright/keep` | `metadata=none/copyright/keep` | Metadata handling |
 | `im.frame=X` | `anim=false` | Disable animation/GIF frame selection |
+| `im.blur=X` | `blur=X` | Apply blur effect (scaled to Cloudflare range) |
+| `im.mirror=horizontal/vertical` | `flip=true` or `flop=true` | Mirror image horizontally or vertically |
+| `im.composite=url:X,placement:Y` | Implemented via `draw` array | Add watermark or overlay images |
+| `im.if-dimension=condition,transform` | Custom implementation | Apply transformations conditionally based on image dimensions |
+| `im.hsl=hue:X,saturation:Y,lightness:Z` | Combined parameters | Adjust hue, saturation and lightness |
+
+## Advanced Features
+
+### Composite (Watermarking)
+
+The compatibility module now provides support for Akamai's composite functionality to add watermarks and overlays:
+
+```
+im.composite=url:https://example.com/watermark.png,placement:southeast,opacity:80
+```
+
+This is implemented using Cloudflare's `draw` array, which allows for:
+- Positioning watermarks in various placements
+- Setting opacity
+- Tiling watermarks across the image
+- Multiple overlays in one request
+
+### Conditional Transformations
+
+Akamai's conditional transformation parameters are supported through custom processing:
+
+```
+im.if-dimension=width>1000,im.resize=width:800
+```
+
+This applies different transformations based on conditions like image dimensions, orientation, or format.
+
+### Visual Effects
+
+Additional visual effects are supported:
+
+#### Blur
+```
+im.blur=15
+```
+
+#### Mirror/Flip
+```
+im.mirror=horizontal
+```
+
+#### HSL Adjustments
+```
+im.hsl=hue:10,saturation:120,lightness:90
+```
+
+## Legacy Parameters
+
+The following Akamai Image Manager features have partial or complete support:
+
+| Akamai Feature | Implementation | Notes |
+|----------------|----------------|-------|
+| `im.composite` | Cloudflare `draw` array | Supports overlay images, positioning, opacity |
+| `im.text` | Limited implementation | Basic text overlays with size, color and position support |
+| `im.watermark` | Full implementation | Alias for `im.composite` |
+| `im.overlay` | Full implementation | Alias for `im.composite` |
+| `im.pathgen` | Partial implementation | Basic path transformations supported |
+| `im.policies` | Mapped to derivatives | Policies mapped to Cloudflare derivative templates |
+| `im.blur` | Full implementation | Mapped to Cloudflare's blur parameter |
+| `im.mirror` | Full implementation | Maps to flip/flop parameters |
+| `im.if-dimension` | Custom implementation | Conditional transforms based on image dimensions |
+| `im.hsl` | Combined implementation | Maps to saturation, brightness and other parameters |
 
 ## Unsupported Features
 
-The following Akamai Image Manager features are not directly supported in Cloudflare Image Resizing:
+The following features have limited or no direct support:
 
 | Akamai Feature | Limitation in Cloudflare | Workaround |
 |----------------|--------------------------|------------|
-| `im.composite` | No direct compositing support | Use pre-composited images |
-| `im.text` | No text overlay support | Add text in original image |
-| `im.watermark` | No built-in watermarking | Use pre-watermarked images or Workers for dynamic watermarking |
-| `im.overlay` | No image overlay support | Pre-composite images |
-| `im.pathgen` | No dynamic path generation | Standardize on fixed path patterns |
-| `im.policies` | No policy-based transformations | Use derivatives templates |
 | `im.colorspace=cmyk` | Limited colorspace support | Convert to RGB before serving |
-| `im.clienthints` with custom policies | Limited client hints support | Use standard responsive settings |
 | Complex blend modes | Limited blend mode support | Pre-process images with required blend modes |
 | Arbitrary angle rotations | Only 90° increment rotations | Pre-rotate images to required angle |
 | Region-specific optimizations | No region-specific optimizations | Use standard quality settings |
 | Multiple image transforms in sequence | No transform chaining | Apply all transformations in a single step |
 | Custom ICC profiles | Limited ICC profile support | Convert to sRGB color space |
-
-> **Note:** The Akamai `im.aspectCrop` feature is fully supported through our compatibility module via a combination of Cloudflare parameters.
+| Complex `im.goop` effects | No direct equivalent | Pre-process images with effects |
+| Face detection features | Limited detection capabilities | Precompute and use fixed coordinates |
 
 ## Implementation
 
@@ -117,25 +177,24 @@ This flag can be set independently for each environment:
 }
 ```
 
-## Advanced Feature Support
+### Enabling Advanced Features
+
+To enable the advanced Akamai features like compositing, conditional transforms, and more:
+
+```json
+"vars": {
+  "ENABLE_AKAMAI_COMPATIBILITY": "true",
+  "ENABLE_AKAMAI_ADVANCED_FEATURES": "true"
+}
+```
+
+This will activate the extended feature set including watermarking/compositing and conditional transformations.
+
+## Feature Implementation Details
 
 ### Aspect Crop
 
-Akamai's Aspect Crop is a powerful feature that changes the height or width of an image to a specific aspect ratio, either by cropping the image or by expanding the canvas with transparent pixels. Our compatibility module implements full support for this feature, including:
-
-1. **Aspect Ratio Conversion**: Crops or expands images to achieve the specified aspect ratio
-2. **Customizable Positioning**: Controls which part of the image is preserved when cropping
-3. **Expansion Support**: Option to add transparent pixels instead of cropping
-
-#### Implementation Details
-
-We map Akamai's Aspect Crop parameters to Cloudflare's image resizing functionality as follows:
-
-- **width, height**: Used to calculate the target aspect ratio (width:height)
-- **hoffset, voffset**: Mapped to Cloudflare's gravity parameter to control positioning
-- **allowExpansion**: When true, adds transparent pixels instead of cropping
-
-#### Examples
+Akamai's Aspect Crop changes the height or width of an image to a specific aspect ratio, either by cropping the image or by expanding the canvas with transparent pixels:
 
 1. **Basic Aspect Crop (16:9 ratio)**
    ```
@@ -152,112 +211,58 @@ We map Akamai's Aspect Crop parameters to Cloudflare's image resizing functional
    im.aspectCrop=width:16,height:9,allowExpansion:true
    ```
 
-4. **Complete Example with Positioning and Expansion**
+### Composite (Watermark)
+
+The composite functionality adds images on top of the base image:
+
+1. **Basic Watermark**
    ```
-   im.aspectCrop=width:16,height:9,hoffset:0.25,voffset:0.25,allowExpansion:true
-   ```
-
-#### Gravity Mapping
-
-Akamai's hoffset and voffset parameters (ranging from 0 to 1) are mapped to Cloudflare's gravity parameter as follows:
-
-| Horizontal Offset | Vertical Offset | Resulting Gravity  |
-|-------------------|-----------------|-------------------|
-| 0-0.25            | 0-0.25          | north-west       |
-| 0-0.25            | 0.25-0.75       | west             |
-| 0-0.25            | 0.75-1          | south-west       |
-| 0.25-0.75         | 0-0.25          | north            |
-| 0.25-0.75         | 0.25-0.75       | center           |
-| 0.25-0.75         | 0.75-1          | south            |
-| 0.75-1            | 0-0.25          | north-east       |
-| 0.75-1            | 0.25-0.75       | east             |
-| 0.75-1            | 0.75-1          | south-east       |
-
-### Format Conversion & Quality
-
-Our compatibility module supports all major format conversion options from Akamai, including:
-
-1. **Auto Format Selection**: `im.format=auto` intelligently selects the best format based on browser support
-2. **Explicit Format Conversion**: Convert to WebP, AVIF, JPEG, PNG or GIF
-3. **Named Quality Levels**: Support for `low`, `medium`, `high` quality presets
-4. **Numeric Quality**: Precise control with values from 1-100
-
-#### Examples
-
-1. **Auto Format with High Quality**
-   ```
-   im.format=auto&im.quality=high
+   im.composite=url:https://example.com/logo.png,placement:southeast
    ```
 
-2. **Convert to WebP with Custom Quality**
+2. **Watermark with Opacity**
    ```
-   im.format=webp&im.quality=85
-   ```
-
-3. **Convert to AVIF with Low Quality**
-   ```
-   im.format=avif&im.quality=low
+   im.composite=url:https://example.com/watermark.png,opacity:50,placement:center
    ```
 
-### Sharpen Parameter
-
-The module supports all variations of Akamai's sharpening parameters:
-
-1. **Simple Sharpening**: `im.sharpen=X` applies sharpening with intensity X
-2. **Unsharp Mask**: `im.unsharp=X` is an alternative parameter name
-3. **Complex Sharpening**: `im.sharpen=amount=X,radius=Y,threshold=Z` supports detailed control
-
-The module intelligently scales Akamai's typical 0-100 range to Cloudflare's 0-10 range for the sharpen parameter.
-
-#### Examples
-
-1. **Simple Sharpening**
+3. **Tiled Watermark**
    ```
-   im.sharpen=50
+   im.composite=url:https://example.com/pattern.png,tile:true,opacity:30
    ```
 
-2. **Complex Sharpening with Multiple Parameters**
-   ```
-   im.sharpen=amount=50,radius=2,threshold=3
-   ```
+### Blur Effect
 
-### Rotation Support
+Apply Gaussian blur to the image:
 
-Cloudflare supports 90-degree increment rotations via the `rotate` parameter. Our module maps Akamai's rotation parameters:
+```
+im.blur=15
+```
 
-1. **90° Rotation**
-   ```
-   im.rotate=90
-   ```
+The blur amount is scaled appropriately to match Cloudflare's 0-250 blur range.
 
-2. **180° Rotation (upside down)**
-   ```
-   im.rotate=180
-   ```
+### Mirror/Flip
 
-3. **270° Rotation (90° counter-clockwise)**
-   ```
-   im.rotate=270
-   ```
+Mirror the image horizontally or vertically:
 
-### Metadata Handling
+```
+im.mirror=horizontal
+```
 
-Control what metadata is preserved in the optimized image:
+```
+im.mirror=vertical
+```
 
-1. **No Metadata**
-   ```
-   im.metadata=none
-   ```
+### Conditional Transformations
 
-2. **Copyright Information Only**
-   ```
-   im.metadata=copyright
-   ```
+Apply transformations based on image properties:
 
-3. **Keep All Metadata**
-   ```
-   im.metadata=keep
-   ```
+```
+im.if-dimension=width>1000,im.resize=width:800
+```
+
+```
+im.if-orientation=landscape,im.aspectCrop=width:16,height:9
+```
 
 ## URL Format Support
 
@@ -298,22 +303,7 @@ The debug report page also shows detailed information about Akamai parameter tra
 https://example.com/debug-report
 ```
 
-## Live Examples with Real-World Use Cases
-
-These examples demonstrate real-world usage with actual images.
-
-### Visual Comparison Table
-
-| Transformation | Akamai URL | Cloudflare URL | Description |
-|---------------|------------|----------------|-------------|
-| Original Image | [View](https://images.erfi.dev/Granna_1.JPG) | [View](https://images.erfi.dev/Granna_1.JPG) | Original unmodified image |
-| Resize (800×600) | [View](https://images.erfi.dev/Granna_1.JPG?im.resize=width:800,height:600,mode:fit) | [View](https://images.erfi.dev/Granna_1.JPG?width=800&height=600&fit=contain) | Resized to fit within 800×600 box |
-| 16:9 Aspect Ratio | [View](https://images.erfi.dev/Granna_1.JPG?im.aspectCrop=width:16,height:9) | [View](https://images.erfi.dev/Granna_1.JPG?width=800&height=450&fit=crop) | Cropped to 16:9 ratio |
-| WebP Conversion | [View](https://images.erfi.dev/Granna_1.JPG?im.format=webp) | [View](https://images.erfi.dev/Granna_1.JPG?format=webp) | Converted to WebP format |
-| Grayscale | [View](https://images.erfi.dev/Granna_1.JPG?im.grayscale=true&im.resize=width:500) | [View](https://images.erfi.dev/Granna_1.JPG?saturation=0&width=500) | Grayscale conversion |
-| Thumbnail | [View](https://images.erfi.dev/Granna_1.JPG?im.resize=width:200,height:200,mode:pad) | [View](https://images.erfi.dev/Granna_1.JPG?width=200&height=200&fit=pad) | 200×200 thumbnail with padding |
-
-Both URL formats produce identical visual results while allowing you to maintain backward compatibility with existing Akamai implementations.
+## Example Transformations
 
 ### Basic Resizing
 
@@ -327,8 +317,6 @@ https://images.erfi.dev/Granna_1.JPG?im.resize=width:800,height:600,mode:fit&im.
 https://images.erfi.dev/Granna_1.JPG?width=800&height=600&fit=contain&quality=85
 ```
 
-This transformation resizes the image to fit within an 800×600 box while maintaining aspect ratio. The quality is set to 85%, which provides a good balance between file size and visual quality.
-
 ### Aspect Ratio Transformation
 
 **Akamai URL:**
@@ -341,63 +329,41 @@ https://images.erfi.dev/Granna_1.JPG?im.aspectCrop=width:16,height:9,hoffset:0.5
 https://images.erfi.dev/Granna_1.JPG?width=800&height=450&fit=crop&gravity=north
 ```
 
-This transformation crops the image to a 16:9 aspect ratio, preserving the top portion of the image. This format is ideal for header banners or video thumbnails.
-
-### Format Conversion with WebP
+### Watermark with Positioning
 
 **Akamai URL:**
 ```
-https://images.erfi.dev/Granna_1.JPG?im.format=webp&im.quality=85&im.resize=width:600
+https://images.erfi.dev/Granna_1.JPG?im.composite=url:https://example.com/logo.png,placement:southeast,opacity:80
 ```
 
 **Translated to Cloudflare:**
 ```
-https://images.erfi.dev/Granna_1.JPG?format=webp&quality=85&width=600
+https://images.erfi.dev/Granna_1.JPG?draw=url:https://example.com/logo.png,right:5,bottom:5,opacity:0.8
 ```
 
-Converting to WebP format typically reduces file size by 25-35% compared to JPEG with the same visual quality, making this transformation great for web performance.
-
-### Thumbnail with Custom Background
+### Blur Effect
 
 **Akamai URL:**
 ```
-https://images.erfi.dev/Granna_1.JPG?im.resize=width:200,height:200,mode:pad&im.background=lightblue
+https://images.erfi.dev/Granna_1.JPG?im.blur=20
 ```
 
 **Translated to Cloudflare:**
 ```
-https://images.erfi.dev/Granna_1.JPG?width=200&height=200&fit=pad&background=lightblue
+https://images.erfi.dev/Granna_1.JPG?blur=50
 ```
 
-This creates a 200×200 thumbnail with padding and a light blue background, perfect for product thumbnails or profile pictures with consistent dimensions.
-
-### Advanced Multi-Parameter Optimization
+### Complex Multi-Parameter Transformation
 
 **Akamai URL:**
 ```
-https://images.erfi.dev/Granna_1.JPG?im.format=auto&im.quality=80&im.sharpen=amount:50&im.grayscale=true&im.resize=width:500
+https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.quality=80&im.format=webp&im.blur=10&im.grayscale=true
 ```
 
 **Translated to Cloudflare:**
 ```
-https://images.erfi.dev/Granna_1.JPG?format=auto&quality=80&sharpen=5&saturation=0&width=500
+https://images.erfi.dev/Granna_1.JPG?width=500&quality=80&format=webp&blur=25&saturation=0
 ```
-
-This complex transformation combines multiple optimizations: automatic format selection based on browser support, quality reduction to 80%, sharpening to improve clarity after resizing, grayscale conversion, and resizing to 500px width.
-
-### Mobile-Optimized Image
-
-**Akamai URL:**
-```
-https://images.erfi.dev/Granna_1.JPG?im.resize=width:375&im.quality=75&im.format=webp
-```
-
-**Translated to Cloudflare:**
-```
-https://images.erfi.dev/Granna_1.JPG?width=375&quality=75&format=webp
-```
-
-This transformation is optimized for mobile devices: smaller dimensions (375px width), slightly reduced quality (75%), and WebP format for smaller file size. This can significantly improve page load times on mobile devices.
 
 ## Migration Strategy
 
@@ -419,6 +385,7 @@ The Akamai compatibility layer adds a small processing overhead for parameter tr
 2. **Cache aggressively** to minimize the translation overhead
 3. **Consider pre-processing** images that use unsupported features
 4. **Monitor server timing headers** to identify performance bottlenecks
+5. **Be aware that advanced features** like compositing may increase processing time
 
 ## Testing
 
@@ -429,6 +396,7 @@ The compatibility module includes comprehensive tests covering:
 - Path format parsing and normalization
 - URL conversion to Cloudflare format
 - Integration with the main image processing pipeline
+- Advanced features and effects
 
 Run tests with:
 
@@ -439,18 +407,8 @@ npm test -- akamai-compatibility
 You can also test specific parameter translations:
 
 ```bash
-npm test -- -t "sharpen parameters"
+npm test -- -t "composite parameters"
 ```
-
-## Limitations
-
-Be aware of the following limitations when using the Akamai compatibility module:
-
-1. **Feature gap**: Some advanced Akamai features have no direct equivalent in Cloudflare
-2. **Edge cases**: Complex parameter combinations may not translate perfectly
-3. **Processing overhead**: The translation step adds a small processing cost
-4. **Manual migration**: URLs should be migrated to native format over time
-5. **Debug verbosity**: Akamai parameter translation is only visible in debug headers
 
 ## Testing the Implementation
 
@@ -472,53 +430,52 @@ Here are recommended test cases to validate different aspects of the compatibili
    https://images.erfi.dev/Granna_1.JPG?im.aspectCrop=width:16,height:9,hoffset:0.5,voffset:0.2&debug=true
    ```
 
-3. **Format Conversion**: Test WebP conversion
+3. **Watermarking**: Test composite functionality
    ```
-   https://images.erfi.dev/Granna_1.JPG?im.format=webp&debug=true
-   ```
-
-4. **Multiple Parameters**: Test a complex transformation
-   ```
-   https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.quality=80&im.format=auto&im.grayscale=true&debug=true
+   https://images.erfi.dev/Granna_1.JPG?im.composite=url:https://example.com/logo.png,placement:southeast&debug=true
    ```
 
-Look for the `X-Debug-Akamai-Compatibility: used` header in the response to confirm that the Akamai parameters were detected and translated correctly. The `debug=true` parameter enables detailed debug headers that show both the original Akamai parameters and the translated Cloudflare parameters.
+4. **Visual Effects**: Test blur and other effects
+   ```
+   https://images.erfi.dev/Granna_1.JPG?im.blur=15&im.grayscale=true&debug=true
+   ```
 
-You can also use the debug report page to see a comprehensive analysis of the translation process:
+5. **Conditional Transformations**: Test dimension-based conditions
+   ```
+   https://images.erfi.dev/Granna_1.JPG?im.if-dimension=width>500,im.resize=width:300&debug=true
+   ```
 
-```
-https://images.erfi.dev/debug-report?url=/Granna_1.JPG?im.resize=width:800,height:600,mode:fit
-```
-
-This testing methodology ensures that all aspects of the compatibility layer are functioning as expected before deploying to production.
+Look for the `X-Debug-Akamai-Compatibility: used` header in the response to confirm that the Akamai parameters were detected and translated correctly.
 
 ### Advanced Debugging Techniques
 
 When troubleshooting complex Akamai parameter translations, you can use these advanced debugging techniques:
 
-1. **Enable Detailed Debug Headers**: Add `debug=verbose` to see all internal processing steps:
-   ```
-   https://images.erfi.dev/Granna_1.JPG?im.aspectCrop=width:16,height:9&debug=verbose
-   ```
+1. **Enable Detailed Debug Headers**: Add `debug=verbose` to see all internal processing steps
+2. **Inspect Breadcrumb Tracing**: Look for the `X-Debug-Breadcrumbs` header to see step-by-step translation
+3. **Use the Debug Report**: For visual comparison of before/after translation
+4. **Check Translation Performance**: Look for the `X-Debug-Timing` header to identify any performance issues
+5. **Test Advanced Features Individually**: Isolate complex features for easier debugging
 
-2. **Inspect Breadcrumb Tracing**: Look for the `X-Debug-Breadcrumbs` header to see step-by-step translation:
-   ```
-   curl -s -I "https://images.erfi.dev/Granna_1.JPG?im.aspectCrop=width:16,height:9&debug=true" | grep X-Debug-Breadcrumbs
-   ```
+## Implementation Roadmap
 
-3. **Use the Debug Report**: For visual comparison of before/after translation:
-   ```
-   https://images.erfi.dev/debug-report?url=/Granna_1.JPG?im.aspectCrop=width:16,height:9,hoffset:0.5,voffset:0.2
-   ```
+The Akamai compatibility module is continually evolving. Future enhancements include:
 
-4. **Check Translation Performance**: Look for the `X-Debug-Timing` header to identify any performance issues:
-   ```
-   curl -s -I "https://images.erfi.dev/Granna_1.JPG?im.resize=width:800,height:600&im.quality=85&debug=true" | grep X-Debug-Timing
-   ```
+1. **More Visual Effects**: Support for additional Akamai effects and filters
+2. **Enhanced Conditional Logic**: More sophisticated condition types and combinations
+3. **Text Overlay Improvements**: Better font handling and text positioning
+4. **Performance Optimizations**: Improved caching and parameter parsing
+5. **Custom Effects Pipeline**: Framework for implementing custom effects not natively supported by Cloudflare
 
-5. **Verify Multiple Parameters**: Test complex parameter combinations to ensure all are translated correctly:
-   ```
-   https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.quality=80&im.format=webp&im.grayscale=true&im.sharpen=amount:30&debug=true
-   ```
+## Contributing
 
-These debugging techniques will help you identify and resolve any issues with the Akamai compatibility layer before deploying to production.
+Contributions to the Akamai compatibility module are welcome. When implementing new features, please ensure:
+
+1. Thorough test coverage
+2. Performance benchmarking
+3. Documentation updates
+4. Proper error handling
+
+## Conclusion
+
+The enhanced Akamai compatibility module provides a comprehensive solution for migrating from Akamai Image Manager to Cloudflare Image Resizing, supporting a wide range of transformations and effects while maintaining backward compatibility with existing image URLs.

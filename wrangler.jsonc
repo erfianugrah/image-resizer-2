@@ -28,6 +28,7 @@
     "FALLBACK_URL": "https://placehold.co",
     "STORAGE_PRIORITY": "r2,remote,fallback", // Default storage priority order
     "ENABLE_AKAMAI_COMPATIBILITY": "true", // Enable Akamai compatibility in development
+    "ENABLE_AKAMAI_ADVANCED_FEATURES": "true", // Enable advanced Akamai features
     "LOGGING_LEVEL": "DEBUG",
     "LOGGING_STRUCTURED": "true",
     "LOGGING_TIMESTAMP": "true",
@@ -187,6 +188,7 @@
         "FALLBACK_URL": "https://placehold.co",
         "STORAGE_PRIORITY": "r2,remote,fallback", // Default storage priority order
         "ENABLE_AKAMAI_COMPATIBILITY": "true", // Enable in staging for testing
+        "ENABLE_AKAMAI_ADVANCED_FEATURES": "true", // Enable advanced Akamai features in staging
         "LOGGING_LEVEL": "INFO",
         "LOGGING_STRUCTURED": "true",
         "LOGGING_TIMESTAMP": "true",
@@ -299,6 +301,7 @@
         "FALLBACK_URL": "https://cdn.erfianugrah.com",
         "STORAGE_PRIORITY": "remote,fallback", // Default storage priority order
         "ENABLE_AKAMAI_COMPATIBILITY": "true", // Enabled in production
+        "ENABLE_AKAMAI_ADVANCED_FEATURES": "true", // Enable advanced Akamai features in production
         "LOGGING_LEVEL": "DEBUG",
         "LOGGING_STRUCTURED": "true",
         "LOGGING_TIMESTAMP": "true",

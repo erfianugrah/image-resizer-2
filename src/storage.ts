@@ -35,6 +35,8 @@ export interface StorageResult {
   originalUrl?: string;
   error?: Error;
   path?: string; // The path to the image being accessed
+  width?: number; // The width of the image if available
+  height?: number; // The height of the image if available
 }
 
 /**

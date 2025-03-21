@@ -486,12 +486,28 @@ export function translateAkamaiParams(url: URL): TransformOptions {
     cfParams.anim = false;
   }
   
+  // Only process advanced features if enabled
+  let advancedFeaturesEnabled = false;
+  try {
+    // This will be set when calling the function from index.ts
+    advancedFeaturesEnabled = (cfParams as any)?._config?.features?.enableAkamaiAdvancedFeatures === true;
+    
+    logger.debug('Checking advanced features status', { 
+      advancedFeaturesEnabled,
+      hasConfig: !!(cfParams as any)?._config
+    });
+  } catch (error) {
+    logger.warn('Error checking advanced features status', { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+  }
+  
   // Parse other Akamai parameters that have Cloudflare equivalents
   
-  // Handling Akamai's composite operations (no direct equivalent)
-  const imComposite = url.searchParams.get('im.composite');
-  if (imComposite) {
-    logger.warn('Akamai composite operations are not directly supported in Cloudflare', { imComposite });
+  // Check for composite operations but only log a warning if advanced features not enabled
+  const basicComposite = url.searchParams.get('im.composite');
+  if (basicComposite && !advancedFeaturesEnabled) {
+    logger.warn('Akamai composite operations require advanced features to be enabled', { basicComposite });
   }
   
   // Handle metadata
@@ -515,6 +531,202 @@ export function translateAkamaiParams(url: URL): TransformOptions {
     }
   }
   
+  // Handle conditional transformations
+  const imIfDimension = url.searchParams.get('im.if-dimension');
+  if (imIfDimension && advancedFeaturesEnabled) {
+    try {
+      logger.breadcrumb('Processing if-dimension condition', undefined, { condition: imIfDimension });
+      
+      // Store condition in metadata for processing during transformation
+      cfParams._conditions = cfParams._conditions || [];
+      cfParams._conditions.push({
+        type: 'dimension',
+        condition: imIfDimension
+      });
+      
+      logger.debug('Added dimension condition for processing', { condition: imIfDimension });
+    } catch (error) {
+      logger.error('Failed to parse im.if-dimension parameter', { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  } else if (imIfDimension && !advancedFeaturesEnabled) {
+    logger.debug('Skipping if-dimension condition because advanced features are disabled', {
+      parameter: imIfDimension
+    });
+  }
+  
+  // Handle blur effect
+  const imBlur = url.searchParams.get('im.blur');
+  if (imBlur && advancedFeaturesEnabled) {
+    try {
+      const blurAmount = parseFloat(imBlur);
+      if (!isNaN(blurAmount) && blurAmount > 0) {
+        // Map Akamai's blur (0-100) to Cloudflare's (0-250)
+        cfParams.blur = Math.min(250, Math.max(0, blurAmount * 2.5));
+        logger.debug('Set blur parameter', { akamaiBlur: blurAmount, cloudflareBlur: cfParams.blur });
+        logger.breadcrumb('Applied blur effect', undefined, {
+          originalValue: blurAmount,
+          translatedValue: cfParams.blur
+        });
+      }
+    } catch (error) {
+      logger.error('Failed to parse im.blur parameter', { 
+        error: error instanceof Error ? error.message : String(error),
+        blur: imBlur
+      });
+    }
+  } else if (imBlur && !advancedFeaturesEnabled) {
+    logger.debug('Skipping blur effect because advanced features are disabled', {
+      parameter: imBlur
+    });
+  }
+  
+  // Handle mirror (horizontal/vertical flip)
+  const imMirror = url.searchParams.get('im.mirror');
+  if (imMirror && advancedFeaturesEnabled) {
+    try {
+      const mirrorValue = imMirror.toLowerCase().trim();
+      
+      if (mirrorValue === 'horizontal' || mirrorValue === 'h') {
+        cfParams.flip = true;
+        logger.debug('Set horizontal mirror/flip');
+        logger.breadcrumb('Applied horizontal mirror/flip', undefined, {
+          originalValue: imMirror
+        });
+      } else if (mirrorValue === 'vertical' || mirrorValue === 'v') {
+        cfParams.flop = true;
+        logger.debug('Set vertical mirror/flip');
+        logger.breadcrumb('Applied vertical mirror/flip', undefined, {
+          originalValue: imMirror
+        });
+      } else if (mirrorValue === 'both' || mirrorValue === 'hv' || mirrorValue === 'vh') {
+        // Both horizontal and vertical
+        cfParams.flip = true;
+        cfParams.flop = true;
+        logger.debug('Set both horizontal and vertical mirror/flip');
+        logger.breadcrumb('Applied both horizontal and vertical mirror/flip', undefined, {
+          originalValue: imMirror
+        });
+      }
+    } catch (error) {
+      logger.error('Failed to parse im.mirror parameter', { 
+        error: error instanceof Error ? error.message : String(error),
+        mirror: imMirror
+      });
+    }
+  } else if (imMirror && !advancedFeaturesEnabled) {
+    logger.debug('Skipping mirror effect because advanced features are disabled', {
+      parameter: imMirror
+    });
+  }
+  
+  // Handle composite (watermark)
+  const imComposite = url.searchParams.get('im.composite') || url.searchParams.get('im.watermark');
+  if (imComposite && advancedFeaturesEnabled) {
+    try {
+      logger.breadcrumb('Processing composite parameter', undefined, { parameter: imComposite });
+      
+      // Parse composite parameters
+      const compositeParams = parseCompositeParams(imComposite);
+      
+      // Skip if no URL is provided
+      if (!compositeParams.url) {
+        logger.warn('Skipping composite due to missing URL parameter', { compositeParams });
+        return cfParams;
+      }
+      
+      // Initialize draw array if needed
+      if (!cfParams.draw) {
+        cfParams.draw = [];
+      }
+      
+      // Create draw object
+      const drawObj: Record<string, any> = {
+        url: compositeParams.url,
+      };
+      
+      // Map position parameters
+      if (compositeParams.placement) {
+        const placement = compositeParams.placement.toLowerCase();
+        const offset = compositeParams.offset || 5; // Default offset of 5px
+        
+        switch (placement) {
+        case 'north':
+        case 'top':
+          drawObj.top = offset;
+          break;
+        case 'south':
+        case 'bottom':
+          drawObj.bottom = offset;
+          break;
+        case 'east':
+        case 'right':
+          drawObj.right = offset;
+          break;
+        case 'west':
+        case 'left':
+          drawObj.left = offset;
+          break;
+        case 'northeast':
+        case 'topright':
+          drawObj.top = offset;
+          drawObj.right = offset;
+          break;
+        case 'northwest':
+        case 'topleft':
+          drawObj.top = offset;
+          drawObj.left = offset;
+          break;
+        case 'southeast':
+        case 'bottomright':
+          drawObj.bottom = offset;
+          drawObj.right = offset;
+          break;
+        case 'southwest':
+        case 'bottomleft':
+          drawObj.bottom = offset;
+          drawObj.left = offset;
+          break;
+        case 'center':
+        default:
+          // Center position is the default in Cloudflare
+          break;
+        }
+      }
+      
+      // Handle opacity (Cloudflare uses 0-1 range, Akamai uses 0-100)
+      if (compositeParams.opacity !== undefined) {
+        drawObj.opacity = Math.max(0, Math.min(1, compositeParams.opacity / 100));
+      }
+      
+      // Handle tiling
+      if (compositeParams.tile === true) {
+        drawObj.repeat = true;
+      }
+      
+      // Add to draw array
+      cfParams.draw.push(drawObj);
+      logger.debug('Added composite/watermark', { drawObject: drawObj });
+      
+      logger.breadcrumb('Applied composite watermark', undefined, {
+        url: compositeParams.url,
+        placement: compositeParams.placement,
+        opacity: compositeParams.opacity,
+        tile: compositeParams.tile
+      });
+    } catch (error) {
+      logger.error('Failed to parse composite parameter', { 
+        error: error instanceof Error ? error.message : String(error),
+        composite: imComposite 
+      });
+    }
+  } else if (imComposite && !advancedFeaturesEnabled) {
+    logger.debug('Skipping composite/watermark effect because advanced features are disabled', {
+      parameter: imComposite
+    });
+  }
+
   // Add a comprehensive breadcrumb at the end of translation to see the final parameters
   logger.breadcrumb('Completed Akamai parameter translation', undefined, {
     parameterCount: Object.keys(cfParams).length,
@@ -526,6 +738,9 @@ export function translateAkamaiParams(url: URL): TransformOptions {
     fit: cfParams.fit,
     quality: cfParams.quality,
     gravity: cfParams.gravity,
+    hasBlur: !!cfParams.blur,
+    hasMirror: !!(cfParams.flip || cfParams.flop),
+    hasWatermark: !!(cfParams.draw && cfParams.draw.length > 0),
     allParams: Object.keys(cfParams).join(',')
   });
   
@@ -540,6 +755,102 @@ export function translateAkamaiParams(url: URL): TransformOptions {
   }
   
   return cfParams;
+}
+
+/**
+ * Helper function to parse composite parameters from Akamai format
+ * 
+ * @param composite Composite parameter string
+ * @returns Parsed parameters object
+ */
+function parseCompositeParams(composite: string): Record<string, any> {
+  const result: Record<string, any> = {};
+  
+  // Split by commas, but handle quoted values
+  const parts = splitParameters(composite);
+  
+  for (const part of parts) {
+    // Check for key:value or key=value format
+    const separator = part.includes(':') ? ':' : '=';
+    const [key, value] = part.split(separator).map(s => s.trim());
+    
+    if (key && value !== undefined) {
+      // Special handling for url parameter
+      if (key === 'url') {
+        result.url = value;
+      } 
+      // Handle placement parameter
+      else if (key === 'placement') {
+        result.placement = value;
+      }
+      // Handle opacity parameter (convert to 0-100)
+      else if (key === 'opacity') {
+        const opacityValue = parseFloat(value);
+        if (!isNaN(opacityValue)) {
+          result.opacity = opacityValue;
+        }
+      }
+      // Handle tile parameter (boolean)
+      else if (key === 'tile') {
+        result.tile = value.toLowerCase() === 'true';
+      }
+      // Handle offset parameter
+      else if (key === 'offset') {
+        const offsetValue = parseFloat(value);
+        if (!isNaN(offsetValue)) {
+          result.offset = offsetValue;
+        }
+      }
+      // Other parameters
+      else {
+        // Convert to appropriate type (number, boolean, string)
+        if (value.toLowerCase() === 'true') {
+          result[key] = true;
+        } else if (value.toLowerCase() === 'false') {
+          result[key] = false;
+        } else if (!isNaN(Number(value))) {
+          result[key] = Number(value);
+        } else {
+          result[key] = value;
+        }
+      }
+    }
+  }
+  
+  return result;
+}
+
+/**
+ * Split parameters while respecting quoted values
+ * 
+ * @param params Parameter string
+ * @returns Array of parameter parts
+ */
+function splitParameters(params: string): string[] {
+  const result: string[] = [];
+  let currentParam = '';
+  let inQuotes = false;
+  
+  for (let i = 0; i < params.length; i++) {
+    const char = params[i];
+    
+    if (char === '"' || char === "'") {
+      inQuotes = !inQuotes;
+      currentParam += char;
+    } else if (char === ',' && !inQuotes) {
+      result.push(currentParam);
+      currentParam = '';
+    } else {
+      currentParam += char;
+    }
+  }
+  
+  // Add the last parameter
+  if (currentParam) {
+    result.push(currentParam);
+  }
+  
+  return result;
 }
 
 /**

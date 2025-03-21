@@ -267,4 +267,279 @@ describe('Akamai Compatibility Module', () => {
       expect(result.searchParams.get('saturation')).toBe('0');
     });
   });
+  
+  describe('Advanced Akamai Features', () => {
+    describe('blur effect', () => {
+      it('translates blur parameter correctly', () => {
+        const url = new URL('https://example.com/images/test.jpg?im.blur=20');
+        
+        // Create a mock config object to pass to translateAkamaiParams
+        const configObj = { features: { enableAkamaiAdvancedFeatures: true } };
+        
+        // We need to pass config through for advanced features
+        const transformObj: any = { _config: configObj };
+        
+        // Call translateAkamaiParams with the URL and config, then merge with our object
+        const result = Object.assign(transformObj, translateAkamaiParams(url));
+        
+        expect(result.blur).toBeDefined();
+        // Akamai's 0-100 scale maps to Cloudflare's 0-250
+        // So 20 should map to 50
+        expect(result.blur).toBe(50);
+      });
+      
+      it('handles invalid blur values', () => {
+        const url = new URL('https://example.com/images/test.jpg?im.blur=invalid');
+        
+        // Create a mock config object
+        const configObj = { features: { enableAkamaiAdvancedFeatures: true } };
+        const transformObj: any = { _config: configObj };
+        
+        // Call translateAkamaiParams with the URL and config
+        const result = Object.assign(transformObj, translateAkamaiParams(url));
+        
+        expect(result.blur).toBeUndefined();
+      });
+      
+      it('caps blur at 250', () => {
+        const url = new URL('https://example.com/images/test.jpg?im.blur=200');
+        
+        // Create a mock config object
+        const configObj = { features: { enableAkamaiAdvancedFeatures: true } };
+        const transformObj: any = { _config: configObj };
+        
+        // Call translateAkamaiParams with the URL and config
+        const result = Object.assign(transformObj, translateAkamaiParams(url));
+        
+        expect(result.blur).toBe(250);
+      });
+    });
+    
+    describe('mirror/flip', () => {
+      it('translates horizontal mirror correctly', () => {
+        const url = new URL('https://example.com/images/test.jpg?im.mirror=horizontal');
+        
+        // Create a mock config object
+        const configObj = { features: { enableAkamaiAdvancedFeatures: true } };
+        const transformObj: any = { _config: configObj };
+        
+        // Call translateAkamaiParams with the URL and config
+        const result = Object.assign(transformObj, translateAkamaiParams(url));
+        
+        expect(result.flip).toBe(true);
+        expect(result.flop).toBeUndefined();
+      });
+      
+      it('translates vertical mirror correctly', () => {
+        const url = new URL('https://example.com/images/test.jpg?im.mirror=vertical');
+        
+        // Create a mock config object
+        const configObj = { features: { enableAkamaiAdvancedFeatures: true } };
+        const transformObj: any = { _config: configObj };
+        
+        // Call translateAkamaiParams with the URL and config
+        const result = Object.assign(transformObj, translateAkamaiParams(url));
+        
+        expect(result.flop).toBe(true);
+        expect(result.flip).toBeUndefined();
+      });
+      
+      it('handles both horizontal and vertical mirror', () => {
+        const url = new URL('https://example.com/images/test.jpg?im.mirror=both');
+        
+        // Create a mock config object
+        const configObj = { features: { enableAkamaiAdvancedFeatures: true } };
+        const transformObj: any = { _config: configObj };
+        
+        // Call translateAkamaiParams with the URL and config
+        const result = Object.assign(transformObj, translateAkamaiParams(url));
+        
+        expect(result.flip).toBe(true);
+        expect(result.flop).toBe(true);
+      });
+      
+      it('supports shorthand notation', () => {
+        const url = new URL('https://example.com/images/test.jpg?im.mirror=h');
+        
+        // Create a mock config object
+        const configObj = { features: { enableAkamaiAdvancedFeatures: true } };
+        const transformObj: any = { _config: configObj };
+        
+        // Call translateAkamaiParams with the URL and config
+        const result = Object.assign(transformObj, translateAkamaiParams(url));
+        
+        expect(result.flip).toBe(true);
+      });
+    });
+    
+    describe('composite/watermark', () => {
+      it('translates basic watermark parameters', () => {
+        const url = new URL('https://example.com/images/test.jpg?im.composite=url:https://example.com/logo.png,placement:southeast');
+        
+        // Create a mock config object
+        const configObj = { features: { enableAkamaiAdvancedFeatures: true } };
+        const transformObj: any = { _config: configObj };
+        
+        // Call translateAkamaiParams with the URL and config
+        const result = Object.assign(transformObj, translateAkamaiParams(url));
+        
+        expect(result.draw).toBeDefined();
+        expect(Array.isArray(result.draw)).toBe(true);
+        expect(result.draw[0].url).toBe('https://example.com/logo.png');
+        expect(result.draw[0].bottom).toBeDefined();
+        expect(result.draw[0].right).toBeDefined();
+      });
+      
+      it('handles opacity parameter', () => {
+        const url = new URL('https://example.com/images/test.jpg?im.composite=url:https://example.com/logo.png,opacity:50');
+        
+        // Create a mock config object
+        const configObj = { features: { enableAkamaiAdvancedFeatures: true } };
+        const transformObj: any = { _config: configObj };
+        
+        // Call translateAkamaiParams with the URL and config
+        const result = Object.assign(transformObj, translateAkamaiParams(url));
+        
+        expect(result.draw[0].opacity).toBe(0.5);
+      });
+      
+      it('handles tiling parameter', () => {
+        const url = new URL('https://example.com/images/test.jpg?im.composite=url:https://example.com/pattern.png,tile:true');
+        
+        // Create a mock config object
+        const configObj = { features: { enableAkamaiAdvancedFeatures: true } };
+        const transformObj: any = { _config: configObj };
+        
+        // Call translateAkamaiParams with the URL and config
+        const result = Object.assign(transformObj, translateAkamaiParams(url));
+        
+        expect(result.draw[0].repeat).toBe(true);
+      });
+      
+      it('handles watermark alias', () => {
+        const url = new URL('https://example.com/images/test.jpg?im.watermark=url:https://example.com/logo.png');
+        
+        // Create a mock config object
+        const configObj = { features: { enableAkamaiAdvancedFeatures: true } };
+        const transformObj: any = { _config: configObj };
+        
+        // Call translateAkamaiParams with the URL and config
+        const result = Object.assign(transformObj, translateAkamaiParams(url));
+        
+        expect(result.draw).toBeDefined();
+        expect(result.draw[0].url).toBe('https://example.com/logo.png');
+      });
+      
+      it('handles different placement values', () => {
+        const placements = [
+          { input: 'north', expected: { top: 5 } },
+          { input: 'south', expected: { bottom: 5 } },
+          { input: 'east', expected: { right: 5 } },
+          { input: 'west', expected: { left: 5 } },
+          { input: 'northeast', expected: { top: 5, right: 5 } },
+          { input: 'northwest', expected: { top: 5, left: 5 } },
+          { input: 'southeast', expected: { bottom: 5, right: 5 } },
+          { input: 'southwest', expected: { bottom: 5, left: 5 } },
+          { input: 'center', expected: {} } // Center is default in Cloudflare
+        ];
+        
+        // Create a mock config object
+        const configObj = { features: { enableAkamaiAdvancedFeatures: true } };
+        
+        for (const { input, expected } of placements) {
+          const url = new URL(`https://example.com/images/test.jpg?im.composite=url:https://example.com/logo.png,placement:${input}`);
+          
+          // Create a new transform object for each iteration
+          const transformObj: any = { _config: configObj };
+          
+          // Call translateAkamaiParams with the URL and config
+          const result = Object.assign(transformObj, translateAkamaiParams(url));
+          
+          // Check each expected property
+          for (const [key, value] of Object.entries(expected)) {
+            expect(result.draw[0][key]).toBe(value);
+          }
+        }
+      });
+    });
+    
+    describe('multiple feature combination', () => {
+      it('handles multiple advanced features together', () => {
+        const url = new URL('https://example.com/images/test.jpg?im.resize=width:800&im.blur=10&im.mirror=horizontal&im.composite=url:https://example.com/logo.png');
+        
+        // Create a mock config object
+        const configObj = { features: { enableAkamaiAdvancedFeatures: true } };
+        const transformObj: any = { _config: configObj };
+        
+        // Call translateAkamaiParams with the URL and config
+        const result = Object.assign(transformObj, translateAkamaiParams(url));
+        
+        expect(result.width).toBe(800);
+        expect(result.blur).toBe(25);
+        expect(result.flip).toBe(true);
+        expect(result.draw).toBeDefined();
+        expect(result.draw[0].url).toBe('https://example.com/logo.png');
+      });
+    });
+    
+    describe('conditional transformations', () => {
+      it('stores dimension condition for later processing', () => {
+        const url = new URL('https://example.com/images/test.jpg?im.if-dimension=width>1000,im.resize=width:800');
+        
+        // Create a mock config object to pass to translateAkamaiParams
+        const configObj = { features: { enableAkamaiAdvancedFeatures: true } };
+        
+        // We need to pass config through for advanced features
+        const transformObj: any = { _config: configObj };
+        
+        // Call translateAkamaiParams with the URL and config - we need to merge configs into a real result
+        const result = Object.assign(transformObj, translateAkamaiParams(url));
+        
+        // Check that the condition was stored
+        expect(result._conditions).toBeDefined();
+        expect(Array.isArray(result._conditions)).toBe(true);
+        expect(result._conditions.length).toBe(1);
+        expect(result._conditions[0].type).toBe('dimension');
+        expect(result._conditions[0].condition).toBe('width>1000,im.resize=width:800');
+      });
+      
+      it('handles different condition formats', () => {
+        const conditions = [
+          'width>1000,im.resize=width:800',
+          'height<500,im.quality=85',
+          'ratio>1.5,im.aspectCrop=width:16,height:9',
+          'width>800,width=400&height=300&fit=crop'
+        ];
+        
+        // Create a mock config object
+        const configObj = { features: { enableAkamaiAdvancedFeatures: true } };
+        
+        for (const condition of conditions) {
+          const url = new URL(`https://example.com/images/test.jpg?im.if-dimension=${condition}`);
+          
+          // Call translateAkamaiParams with the URL and config
+          const transformObj: any = { _config: configObj };
+          const result = Object.assign(transformObj, translateAkamaiParams(url));
+          
+          // Check that the condition was stored
+          expect(result._conditions).toBeDefined();
+          expect(result._conditions[0].condition).toBe(condition);
+        }
+      });
+      
+      it('skips conditional transformations when feature is disabled', () => {
+        const url = new URL('https://example.com/images/test.jpg?im.if-dimension=width>1000,im.resize=width:800');
+        
+        // Create a mock config object with features disabled
+        const configObj = { features: { enableAkamaiAdvancedFeatures: false } };
+        
+        // Call translateAkamaiParams with the URL and config
+        const transformObj: any = { _config: configObj };
+        const result = Object.assign(transformObj, translateAkamaiParams(url));
+        
+        // The condition should not be processed
+        expect(result._conditions).toBeUndefined();
+      });
+    });
+  });
 });

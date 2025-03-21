@@ -98,7 +98,9 @@ export default {
       // Check for Akamai compatibility mode
       let isAkamai = false;
       if (config.features?.enableAkamaiCompatibility) {
-        logger.debug('Akamai compatibility is enabled, checking URL format');
+        logger.debug('Akamai compatibility is enabled, checking URL format', { 
+          advancedFeatures: config.features?.enableAkamaiAdvancedFeatures ? 'enabled' : 'disabled'
+        });
         
         // First check for Akamai parameters in the URL
         isAkamai = isAkamaiFormat(url);
@@ -109,8 +111,32 @@ export default {
           logger.info('Detected Akamai URL format', { url: url.toString() });
           
           try {
-            // Convert the URL parameters
-            const convertedUrl = convertToCloudflareUrl(url);
+            // Convert the URL parameters, passing config for advanced feature detection
+            const cfParams = translateAkamaiParams(url);
+            
+            // Store config in params for advanced feature detection
+            (cfParams as any)._config = config;
+            
+            // Convert to Cloudflare URL with our params
+            const convertedUrl = new URL(url.toString());
+            
+            // Remove all Akamai parameters
+            for (const key of Array.from(convertedUrl.searchParams.keys())) {
+              if (key.startsWith('im.')) {
+                convertedUrl.searchParams.delete(key);
+              }
+            }
+            
+            // Add Cloudflare parameters
+            for (const [key, value] of Object.entries(cfParams)) {
+              if (value !== undefined && value !== null && !key.startsWith('_')) {
+                if (typeof value === 'object') {
+                  convertedUrl.searchParams.set(key, JSON.stringify(value));
+                } else {
+                  convertedUrl.searchParams.set(key, String(value));
+                }
+              }
+            }
             
             // Create a new request with the converted URL
             url = new URL(convertedUrl.toString());

@@ -10,6 +10,7 @@ export interface Env {
   FALLBACK_URL?: string;
   STORAGE_PRIORITY?: string;
   ENABLE_AKAMAI_COMPATIBILITY?: string;
+  ENABLE_AKAMAI_ADVANCED_FEATURES?: string;
   LOGGING_LEVEL?: string;
   LOGGING_STRUCTURED?: string;
   LOGGING_TIMESTAMP?: string;

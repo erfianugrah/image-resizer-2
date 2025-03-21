@@ -45,6 +45,7 @@ export interface ImageResizerConfig {
   // Feature flags
   features?: {
     enableAkamaiCompatibility?: boolean;
+    enableAkamaiAdvancedFeatures?: boolean;
   };
   
   // Debug settings
@@ -213,7 +214,8 @@ export const defaultConfig: ImageResizerConfig = {
   version: '1.0.0',
   
   features: {
-    enableAkamaiCompatibility: false
+    enableAkamaiCompatibility: false,
+    enableAkamaiAdvancedFeatures: false
   },
   
   debug: {
@@ -452,7 +454,8 @@ export const defaultConfig: ImageResizerConfig = {
 const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
   development: {
     features: {
-      enableAkamaiCompatibility: true // Enable in development for testing
+      enableAkamaiCompatibility: true, // Enable in development for testing
+      enableAkamaiAdvancedFeatures: true // Enable advanced features in development
     },
     debug: { 
       enabled: true,
@@ -547,7 +550,8 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
   
   staging: {
     features: {
-      enableAkamaiCompatibility: true // Enable in staging for testing
+      enableAkamaiCompatibility: true, // Enable in staging for testing 
+      enableAkamaiAdvancedFeatures: true // Enable advanced features in staging
     },
     debug: { 
       enabled: true,
@@ -633,7 +637,8 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
   
   production: {
     features: {
-      enableAkamaiCompatibility: false // Initially disabled in production
+      enableAkamaiCompatibility: false, // Initially disabled in production
+      enableAkamaiAdvancedFeatures: false // Initially disabled in production
     },
     debug: { 
       enabled: false,
@@ -1157,6 +1162,11 @@ export function getConfig(env: Env): ImageResizerConfig {
   // Enable Akamai compatibility if specified
   if (env.ENABLE_AKAMAI_COMPATIBILITY) {
     config.features.enableAkamaiCompatibility = env.ENABLE_AKAMAI_COMPATIBILITY === 'true';
+  }
+  
+  // Enable Advanced Akamai features if specified
+  if (env.ENABLE_AKAMAI_ADVANCED_FEATURES) {
+    config.features.enableAkamaiAdvancedFeatures = env.ENABLE_AKAMAI_ADVANCED_FEATURES === 'true';
   }
   
   // Configure any derivatives from env (JSON string)
