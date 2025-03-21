@@ -145,9 +145,28 @@ export function extractDerivative(
   
   // Check each segment against the list of derivatives
   for (const segment of segments) {
+    // Direct match
     if (derivatives.includes(segment)) {
       logger.breadcrumb('Found derivative in path', undefined, { derivative: segment });
       return segment;
+    }
+    
+    // Check for video-specific derivatives
+    if (segment.startsWith('video-')) {
+      // Check if this matches one of our derivatives
+      if (derivatives.includes(segment)) {
+        logger.breadcrumb('Found video derivative in path', undefined, { derivative: segment });
+        return segment;
+      }
+      
+      // Check for fallback to video-medium if the specific derivative doesn't exist
+      if (derivatives.includes('video-medium')) {
+        logger.breadcrumb('Video derivative not found, using fallback', undefined, {
+          requestedDerivative: segment,
+          fallbackDerivative: 'video-medium'
+        });
+        return 'video-medium';
+      }
     }
   }
   

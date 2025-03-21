@@ -79,6 +79,52 @@
 		"DEFAULT_QUALITY": "80",
 		"DEFAULT_FIT": "scale-down",
 		"USER_AGENT": "Cloudflare-Image-Resizer/1.0-DEV",
+		/* Video Derivatives Configuration */
+		"DERIVATIVES": {
+			"video-high": {
+				"width": 1920,
+				"height": 1080,
+				"quality": 90,
+				"format": "mp4"
+			},
+			"video-medium": {
+				"width": 1280,
+				"height": 720,
+				"quality": 85,
+				"format": "mp4"
+			},
+			"video-low": {
+				"width": 854,
+				"height": 480,
+				"quality": 80,
+				"format": "mp4"
+			},
+			"video-mobile": {
+				"width": 640,
+				"height": 360,
+				"quality": 75,
+				"format": "mp4"
+			},
+			"video-thumbnail": {
+				"width": 320,
+				"height": 180,
+				"quality": 80,
+				"format": "jpeg"
+			},
+			"video-animation": {
+				"width": 640,
+				"height": 360,
+				"quality": 85,
+				"format": "gif",
+				"anim": true
+			},
+			"video-preview": {
+				"width": 640,
+				"height": 360,
+				"quality": 70,
+				"format": "webp"
+			}
+		},
 		/* Path transformations for all storage types */
 		"PATH_TRANSFORMS": {
 			"images": {
@@ -268,6 +314,51 @@
 		},
 		"staging": {
 			"vars": {
+				"DERIVATIVES": {
+					"video-high": {
+						"width": 1920,
+						"height": 1080,
+						"quality": 90,
+						"format": "mp4"
+					},
+					"video-medium": {
+						"width": 1280,
+						"height": 720,
+						"quality": 85,
+						"format": "mp4"
+					},
+					"video-low": {
+						"width": 854,
+						"height": 480,
+						"quality": 80,
+						"format": "mp4"
+					},
+					"video-mobile": {
+						"width": 640,
+						"height": 360,
+						"quality": 75,
+						"format": "mp4"
+					},
+					"video-thumbnail": {
+						"width": 320,
+						"height": 180,
+						"quality": 80,
+						"format": "jpeg"
+					},
+					"video-animation": {
+						"width": 640,
+						"height": 360,
+						"quality": 85,
+						"format": "gif",
+						"anim": true
+					},
+					"video-preview": {
+						"width": 640,
+						"height": 360,
+						"quality": 70,
+						"format": "webp"
+					}
+				},
 				"ENVIRONMENT": "staging",
 				"DEBUG": "true",
 				"REMOTE_URL": "https://example.com/images",
@@ -374,6 +465,51 @@
 		},
 		"production": {
 			"vars": {
+				"DERIVATIVES": {
+					"video-high": {
+						"width": 1920,
+						"height": 1080,
+						"quality": 90,
+						"format": "mp4"
+					},
+					"video-medium": {
+						"width": 1280,
+						"height": 720,
+						"quality": 85,
+						"format": "mp4"
+					},
+					"video-low": {
+						"width": 854,
+						"height": 480,
+						"quality": 80,
+						"format": "mp4"
+					},
+					"video-mobile": {
+						"width": 640,
+						"height": 360,
+						"quality": 75,
+						"format": "mp4"
+					},
+					"video-thumbnail": {
+						"width": 320,
+						"height": 180,
+						"quality": 80,
+						"format": "jpeg"
+					},
+					"video-animation": {
+						"width": 640,
+						"height": 360,
+						"quality": 85,
+						"format": "gif",
+						"anim": true
+					},
+					"video-preview": {
+						"width": 640,
+						"height": 360,
+						"quality": 70,
+						"format": "webp"
+					}
+				},
 				"ENVIRONMENT": "production",
 				"DEBUG": "true",
 				"REMOTE_URL": "https://cdn.erfianugrah.com",

@@ -1169,18 +1169,80 @@ export function getConfig(env: Env): ImageResizerConfig {
     config.features.enableAkamaiAdvancedFeatures = env.ENABLE_AKAMAI_ADVANCED_FEATURES === 'true';
   }
   
-  // Configure any derivatives from env (JSON string)
-  if ('DERIVATIVES' in env && typeof (env as Record<string, any>).DERIVATIVES === 'string') {
+  // Configure any derivatives from env (JSON object or string)
+  if ('DERIVATIVES' in env) {
     try {
-      const customDerivatives = JSON.parse((env as Record<string, any>).DERIVATIVES);
-      config.derivatives = {
-        ...config.derivatives,
-        ...customDerivatives
-      };
+      let customDerivatives;
+      
+      // Cast env to a record with unknown values for type safety
+      const safeEnv = env as Record<string, unknown>;
+      
+      if (typeof safeEnv.DERIVATIVES === 'string') {
+        // Parse from JSON string
+        customDerivatives = JSON.parse(safeEnv.DERIVATIVES);
+      } else if (typeof safeEnv.DERIVATIVES === 'object' && safeEnv.DERIVATIVES !== null) {
+        // Use directly as object
+        customDerivatives = safeEnv.DERIVATIVES;
+      }
+      
+      if (customDerivatives) {
+        // Merge with existing derivatives
+        config.derivatives = {
+          ...config.derivatives,
+          ...customDerivatives
+        };
+        
+        console.log('Loaded custom derivatives from environment', {
+          derivatives: Object.keys(customDerivatives as Record<string, unknown>),
+          totalDerivatives: Object.keys(config.derivatives).length
+        });
+      }
     } catch (e) {
-      // Ignore parsing errors
+      const safeEnv = env as Record<string, unknown>;
+      console.error('Error processing DERIVATIVES from environment', {
+        error: e instanceof Error ? e.message : String(e),
+        value: typeof safeEnv.DERIVATIVES === 'string' 
+          ? safeEnv.DERIVATIVES.substring(0, 100) + '...' 
+          : 'object'
+      });
     }
   }
+  
+  // Check for individual derivative definitions (for easier configuration in wrangler.jsonc)
+  // Format: DERIVATIVE_NAME = JSON string of options
+  // Example: DERIVATIVE_VIDEO_HIGH = {"width": 1280, "height": 720, "quality": 90}
+  const derivativePrefix = 'DERIVATIVE_';
+  
+  // Safe way to check keys without triggering TypeScript errors
+  const envKeys = Object.keys(env as Record<string, unknown>);
+  
+  envKeys.forEach(key => {
+    // First check if key exists and then check type
+    const value = (env as Record<string, unknown>)[key];
+    if (key.startsWith(derivativePrefix) && typeof value === 'string') {
+      try {
+        // Convert DERIVATIVE_VIDEO_HIGH to video-high
+        const derivativeName = key.substring(derivativePrefix.length)
+          .toLowerCase()
+          .replace(/_/g, '-');
+        
+        // Parse the derivative configuration
+        const derivativeConfig = JSON.parse(value);
+        
+        // Add to the derivatives object
+        config.derivatives[derivativeName] = derivativeConfig;
+        
+        console.log(`Added derivative from environment: ${derivativeName}`, {
+          options: Object.keys(derivativeConfig).join(', ')
+        });
+      } catch (e) {
+        console.error(`Error parsing derivative configuration: ${key}`, {
+          error: e instanceof Error ? e.message : String(e),
+          value: value
+        });
+      }
+    }
+  });
   
   return config;
 }

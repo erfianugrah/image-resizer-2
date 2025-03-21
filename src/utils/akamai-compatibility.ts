@@ -246,37 +246,82 @@ export function translateAkamaiParams(url: URL, config?: any): TransformOptions 
         const gravityStart = Date.now();
         
         // Handle crop positioning (gravity)
-        const hoffset = typeof aspectCropParams.hoffset === 'number' ? aspectCropParams.hoffset : 0.5;
-        const voffset = typeof aspectCropParams.voffset === 'number' ? aspectCropParams.voffset : 0.5;
+        let hoffset = typeof aspectCropParams.hoffset === 'number' ? aspectCropParams.hoffset : 0.5;
+        let voffset = typeof aspectCropParams.voffset === 'number' ? aspectCropParams.voffset : 0.5;
         
-        logger.debug('Positioning offsets', { hoffset, voffset });
-        
-        // Map offsets to gravity
-        // Cloudflare uses gravity for positioning the crop
-        // Map the offset combinations to the closest gravity value
-        if (hoffset <= 0.25) {
-          if (voffset <= 0.25) {
-            cfParams.gravity = 'north-west';
-          } else if (voffset >= 0.75) {
-            cfParams.gravity = 'south-west';
-          } else {
-            cfParams.gravity = 'west';
+        // Check for xy gravity format with x and y coordinates (used in im.aspectCrop)
+        if (aspectCropParams.gravity === 'xy' || aspectCropParams.gravity === 'XY') {
+          // Use explicit x/y values if provided
+          if (typeof aspectCropParams.x === 'number') {
+            hoffset = aspectCropParams.x;
+          } else if (aspectCropParams.x && !isNaN(parseFloat(aspectCropParams.x as string))) {
+            // Handle case where x might be a string that can be converted to a number
+            hoffset = parseFloat(aspectCropParams.x as string);
           }
-        } else if (hoffset >= 0.75) {
-          if (voffset <= 0.25) {
-            cfParams.gravity = 'north-east';
-          } else if (voffset >= 0.75) {
-            cfParams.gravity = 'south-east';
-          } else {
-            cfParams.gravity = 'east';
+          
+          if (typeof aspectCropParams.y === 'number') {
+            voffset = aspectCropParams.y;
+          } else if (aspectCropParams.y && !isNaN(parseFloat(aspectCropParams.y as string))) {
+            // Handle case where y might be a string that can be converted to a number
+            voffset = parseFloat(aspectCropParams.y as string);
           }
+          
+          // Ensure values are between 0 and 1 for Cloudflare's expected format
+          hoffset = Math.max(0, Math.min(1, hoffset));
+          voffset = Math.max(0, Math.min(1, voffset));
+          
+          // Set gravity according to Cloudflare's expected format for Workers
+          // According to docs, Cloudflare expects an object with x and y properties
+          // for the Workers integration
+          cfParams.gravity = { x: hoffset, y: voffset };
+          
+          // For debugging
+          logger.debug('Using exact gravity coordinates as object', { 
+            gravity: cfParams.gravity, 
+            x: hoffset, 
+            y: voffset,
+            gravityType: typeof cfParams.gravity,
+            originalGravity: aspectCropParams.gravity,
+            originalX: aspectCropParams.x,
+            originalY: aspectCropParams.y
+          });
+          
+          logger.breadcrumb('Using exact gravity coordinates from xy format', undefined, {
+            gravityX: hoffset,
+            gravityY: voffset,
+            sourceFormat: 'xy',
+            gravityType: typeof cfParams.gravity
+          });
         } else {
-          if (voffset <= 0.25) {
-            cfParams.gravity = 'north';
-          } else if (voffset >= 0.75) {
-            cfParams.gravity = 'south';
+          logger.debug('Positioning offsets', { hoffset, voffset });
+          
+          // Map offsets to gravity
+          // Cloudflare uses gravity for positioning the crop
+          // Map the offset combinations to the closest gravity value
+          if (hoffset <= 0.25) {
+            if (voffset <= 0.25) {
+              cfParams.gravity = 'north-west';
+            } else if (voffset >= 0.75) {
+              cfParams.gravity = 'south-west';
+            } else {
+              cfParams.gravity = 'west';
+            }
+          } else if (hoffset >= 0.75) {
+            if (voffset <= 0.25) {
+              cfParams.gravity = 'north-east';
+            } else if (voffset >= 0.75) {
+              cfParams.gravity = 'south-east';
+            } else {
+              cfParams.gravity = 'east';
+            }
           } else {
-            cfParams.gravity = 'center';
+            if (voffset <= 0.25) {
+              cfParams.gravity = 'north';
+            } else if (voffset >= 0.75) {
+              cfParams.gravity = 'south';
+            } else {
+              cfParams.gravity = 'center';
+            }
           }
         }
         

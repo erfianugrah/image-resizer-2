@@ -52,7 +52,7 @@ export interface TransformOptions {
   width?: number;
   height?: number;
   fit?: 'scale-down' | 'contain' | 'cover' | 'crop' | 'pad' | string;
-  gravity?: 'auto' | 'center' | 'top' | 'bottom' | 'left' | 'right' | 'north' | 'south' | 'east' | 'west' | 'north-east' | 'north-west' | 'south-east' | 'south-west' | 'face' | string;
+  gravity?: 'auto' | 'center' | 'top' | 'bottom' | 'left' | 'right' | 'north' | 'south' | 'east' | 'west' | 'north-east' | 'north-west' | 'south-east' | 'south-west' | 'face' | string | { x: number; y: number };
   quality?: number;
   format?: 'avif' | 'webp' | 'json' | 'jpeg' | 'png' | 'gif' | 'auto' | string;
   background?: string;
@@ -549,9 +549,33 @@ function applyDerivativeTemplate(
   derivative: string,
   config: ImageResizerConfig
 ): TransformOptions {
-  // If the derivative doesn't exist, return the original options
-  if (!derivative || !config.derivatives[derivative]) {
+  // If derivative name is not provided, return the original options
+  if (!derivative) {
     return options;
+  }
+  
+  // Check if the requested derivative exists
+  if (!config.derivatives[derivative]) {
+    // Video specific check for a potential fallback
+    if (derivative.startsWith('video-') && config.derivatives['video-medium']) {
+      // Fallback to medium for video derivatives if the specific one is not found
+      logger.warn('Requested video derivative not found, using fallback', {
+        requestedDerivative: derivative,
+        fallbackDerivative: 'video-medium',
+        availableDerivatives: Object.keys(config.derivatives).join(', ')
+      });
+      
+      derivative = 'video-medium';
+    } else {
+      // Log missing derivative for debugging
+      logger.warn('Requested derivative template not found', {
+        derivative,
+        availableDerivatives: Object.keys(config.derivatives).join(', ')
+      });
+      
+      // Return the original options - this will still work but won't apply template
+      return options;
+    }
   }
   
   // Get the derivative template
@@ -565,6 +589,12 @@ function applyDerivativeTemplate(
     if (options[key] !== undefined) {
       result[key] = options[key];
     }
+  });
+  
+  logger.debug('Applied derivative template', {
+    derivative,
+    template: JSON.stringify(template),
+    finalOptions: JSON.stringify(result)
   });
   
   return result;
@@ -812,6 +842,17 @@ export function buildTransformOptions(
   Object.keys(transformOptions).forEach(key => {
     if (transformOptions[key] !== undefined && transformOptions[key] !== null) {
       result[key] = transformOptions[key];
+      
+      // Special handling for gravity object (for xy coordinates) 
+      if (key === 'gravity' && typeof transformOptions[key] === 'object') {
+        // Make sure gravity object is preserved exactly as is
+        // This is important for xy coordinate format from im.aspectCrop
+        logger.breadcrumb('Preserving gravity object format', undefined, {
+          gravityType: typeof transformOptions[key],
+          gravityValue: JSON.stringify(transformOptions[key]),
+          hasXY: transformOptions[key] && 'x' in transformOptions[key] && 'y' in transformOptions[key]
+        });
+      }
     }
   });
   
@@ -1076,6 +1117,39 @@ export function buildTransformOptions(
     }
   }
   
+  // Validate gravity parameter - carefully preserve object format
+  if (result.gravity !== undefined) {
+    if (typeof result.gravity === 'object' && result.gravity !== null) {
+      // Handle object gravity (coordinates from aspectCrop)
+      if (!('x' in result.gravity) || !('y' in result.gravity)) {
+        logger.warn('Invalid gravity object, missing x or y coordinates', {
+          gravity: result.gravity
+        });
+      } else {
+        // Log the gravity object being used
+        logger.breadcrumb('Using gravity with exact coordinates', undefined, {
+          x: result.gravity.x,
+          y: result.gravity.y
+        });
+      }
+    } else if (typeof result.gravity === 'string') {
+      // Existing string validation logic
+      const validGravityValues = ['auto', 'center', 'top', 'bottom', 'left', 'right', 
+                               'north', 'south', 'east', 'west', 
+                               'north-east', 'north-west', 'south-east', 'south-west', 'face'];
+                               
+      // Check for coordinate format like "0.5,0.2"
+      const coordRegex = /^(0(\.\d+)?|1(\.0+)?),(0(\.\d+)?|1(\.0+)?)$/;
+      
+      if (!validGravityValues.includes(result.gravity) && !coordRegex.test(result.gravity)) {
+        logger.warn('Invalid gravity value, defaulting to center', {
+          originalValue: result.gravity
+        });
+        result.gravity = 'center';
+      }
+    }
+  }
+  
   // Validate the format parameter
   if (result.format !== undefined && typeof result.format === 'string') {
     const validFormats = ['avif', 'webp', 'json', 'jpeg', 'png', 'gif', 'auto'];
@@ -1294,6 +1368,14 @@ export async function transformImage(
   const buildEnd = Date.now();
   logger.breadcrumb('Built transform options', buildEnd - buildStart, transformOptions);
   
+  // Check if a derivative was requested but not found
+  if (options.derivative && !config.derivatives[options.derivative]) {
+    logger.error('Requested derivative not found', {
+      requestedDerivative: options.derivative,
+      availableDerivatives: Object.keys(config.derivatives).join(', ')
+    });
+  }
+  
   try {
     // Prepare fetch options with image transformations
     const fetchOptions = {
@@ -1372,6 +1454,28 @@ export async function transformImage(
     const fetchStart = Date.now();
     
     // Create the transformation promise using direct cf.image approach
+    // Add detailed logging for debugging gravity and aspectCrop
+    if (fetchOptionsWithCache.cf && fetchOptionsWithCache.cf.image) {
+      const imageOptions = fetchOptionsWithCache.cf.image as Record<string, any>;
+      
+      // Check if gravity is present and log details
+      if (imageOptions && typeof imageOptions === 'object' && 'gravity' in imageOptions) {
+        logger.debug('Gravity parameter in final fetch options', {
+          gravity: String(imageOptions.gravity),
+          gravityType: typeof imageOptions.gravity,
+          gravityStringified: JSON.stringify(imageOptions.gravity)
+        });
+        
+        logger.breadcrumb('Gravity parameter in final fetch', undefined, {
+          gravityValue: JSON.stringify(imageOptions.gravity),
+          gravityType: typeof imageOptions.gravity,
+          fit: imageOptions.fit ? String(imageOptions.fit) : 'none',
+          width: imageOptions.width ? Number(imageOptions.width) : undefined,
+          height: imageOptions.height ? Number(imageOptions.height) : undefined
+        });
+      }
+    }
+    
     logger.breadcrumb('Creating fetch promise with CF options');
     const transformPromise = fetch(request.url, fetchOptionsWithCache);
     logger.breadcrumb('Fetch promise created', Date.now() - fetchStart);
