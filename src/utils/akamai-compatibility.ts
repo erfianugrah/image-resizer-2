@@ -1077,9 +1077,11 @@ function parseImResize(resize: string): Record<string, string | number> {
 export function isAkamaiFormat(url: URL): boolean {
   // Check for common Akamai Image Manager parameters
   const akamaiParams = [
-    'im.resize', 'im.crop', 'im.quality', 'im.format', 'im.rotate',
+    'im.resize', 'im.crop', 'im.aspectCrop', 'im.quality', 'im.format', 'im.rotate',
     'im.grayscale', 'im.contrast', 'im.brightness', 'im.sharpen',
-    'im.background', 'im.metadata', 'im.frame', 'im.composite'
+    'im.background', 'im.metadata', 'im.frame', 'im.composite',
+    'im.anim', 'im.gamma', 'im.border', 'im.dpr', 'im.mirror', 'im.blur',
+    'im.watermark', 'im.if-dimension', 'im.flip', 'im.flop'
   ];
   
   // Check if any Akamai parameters are present

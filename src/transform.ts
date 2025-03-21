@@ -1133,19 +1133,62 @@ export function buildTransformOptions(
         });
       }
     } else if (typeof result.gravity === 'string') {
-      // Existing string validation logic
-      const validGravityValues = ['auto', 'center', 'top', 'bottom', 'left', 'right', 
-                               'north', 'south', 'east', 'west', 
-                               'north-east', 'north-west', 'south-east', 'south-west', 'face'];
-                               
-      // Check for coordinate format like "0.5,0.2"
-      const coordRegex = /^(0(\.\d+)?|1(\.0+)?),(0(\.\d+)?|1(\.0+)?)$/;
-      
-      if (!validGravityValues.includes(result.gravity) && !coordRegex.test(result.gravity)) {
-        logger.warn('Invalid gravity value, defaulting to center', {
-          originalValue: result.gravity
-        });
-        result.gravity = 'center';
+      // Handle case where gravity is a stringified JSON object
+      if (result.gravity.startsWith('{') && result.gravity.endsWith('}')) {
+        try {
+          // Attempt to parse the JSON string
+          const parsedGravity = JSON.parse(result.gravity);
+          
+          // Check if parsed object has x and y coordinates
+          if (parsedGravity && typeof parsedGravity === 'object' && 
+              'x' in parsedGravity && 'y' in parsedGravity) {
+            
+            // Replace the string with the parsed object
+            result.gravity = {
+              x: parsedGravity.x,
+              y: parsedGravity.y
+            };
+            
+            logger.debug('Successfully parsed gravity from JSON string', {
+              x: result.gravity.x,
+              y: result.gravity.y,
+              originalValue: result.gravity
+            });
+            
+            logger.breadcrumb('Parsed gravity from stringified JSON', undefined, {
+              x: result.gravity.x,
+              y: result.gravity.y,
+              originalString: result.gravity
+            });
+          } else {
+            logger.warn('Parsed gravity object is missing x or y coordinates, defaulting to center', {
+              parsedGravity: JSON.stringify(parsedGravity),
+              originalValue: result.gravity
+            });
+            result.gravity = 'center';
+          }
+        } catch (error) {
+          logger.warn('Failed to parse gravity JSON string, defaulting to center', {
+            error: error instanceof Error ? error.message : String(error),
+            originalValue: result.gravity
+          });
+          result.gravity = 'center';
+        }
+      } else {
+        // Existing string validation logic
+        const validGravityValues = ['auto', 'center', 'top', 'bottom', 'left', 'right', 
+                                'north', 'south', 'east', 'west', 
+                                'north-east', 'north-west', 'south-east', 'south-west', 'face'];
+                                
+        // Check for coordinate format like "0.5,0.2"
+        const coordRegex = /^(0(\.\d+)?|1(\.0+)?),(0(\.\d+)?|1(\.0+)?)$/;
+        
+        if (!validGravityValues.includes(result.gravity) && !coordRegex.test(result.gravity)) {
+          logger.warn('Invalid gravity value, defaulting to center', {
+            originalValue: result.gravity
+          });
+          result.gravity = 'center';
+        }
       }
     }
   }
@@ -1460,15 +1503,41 @@ export async function transformImage(
       
       // Check if gravity is present and log details
       if (imageOptions && typeof imageOptions === 'object' && 'gravity' in imageOptions) {
+        // Enhanced gravity logging for debugging
+        const gravityValue = imageOptions.gravity;
+        const gravityType = typeof gravityValue;
+        let gravityDetails = '';
+        
+        if (gravityType === 'object' && gravityValue !== null) {
+          // Object format with x,y coordinates
+          if ('x' in gravityValue && 'y' in gravityValue) {
+            gravityDetails = `Object with coordinates {x:${gravityValue.x}, y:${gravityValue.y}}`;
+          } else {
+            gravityDetails = `Invalid object structure: ${JSON.stringify(gravityValue)}`;
+          }
+        } else if (gravityType === 'string') {
+          // String format (named position or JSON string)
+          if (gravityValue.startsWith('{') && gravityValue.endsWith('}')) {
+            gravityDetails = `Stringified JSON: ${gravityValue}`;
+          } else {
+            gravityDetails = `Named position: ${gravityValue}`;
+          }
+        } else {
+          gravityDetails = `Unknown format: ${String(gravityValue)}`;
+        }
+        
+        // Log with all gravity details
         logger.debug('Gravity parameter in final fetch options', {
           gravity: String(imageOptions.gravity),
-          gravityType: typeof imageOptions.gravity,
+          gravityType: gravityType,
+          gravityDetails: gravityDetails,
           gravityStringified: JSON.stringify(imageOptions.gravity)
         });
         
         logger.breadcrumb('Gravity parameter in final fetch', undefined, {
           gravityValue: JSON.stringify(imageOptions.gravity),
-          gravityType: typeof imageOptions.gravity,
+          gravityType: gravityType,
+          gravityDetails: gravityDetails,
           fit: imageOptions.fit ? String(imageOptions.fit) : 'none',
           width: imageOptions.width ? Number(imageOptions.width) : undefined,
           height: imageOptions.height ? Number(imageOptions.height) : undefined
