@@ -112,9 +112,9 @@ export default {
           
           try {
             // Convert the URL parameters, passing config for advanced feature detection
-            const cfParams = translateAkamaiParams(url);
+            const cfParams = translateAkamaiParams(url, config);
             
-            // Store config in params for advanced feature detection
+            // Store config in params for potential downstream use
             (cfParams as any)._config = config;
             
             // Convert to Cloudflare URL with our params

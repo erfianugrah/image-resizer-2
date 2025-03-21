@@ -329,10 +329,9 @@ describe('Akamai Compatibility Module', () => {
         
         // Create a mock config object to pass to translateAkamaiParams
         const configObj = { features: { enableAkamaiAdvancedFeatures: true } };
-        url.searchParams.set('_config', JSON.stringify(configObj));
         
-        // Call translateAkamaiParams with the URL
-        const result = translateAkamaiParams(url);
+        // Call translateAkamaiParams with the URL and config
+        const result = translateAkamaiParams(url, configObj);
         
         expect(result.blur).toBeDefined();
         // Akamai's 0-100 scale maps to Cloudflare's 0-250

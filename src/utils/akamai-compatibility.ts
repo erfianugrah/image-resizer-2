@@ -25,9 +25,10 @@ export function setLogger(configuredLogger: Logger): void {
  * Translates Akamai Image Manager URL parameters to Cloudflare Image Resizing parameters
  * 
  * @param url URL with Akamai Image Manager parameters
+ * @param config Optional configuration containing feature flags
  * @returns Object with Cloudflare Image Resizing parameters
  */
-export function translateAkamaiParams(url: URL): TransformOptions {
+export function translateAkamaiParams(url: URL, config?: any): TransformOptions {
   const cfParams: TransformOptions = {};
   
   // Parse Akamai im.resize parameter
@@ -494,10 +495,10 @@ export function translateAkamaiParams(url: URL): TransformOptions {
   }
   
   // Only process advanced features if enabled
-  let advancedFeaturesEnabled = false;
+  let advancedFeaturesEnabled = config?.features?.enableAkamaiAdvancedFeatures === true;
   try {
-    // First check for a URL parameter with config for tests
-    if (url.searchParams.has('_config')) {
+    // If not enabled in passed config, check for a URL parameter with config for tests
+    if (!advancedFeaturesEnabled && url.searchParams.has('_config')) {
       try {
         const configStr = url.searchParams.get('_config');
         if (configStr) {
@@ -512,15 +513,12 @@ export function translateAkamaiParams(url: URL): TransformOptions {
         });
       }
     }
-
-    // If not found in URL, check cfParams (set when calling from index.ts)
-    if (!advancedFeaturesEnabled) {
-      advancedFeaturesEnabled = (cfParams as any)?._config?.features?.enableAkamaiAdvancedFeatures === true;
-    }
     
     logger.debug('Checking advanced features status', { 
       advancedFeaturesEnabled,
-      hasConfig: !!(cfParams as any)?._config || url.searchParams.has('_config')
+      configSource: advancedFeaturesEnabled ? 
+        (config?.features?.enableAkamaiAdvancedFeatures ? 'passed config' : 'URL config') : 
+        'none'
     });
   } catch (error) {
     logger.warn('Error checking advanced features status', { 
