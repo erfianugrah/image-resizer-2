@@ -32,7 +32,10 @@ export interface PerformanceMetrics {
   storageEnd?: number;
   transformStart?: number;
   transformEnd?: number;
+  detectionStart?: number;
+  detectionEnd?: number;
   end?: number;
+  detectionSource?: string;
 }
 
 /**
@@ -215,6 +218,16 @@ export function addDebugHeaders(
     if (metrics.transformStart && metrics.transformEnd) {
       const transformTime = metrics.transformEnd - metrics.transformStart;
       newResponse.headers.set('X-Performance-Transform-Ms', transformTime.toString());
+    }
+    
+    if (metrics.detectionStart && metrics.detectionEnd) {
+      const detectionTime = metrics.detectionEnd - metrics.detectionStart;
+      newResponse.headers.set('X-Performance-Detection-Ms', detectionTime.toString());
+      
+      // Add detection source if available
+      if (metrics.detectionSource) {
+        newResponse.headers.set('X-Detection-Source', metrics.detectionSource);
+      }
     }
   }
   
@@ -410,10 +423,17 @@ export function createDebugHtmlReport(
           <td class="timing">${transformTime}</td>
           <td>${totalTime ? Math.round((transformTime / totalTime) * 100) : 0}%</td>
         </tr>
+        ${metrics.detectionStart && metrics.detectionEnd ? `
+        <tr>
+          <td>Client Detection${metrics.detectionSource ? ` (${metrics.detectionSource})` : ''}</td>
+          <td class="timing">${metrics.detectionEnd - metrics.detectionStart}</td>
+          <td>${totalTime ? Math.round(((metrics.detectionEnd - metrics.detectionStart) / totalTime) * 100) : 0}%</td>
+        </tr>
+        ` : ''}
         <tr>
           <td>Other</td>
-          <td class="timing">${totalTime - storageTime - transformTime}</td>
-          <td>${totalTime ? Math.round(((totalTime - storageTime - transformTime) / totalTime) * 100) : 0}%</td>
+          <td class="timing">${totalTime - storageTime - transformTime - (metrics.detectionStart && metrics.detectionEnd ? metrics.detectionEnd - metrics.detectionStart : 0)}</td>
+          <td>${totalTime ? Math.round(((totalTime - storageTime - transformTime - (metrics.detectionStart && metrics.detectionEnd ? metrics.detectionEnd - metrics.detectionStart : 0)) / totalTime) * 100) : 0}%</td>
         </tr>
         <tr>
           <td><strong>Total</strong></td>
