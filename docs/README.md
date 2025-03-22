@@ -1,31 +1,70 @@
 # Image Resizer Documentation
 
-Welcome to the Image Resizer documentation. This directory contains detailed information about the various components and features of the Image Resizer service.
+Welcome to the comprehensive documentation for the Image Resizer service. This documentation is organized by functional areas to help you find what you need quickly.
 
-## Core Documentation
+## Documentation Map
 
-- [Architecture](ARCHITECTURE.md) - Overview of the system architecture
-- [Setup](SETUP.md) - Instructions for setting up and deploying the service
-- [Transformation](TRANSFORMATION.md) - Details about image transformation capabilities
+- [Core Documentation](#core-features) - Architecture, setup, and core concepts
+- [Feature Documentation](#feature-documentation) - Detailed features and capabilities
+- [Integrations](#integrations) - Third-party integrations and compatibility
+- [Debugging and Development](#debugging-and-diagnostics) - Diagnostics and development tools
+- [Examples](#examples) - Practical examples and use cases
+
+## Getting Started
+
+- [Architecture Overview](core/architecture.md) - Understand the system architecture
+- [Setup Guide](core/setup.md) - Instructions for setting up and deploying the service
+- [Configuration Reference](core/configuration-reference.md) - Complete configuration options
 
 ## Feature Documentation
 
-- [Cache Tags](CACHE_TAGS.md) - Documentation for the flexible cache tag system
-- [Akamai Compatibility](AKAMAI_COMPATIBILITY.md) - Information about Akamai Image Manager compatibility
-- [Akamai Implementation](AKAMAI_IMPLEMENTATION.md) - Technical details of the Akamai compatibility implementation
-- [Akamai Advanced Features](AKAMAI_ADVANCED_FEATURES.md) - Advanced Akamai features like blur, watermarking, and conditional transforms
-- [Akamai Demos](AKAMAI_DEMOS.md) - Live examples of Akamai compatibility features
-- [Authentication](AUTHENTICATION.md) - Documentation for the authentication system
-- [Cross Origin Path Transforms](CROSS_ORIGIN_PATH_TRANSFORMS.md) - Path mapping for different storage types
-- [Interceptor Pattern](INTERCEPTOR_PATTERN.md) - Technical details of handling subrequests
-- [Watermark Examples](WATERMARK_EXAMPLES.md) - Examples of watermark configurations and usage
+### Core Features
 
-## Logging and Diagnostics
+- [Transformation Guide](core/transformation.md) - Image transformation capabilities
+- [Responsive Images](optimization/responsive-images.md) - Automatic responsive image sizing
+- [Derivatives](optimization/derivatives.md) - Template-based transformations
 
-- [Logging System](LOGGING.md) - Comprehensive guide to the logging system and breadcrumb tracing
-- [Breadcrumb Reference](BREADCRUMB_REFERENCE.md) - Quick reference for breadcrumb implementation across components
-- [Diagnosing Timeouts](DIAGNOSING_TIMEOUTS.md) - Guide to diagnosing 524 timeout errors with breadcrumbs
+### Storage Options
 
-## Additional Resources
+- [Storage Overview](storage/index.md) - Storage systems (R2, Remote URLs, Fallback)
+- [Path Transformations](storage/path-transforms.md) - Path mapping for different storage types
+- [Authentication](storage/authentication.md) - Securing image origins
 
-- [Main README](../README.md) - Overview and general information
+### Optimization
+
+- [Format Selection](optimization/format-selection.md) - Automatic and manual format selection
+- [Quality Optimization](optimization/quality-optimization.md) - Quality settings and optimization
+- [Client Detection](client-detection/index.md) - Browser and device detection framework
+
+### Caching
+
+- [Caching System](caching/index.md) - Caching strategies and configuration
+- [Cache Tags](caching/cache-tags.md) - Advanced cache tag system for purging
+
+### Integrations
+
+- [Akamai Compatibility](integrations/akamai/index.md) - Support for Akamai Image Manager URLs
+- [Cloudflare Integration](integrations/cloudflare/index.md) - Cloudflare-specific features
+
+## Debugging and Diagnostics
+
+- [Logging System](debugging/logging.md) - Comprehensive logging capabilities
+- [Breadcrumb Tracing](debugging/breadcrumbs.md) - Request tracing with performance metrics
+- [Diagnosing Timeouts](debugging/diagnosing-timeouts.md) - Resolving 524 timeout errors
+- [Debug Mode](debugging/debug-headers.md) - Using debug headers and HTML reports
+
+## Development
+
+- [Contributing Guide](development/contributing.md) - How to contribute to the project
+- [Coding Standards](development/coding-standards.md) - Code style and practices
+- [Testing Guide](development/testing.md) - How to test the image resizer
+
+## Examples
+
+- [Watermarking Examples](examples/watermark-examples.md) - Watermark configurations and examples
+- [Authentication Examples](examples/authentication-examples.md) - Authentication setups
+- [Performance Optimization](examples/performance-optimization.md) - Performance tuning examples
+
+---
+
+*Last Updated: March 22, 2025*
