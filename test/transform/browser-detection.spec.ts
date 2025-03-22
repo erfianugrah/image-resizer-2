@@ -108,7 +108,7 @@ describe('Browser Detection', () => {
     
     it('correctly identifies no WebP or AVIF support in very old browsers', () => {
       const callback = vi.fn();
-      detectFormatSupportFromBrowser({ name: 'chrome', version: '30.0' }, callback);
+      detectFormatSupportFromBrowser({ name: 'chrome', version: '8.0' }, callback);
       expect(callback).toHaveBeenCalledWith(false, false); // Neither supported
     });
     
@@ -150,8 +150,9 @@ describe('Browser Detection', () => {
     
     it('correctly identifies support in Edge (Chromium)', () => {
       const callback = vi.fn();
-      detectFormatSupportFromBrowser({ name: 'edge_chromium', version: '90.0' }, callback);
-      expect(callback).toHaveBeenCalledWith(true, true); // Both supported
+      // For edge_chromium, WebP support is from v79, AVIF from v121
+      detectFormatSupportFromBrowser({ name: 'edge_chromium', version: '121.0' }, callback);
+      expect(callback).toHaveBeenCalledWith(true, true); // Both WebP and AVIF supported
     });
   });
 });

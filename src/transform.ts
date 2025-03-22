@@ -13,28 +13,8 @@ import { createLogger, Logger, defaultLogger } from './utils/logging';
 // Use default logger until a configured one is provided
 let logger: Logger = defaultLogger;
 
-// Note: We dynamically import caniuse-api to avoid test failures
-// and make it optional to prevent breaking existing functionality
-let caniuseApi: any = null;
-let isCaniuseLoading = false;
-
-// Attempt to load caniuse-api at module initialization
-try {
-  // Import at module level for faster initial load
-  // This will be caught and handled if it fails
-  import('caniuse-api').then(module => {
-    caniuseApi = module;
-    logger.debug('caniuse-api loaded successfully at module initialization');
-  }).catch(err => {
-    logger.debug('caniuse-api failed to load at module initialization', { 
-      error: err instanceof Error ? err.message : String(err) 
-    });
-  });
-} catch (error) {
-  logger.debug('caniuse-api not available', { 
-    error: error instanceof Error ? error.message : String(error) 
-  });
-}
+// Import the static browser format support utility
+import { isFormatSupported } from './utils/browser-formats';
 
 /**
  * Set the logger for the transform module
@@ -219,58 +199,32 @@ function getFormat(
           browserVersion: browser.version 
         });
         
-        // Try to use caniuse-api if available or try loading it if not already loading
-        if (caniuseApi) {
-          // Use already loaded caniuse-api
-          try {
-            if (!supportsWebP) {
-              supportsWebP = caniuseApi.isSupported('webp', browser.name + ' ' + browser.version);
-            }
-            
-            if (!supportsAVIF) {
-              supportsAVIF = caniuseApi.isSupported('avif', browser.name + ' ' + browser.version);
-            }
-            
-            logger.debug('Format support detected by caniuse', { supportsWebP, supportsAVIF });
-          } catch (apiError) {
-            logger.debug('Error using caniuse-api', { 
-              error: apiError instanceof Error ? apiError.message : String(apiError) 
-            });
+        // Use static browser format support detection
+        try {
+          if (!supportsWebP) {
+            supportsWebP = isFormatSupported('webp', browser.name, browser.version);
           }
-        } else if (!isCaniuseLoading) {
-          // Try loading caniuse-api if not already loading
-          isCaniuseLoading = true;
-          logger.debug('Attempting to load caniuse-api on demand');
           
-          try {
-            // We can't await this in a non-async function, but we'll
-            // prepare for future requests by loading the module
-            import('caniuse-api').then(module => {
-              caniuseApi = module;
-              isCaniuseLoading = false;
-              logger.debug('caniuse-api loaded successfully on demand');
-            }).catch(err => {
-              isCaniuseLoading = false;
-              logger.debug('Failed to load caniuse-api dynamically', { 
-                error: err instanceof Error ? err.message : String(err) 
-              });
-            });
-          } catch (importError) {
-            isCaniuseLoading = false;
-            logger.debug('Dynamic import of caniuse-api failed', { 
-              error: importError instanceof Error ? importError.message : String(importError) 
-            });
+          if (!supportsAVIF) {
+            supportsAVIF = isFormatSupported('avif', browser.name, browser.version);
           }
+          
+          logger.debug('Format support detected from static dictionary', { supportsWebP, supportsAVIF });
+        } catch (error) {
+          logger.debug('Error detecting format support', { 
+            error: error instanceof Error ? error.message : String(error) 
+          });
         }
         
-        // Use fallback detection for this request if caniuse-api is not yet available
-        if (!caniuseApi) {
+        // Add a fallback layer if our static detection didn't resolve support
+        // This handles edge cases not covered in our static dictionary
+        if (!supportsWebP || !supportsAVIF) {
           detectFormatSupportFromBrowser(browser, (webpSupported, avifSupported) => {
             if (!supportsWebP) supportsWebP = webpSupported;
             if (!supportsAVIF) supportsAVIF = avifSupported;
           });
           
-          logger.debug('Format support detected by fallback rules', { supportsWebP, supportsAVIF });
+          logger.debug('Format support confirmed by detection function', { supportsWebP, supportsAVIF });
         }
       } else {
         logger.debug('Could not parse browser info from User-Agent', { userAgent });
@@ -327,7 +281,7 @@ function getFormat(
 
 /**
  * Determine browser format support based on browser and version
- * This is a fallback when caniuse-api is not available
+ * Uses the static browser format support dictionary
  * 
  * @param browser - Object containing browser name and version
  * @param callback - Callback function receiving WebP and AVIF support status
@@ -337,82 +291,9 @@ export function detectFormatSupportFromBrowser(
   callback: (webpSupported: boolean, avifSupported: boolean) => void
 ): void {
   const { name, version } = browser;
-  const versionNumber = parseFloat(version);
   
-  let webpSupported = false;
-  let avifSupported = false;
-  
-  // WebP is supported in:
-  // - Chrome 32+ (Jan 2014)
-  // - Firefox 65+ (Jan 2019)
-  // - Edge 18+ (Nov 2018)
-  // - Safari 14+ (Sep 2020)
-  // - Opera 19+ (Jan 2014)
-  // - Samsung Internet 4+ (April 2016)
-  // - iOS Safari 14+ (Sep 2020)
-  // - Chrome for Android 32+ (Jan 2014)
-  if (
-    (name === 'chrome' && versionNumber >= 32) || 
-    (name === 'firefox' && versionNumber >= 65) || 
-    (name === 'edge' && versionNumber >= 18) || 
-    (name === 'safari' && versionNumber >= 14) ||
-    (name === 'opera' && versionNumber >= 19) ||
-    (name === 'samsung' && versionNumber >= 4) ||
-    // Add mobile browser support
-    (name === 'ios_saf' && versionNumber >= 14) ||
-    (name === 'and_chr' && versionNumber >= 32) ||
-    (name === 'and_ff' && versionNumber >= 65) ||
-    // Microsoft Edge (Chromium-based - similar support to Chrome)
-    (name === 'edge_chromium' && versionNumber >= 79)
-  ) {
-    webpSupported = true;
-  }
-  
-  // AVIF is supported in:
-  // - Chrome 85+ (Aug 2020)
-  // - Firefox 93+ (Oct 2021)
-  // - Safari 16.4+ (Mar 2023)
-  // - Opera 71+ (Aug 2020)
-  // - Edge 90+ (Apr 2021, Chromium-based)
-  // - Chrome for Android 92+ (Jul 2021)
-  if (
-    (name === 'chrome' && versionNumber >= 85) || 
-    (name === 'firefox' && versionNumber >= 93) || 
-    (name === 'safari' && versionNumber >= 16.4) ||
-    (name === 'opera' && versionNumber >= 71) ||
-    (name === 'edge' && versionNumber >= 90) ||
-    (name === 'edge_chromium' && versionNumber >= 90) ||
-    // Add mobile browser support
-    (name === 'and_chr' && versionNumber >= 92) ||
-    (name === 'samsung' && versionNumber >= 16) ||
-    (name === 'ios_saf' && versionNumber >= 16.4)
-  ) {
-    avifSupported = true;
-  }
-  
-  // Default for modern browsers - if we couldn't identify specifically but it's recent
-  // Consider WebP supported for any browser from 2020 onwards as a safe assumption
-  if (!webpSupported && !avifSupported) {
-    try {
-      // Extract year from version if it's in the format "Chrome/92.0.4515.159"
-      const fullVersion = browser.version;
-      const versionParts = fullVersion.split('.');
-      if (versionParts.length >= 3) {
-        const buildNumber = parseInt(versionParts[2], 10);
-        // High build numbers usually indicate recent browsers
-        if (buildNumber > 4000) {
-          webpSupported = true;
-          logger.debug('Assuming WebP support based on high build number', {
-            browser: name,
-            version: fullVersion,
-            buildNumber
-          });
-        }
-      }
-    } catch (e) {
-      // Ignore errors in this additional heuristic
-    }
-  }
+  const webpSupported = isFormatSupported('webp', name, version);
+  const avifSupported = isFormatSupported('avif', name, version);
   
   callback(webpSupported, avifSupported);
 }
