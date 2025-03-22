@@ -1,6 +1,14 @@
 # Image Transformation Guide
 
-This guide provides a comprehensive overview of all supported image transformation options in Image Resizer 2.
+This guide provides a comprehensive overview of all supported image transformation options in Image Resizer 2. Learn how to resize, crop, convert formats, adjust quality, and apply visual effects to images on the fly.
+
+## Quick Navigation
+
+- [Back to Documentation Home](../index.md)
+- [Core Documentation](index.md)
+- [Architecture Overview](architecture.md)
+- [Setup Guide](setup.md)
+- [Configuration Reference](configuration-reference.md)
 
 ## Transformation Basics
 
@@ -519,3 +527,36 @@ For optimal user experience, combine with responsive HTML:
   alt="Responsive image example"
 >
 ```
+
+## Troubleshooting
+
+### Image Not Transforming
+
+If your image isn't transforming as expected:
+
+1. Check the URL parameters for typos or incorrect values
+2. Verify the image format is supported
+3. Check if the original image is accessible
+4. Look for any format compatibility issues
+5. Enable debug headers to see transformation details
+
+### Image Quality Issues
+
+If transformed images have quality issues:
+
+1. Increase the quality parameter (try 85-95 for high quality)
+2. For transparent images, ensure you're using a format that supports transparency
+3. For detailed images, consider using sharpen parameter
+4. Check if the original image has sufficient resolution
+
+## Related Resources
+
+- [Client Detection Framework](../client-detection/index.md) - Browser and device detection for format optimization
+- [Cache Tags](../caching/cache-tags.md) - Cache management for transformed images
+- [Debug Headers](../debugging/debug-headers.md) - Troubleshooting transformation issues
+- [Akamai Compatibility](../integrations/akamai/index.md) - Migration from Akamai Image Manager
+- [Cloudflare Image Resizing Documentation](https://developers.cloudflare.com/images/image-resizing/)
+
+---
+
+*Last Updated: March 22, 2025*

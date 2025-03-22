@@ -1,6 +1,15 @@
 # Akamai Advanced Features Implementation Plan
 
-This document outlines the implementation plan for adding advanced Akamai Image Manager compatibility features to the Image Resizer 2 project.
+This document outlines the implementation plan for adding advanced Akamai Image Manager compatibility features to the Image Resizer 2 project. It details how complex Akamai transformations are mapped to Cloudflare Image Resizing capabilities.
+
+## Quick Navigation
+
+- [Back to Documentation Home](../../index.md)
+- [Akamai Integration](index.md)
+- [Basic Features](basic-features.md)
+- [Implementation Details](implementation.md)
+- [Demos](demos.md)
+- [Transformation Guide](../../core/transformation.md)
 
 ## Overview
 
@@ -467,3 +476,38 @@ Update the following documents:
 ## Conclusion
 
 This implementation plan provides a phased approach to adding advanced Akamai Image Manager compatibility features to Image Resizer 2. By following this structured approach, we can ensure that new features are implemented correctly, tested thoroughly, and rolled out safely.
+
+## Troubleshooting
+
+### Feature Flag Issues
+
+If advanced features aren't working as expected:
+
+1. Verify `ENABLE_AKAMAI_ADVANCED_FEATURES` is set to `true` in your configuration
+2. Check logs for any errors during parameter translation
+3. Enable debug mode to see detailed information about the translation process
+4. Compare your parameter usage against the demo examples
+5. Test with a minimal example to isolate the issue
+
+### Compatibility Limitations
+
+When encountering compatibility limitations:
+
+1. Review the feature mapping tables to understand what is supported
+2. Consider alternative approaches using supported features
+3. Check if the feature requires specific Cloudflare capabilities
+4. Test with simpler parameter combinations
+5. Consult the implementation documentation for workarounds
+
+## Related Resources
+
+- [Basic Features](basic-features.md) - Fundamental Akamai parameter support
+- [Implementation Details](implementation.md) - Technical implementation details
+- [Demos](demos.md) - Live examples of advanced Akamai features
+- [Transformation Guide](../../core/transformation.md) - Native Cloudflare transformation options
+- [Core Architecture: Akamai Compatibility](../../core/architecture.md#9-akamai-compatibility-utilsakamai-compatibilityts) - Architectural overview
+- [Akamai Image Manager Documentation](https://techdocs.akamai.com/imaging/docs/image-manager) - Original Akamai documentation
+
+---
+
+*Last Updated: March 22, 2025*

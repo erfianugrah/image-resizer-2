@@ -1,6 +1,15 @@
 # Akamai Image Manager Compatibility
 
-This guide explains how to use Image Resizer 2 as a drop-in replacement for Akamai Image Manager. It includes a parameter translation module and configuration guidelines to ensure smooth migration.
+This guide explains how to use Image Resizer 2 as a drop-in replacement for Akamai Image Manager. It includes a parameter translation module and configuration guidelines to ensure smooth migration from Akamai to Cloudflare Image Resizing without changing your existing image URLs.
+
+## Quick Navigation
+
+- [Back to Documentation Home](../../index.md)
+- [Akamai Integration](index.md)
+- [Advanced Features](advanced-features.md)
+- [Implementation Details](implementation.md)
+- [Demos](demos.md)
+- [Transformation Guide](../../core/transformation.md)
 
 ## Summary
 
@@ -479,3 +488,38 @@ Contributions to the Akamai compatibility module are welcome. When implementing 
 ## Conclusion
 
 The enhanced Akamai compatibility module provides a comprehensive solution for migrating from Akamai Image Manager to Cloudflare Image Resizing, supporting a wide range of transformations and effects while maintaining backward compatibility with existing image URLs.
+
+## Troubleshooting
+
+### Parameter Translation Issues
+
+If Akamai parameters aren't being translated correctly:
+
+1. Check for typos or incorrect syntax in your Akamai parameters
+2. Enable debug mode to see detailed translation information
+3. Verify the parameter is supported by checking the parameter mapping table
+4. Try simplifying complex parameter combinations to isolate the issue
+5. Check for special characters or encoding issues in parameter values
+
+### Feature Compatibility Problems
+
+If a particular Akamai feature isn't working as expected:
+
+1. Verify the feature is supported in the current implementation
+2. Check if the feature requires advanced features to be enabled
+3. Compare with the demo examples to understand correct usage
+4. Try alternative parameters that achieve similar results
+5. Consult the implementation documentation for limitations
+
+## Related Resources
+
+- [Advanced Features](advanced-features.md) - Complex Akamai transformations and effects
+- [Implementation Details](implementation.md) - Technical implementation of the Akamai compatibility module
+- [Demos](demos.md) - Live examples of Akamai parameter translation
+- [Transformation Guide](../../core/transformation.md) - Native Cloudflare transformation options
+- [Core Architecture: Akamai Compatibility](../../core/architecture.md#9-akamai-compatibility-utilsakamai-compatibilityts) - Architectural overview
+- [Akamai Image Manager Documentation](https://techdocs.akamai.com/imaging/docs/image-manager) - Original Akamai documentation
+
+---
+
+*Last Updated: March 22, 2025*

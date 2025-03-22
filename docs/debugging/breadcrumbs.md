@@ -1,6 +1,14 @@
 # Breadcrumb Implementation Reference
 
-This document provides a quick reference for the breadcrumb implementation across all major components of the Image Resizer service. Use this as a guide when analyzing logs or adding new breadcrumbs.
+This document provides a quick reference for the breadcrumb implementation across all major components of the Image Resizer service. Use this as a guide when analyzing logs or adding new breadcrumbs to track request flow and performance.
+
+## Quick Navigation
+
+- [Back to Documentation Home](../index.md)
+- [Debugging Overview](index.md)
+- [Logging System](logging.md)
+- [Diagnosing Timeouts](diagnosing-timeouts.md)
+- [Debug Headers](debug-headers.md)
 
 ## Index Handler (index.ts)
 
@@ -195,3 +203,37 @@ wrangler tail | grep "🔶" | grep "\[AkamaiCompat\]"
 # Filter for specific operation
 wrangler tail | grep "🔶" | grep "aspectCrop"
 ```
+
+## Troubleshooting
+
+### Missing Breadcrumbs
+
+If breadcrumbs aren't appearing in logs:
+
+1. Check if logging level is set to INFO or DEBUG (`LOGGING_LEVEL`)
+2. Ensure breadcrumb tracing is enabled (`LOGGING_ENABLE_BREADCRUMBS="true"`)
+3. Verify you're using the correct visual marker in grep filters
+4. For JSON format logs, use the correct type filter (`type == "breadcrumb"`)
+5. Check that the component is actually executed during the request flow
+
+### Incomplete Breadcrumb Trails
+
+If you see incomplete breadcrumb trails:
+
+1. Look for errors that might be terminating execution early
+2. Check for async operations that aren't properly awaited
+3. Ensure all branches of code include appropriate breadcrumbs
+4. Verify error handling includes breadcrumbs for failure cases
+5. Check for timeout conditions that might interrupt execution
+
+## Related Resources
+
+- [Logging System](logging.md)
+- [Diagnosing Timeouts](diagnosing-timeouts.md)
+- [Debug Headers](debug-headers.md)
+- [Core Architecture: Logging System](../core/architecture.md#10-logging-system-utilsloggingts)
+- [Configuration Reference](../core/configuration-reference.md)
+
+---
+
+*Last Updated: March 22, 2025*

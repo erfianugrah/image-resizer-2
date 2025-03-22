@@ -2,6 +2,14 @@
 
 The Image Resizer implements a comprehensive logging system designed to provide visibility into its operations and assist with debugging. This documentation covers the logging architecture, configuration options, and the breadcrumb tracing system used for end-to-end request tracking.
 
+## Quick Navigation
+
+- [Back to Documentation Home](../index.md)
+- [Debugging Overview](index.md)
+- [Breadcrumb Tracing](breadcrumbs.md)
+- [Diagnosing Timeouts](diagnosing-timeouts.md)
+- [Debug Headers](debug-headers.md)
+
 ## Logging Architecture
 
 The logging system is built around a centralized `Logger` interface that provides consistent logging methods across the codebase:
@@ -276,3 +284,37 @@ wrangler tail | grep "\[AkamaiCompat\]"
 # Search for timeout indications
 wrangler tail | grep -E "(timeout|exceeded|too long)"
 ```
+
+## Troubleshooting
+
+### Logs Not Appearing
+
+If you're not seeing logs as expected:
+
+1. Verify the `LOGGING_LEVEL` is set appropriately (DEBUG shows all logs)
+2. Check that you're viewing the correct worker instance logs
+3. Verify log initialization is happening in your code
+4. Check for any errors in the log configuration
+5. For breadcrumbs specifically, ensure `LOGGING_BREADCRUMBS_ENABLED` is set to true
+
+### Excessive Logging
+
+If you're experiencing too many logs:
+
+1. Increase the minimum logging level (e.g., from DEBUG to INFO)
+2. Be more selective about when to create breadcrumbs
+3. Filter logs using grep or jq to focus on specific components
+4. Consider enabling structured logs for better filtering capabilities
+5. Use debug logging only in development environments
+
+## Related Resources
+
+- [Breadcrumb Tracing](breadcrumbs.md)
+- [Diagnosing Timeouts](diagnosing-timeouts.md)
+- [Debug Headers](debug-headers.md)
+- [Core Architecture: Logging System](../core/architecture.md#10-logging-system-utilsloggingts)
+- [Configuration Reference](../core/configuration-reference.md)
+
+---
+
+*Last Updated: March 22, 2025*

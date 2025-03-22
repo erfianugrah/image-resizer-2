@@ -1,6 +1,14 @@
 # Diagnosing Cloudflare 524 Timeout Errors
 
-This guide provides a step-by-step approach to diagnosing 524 timeout errors in the Image Resizer service using the breadcrumb tracing system.
+This guide provides a step-by-step approach to diagnosing 524 timeout errors in the Image Resizer service using the breadcrumb tracing system. Learn how to identify, analyze, and resolve timeout issues for optimal performance.
+
+## Quick Navigation
+
+- [Back to Documentation Home](../index.md)
+- [Debugging Overview](index.md)
+- [Logging System](logging.md)
+- [Breadcrumb Tracing](breadcrumbs.md)
+- [Debug Headers](debug-headers.md)
 
 ## Understanding 524 Errors
 
@@ -257,6 +265,16 @@ After implementing fixes:
 
 - [Cloudflare Workers Limits](https://developers.cloudflare.com/workers/platform/limits/)
 - [Cloudflare 524 Error Troubleshooting](https://developers.cloudflare.com/support/troubleshooting/cloudflare-errors/troubleshooting-cloudflare-5xx-errors/#error-524-a-timeout-occurred)
-- [Image Resizer Logging Documentation](./LOGGING.md)
-- [Interceptor Pattern Documentation](./INTERCEPTOR_PATTERN.md)
-- [Akamai Compatibility Documentation](./AKAMAI_COMPATIBILITY.md)
+
+## Related Resources
+
+- [Logging System](logging.md)
+- [Breadcrumb Tracing](breadcrumbs.md)
+- [Debug Headers](debug-headers.md)
+- [Interceptor Pattern](../integrations/cloudflare/interceptor-pattern.md)
+- [Akamai Compatibility](../integrations/akamai/basic-features.md)
+- [Core Architecture: Performance Considerations](../core/architecture.md#performance-considerations)
+
+---
+
+*Last Updated: March 22, 2025*

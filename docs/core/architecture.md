@@ -2,6 +2,13 @@
 
 This document details the technical architecture of the Image Resizer service, outlining implementation specifics for developers working with the codebase.
 
+For more information on related topics, see:
+- [Setup Guide](setup.md)
+- [Configuration Reference](configuration-reference.md)
+- [Transformation Guide](transformation.md)
+- [Client Detection Framework](../client-detection/index.md)
+- [Caching System](../caching/index.md)
+
 ## Architecture Overview
 
 Built on Cloudflare Workers, the Image Resizer integrates with Cloudflare's Image Resizing API to perform on-demand image transformations. The architecture prioritizes performance, scalability, and edge processing capabilities.
@@ -156,6 +163,8 @@ Security layer for accessing protected image origins:
   - Query parameter signing (HMAC)
 - Secrets loaded from Wrangler configuration
 
+For detailed authentication setup, see [Authentication Documentation](../storage/authentication.md).
+
 Technical implementation:
 ```mermaid
 sequenceDiagram
@@ -202,6 +211,8 @@ Core transformation engine that:
 - Applies derivative template expansion
 - Implements client-aware responsive sizing
 
+For detailed transformation options, see [Transformation Guide](transformation.md).
+
 Technical implementation details:
 ```mermaid
 flowchart TD
@@ -236,6 +247,11 @@ Advanced optimization techniques:
 - Device-specific transformation templates
 - Automatic orientation correction (EXIF)
 
+For more information about client detection and optimization, see:
+- [Client Detection Framework](../client-detection/index.md)
+- [Cascade System](../client-detection/cascade-system.md)
+- [Browser Compatibility](../client-detection/browser-compatibility.md)
+
 ### 7. Caching Service (`cache.ts`)
 
 Multi-layer caching implementation with:
@@ -243,6 +259,8 @@ Multi-layer caching implementation with:
 - Tag-based cache invalidation system
 - Dual caching strategy (Cloudflare and Cache API)
 - Fine-grained debug bypass controls
+
+For detailed caching configuration, see [Cache Tags Documentation](../caching/cache-tags.md).
 
 Cache tag implementation details:
 ```mermaid
@@ -305,6 +323,12 @@ Debug features:
 - Configuration visibility
 - Request and response details
 
+For more information, see:
+- [Debug Headers Documentation](../debugging/debug-headers.md)
+- [Diagnosing Timeouts](../debugging/diagnosing-timeouts.md)
+- [Logging System](../debugging/logging.md)
+- [Breadcrumb Tracing](../debugging/breadcrumbs.md)
+
 ### 9. Akamai Compatibility (`utils/akamai-compatibility.ts`)
 
 Enables seamless migration from Akamai Image Manager:
@@ -320,6 +344,12 @@ Supported Akamai parameters:
 - Advanced features like blur, mirror/flip, composite, and conditional transforms
 - Translation of Akamai-specific parameters to Cloudflare equivalents
 
+For more information, see:
+- [Akamai Basic Features](../integrations/akamai/basic-features.md)
+- [Akamai Advanced Features](../integrations/akamai/advanced-features.md)
+- [Akamai Implementation](../integrations/akamai/implementation.md)
+- [Akamai Demos](../integrations/akamai/demos.md)
+
 ### 10. Logging System (`utils/logging.ts`)
 
 Provides comprehensive logging capabilities:
@@ -334,6 +364,10 @@ Breadcrumb implementation:
 - Records timing information for performance analysis
 - Maintains context between components
 - Enables detailed debugging of request flow
+
+For more information, see:
+- [Logging System Documentation](../debugging/logging.md)
+- [Breadcrumb Reference](../debugging/breadcrumbs.md)
 
 ## Data Flow
 
@@ -376,7 +410,7 @@ Breadcrumb implementation:
 
 ## Interceptor Pattern
 
-The interceptor pattern handles Cloudflare's two-stage image processing:
+The interceptor pattern handles Cloudflare's two-stage image processing. For a detailed explanation, see [Interceptor Pattern Documentation](../integrations/cloudflare/interceptor-pattern.md).
 
 ```mermaid
 sequenceDiagram

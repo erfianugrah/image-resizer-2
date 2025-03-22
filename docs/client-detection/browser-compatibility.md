@@ -1,4 +1,186 @@
-# Static Browser Support Dictionary Implementation Plan
+# Browser Compatibility
+
+The Client Detection framework uses a comprehensive browser compatibility database to determine which image formats are supported by different browsers. This information is crucial for format selection in the cascade system.
+
+## Browser Support Data Source
+
+The browser compatibility data is sourced from the [@mdn/browser-compat-data](https://github.com/mdn/browser-compat-data) package, which provides up-to-date information about web platform feature support across browsers.
+
+This replaced the previously used `caniuse-db` package to ensure more accurate and comprehensive data.
+
+## Supported Image Formats
+
+The system tracks support for the following image formats:
+
+- **AVIF**: AV1 Image Format (high efficiency)
+- **WebP**: Web Picture format (good balance of quality and size)
+- **WebP Lossless**: Lossless WebP compression
+- **WebP Alpha**: WebP with alpha channel (transparency)
+- **JPEG XL**: JPEG XL format (next-gen JPEG)
+- **JPEG 2000**: JPEG 2000 format (mostly for Safari)
+- **PNG**: Portable Network Graphics (universally supported)
+- **JPEG**: Joint Photographic Experts Group (universally supported)
+- **GIF**: Graphics Interchange Format (universally supported)
+
+## Format Support by Major Browser
+
+| Browser           | Version | AVIF | WebP | WebP Lossless | WebP Alpha | JPEG XL | JPEG 2000 |
+|-------------------|---------|------|------|---------------|------------|---------|-----------|
+| Chrome            | 100+    | ✅   | ✅   | ✅            | ✅         | ❌      | ❌        |
+| Chrome            | 85+     | ✅   | ✅   | ✅            | ✅         | ❌      | ❌        |
+| Chrome            | 70-84   | ❌   | ✅   | ✅            | ✅         | ❌      | ❌        |
+| Firefox           | 119+    | ✅   | ✅   | ✅            | ✅         | ❌      | ❌        |
+| Firefox           | 65-118  | ❌   | ✅   | ✅            | ✅         | ❌      | ❌        |
+| Safari            | 16+     | ✅   | ✅   | ✅            | ✅         | ❌      | ✅        |
+| Safari            | 14-15   | ❌   | ✅   | ✅            | ✅         | ❌      | ✅        |
+| Safari            | 5-13    | ❌   | ❌   | ❌            | ❌         | ❌      | ✅        |
+| Edge (Chromium)   | 85+     | ✅   | ✅   | ✅            | ✅         | ❌      | ❌        |
+| Edge (Legacy)     | 18      | ❌   | ✅   | ✅            | ✅         | ❌      | ❌        |
+| Samsung Internet  | 13+     | ✅   | ✅   | ✅            | ✅         | ❌      | ❌        |
+| Opera             | 71+     | ✅   | ✅   | ✅            | ✅         | ❌      | ❌        |
+| UC Browser        | 12.13+  | ❌   | ✅   | ✅            | ✅         | ❌      | ❌        |
+| Android Browser   | 92+     | ✅   | ✅   | ✅            | ✅         | ❌      | ❌        |
+| iOS Safari        | 16+     | ✅   | ✅   | ✅            | ✅         | ❌      | ✅        |
+
+Note: PNG, JPEG, and GIF are supported by all browsers and versions listed.
+
+## Detection Methods
+
+The system uses multiple methods to detect format support:
+
+### 1. Accept Header Detection
+
+The `Accept` header provides the most reliable indication of browser support:
+
+```http
+Accept: image/avif,image/webp,image/apng,image/*,*/*;q=0.8
+```
+
+In this example, the browser explicitly declares support for AVIF, WebP, and APNG.
+
+### 2. Client Hints Detection
+
+Client Hints like `Sec-CH-UA` and `Sec-CH-UA-Platform` are used to identify the browser and version:
+
+```http
+Sec-CH-UA: "Not?A_Brand";v="8", "Chromium";v="108", "Google Chrome";v="108"
+Sec-CH-UA-Platform: "Windows"
+```
+
+These are matched against the browser compatibility database.
+
+### 3. User-Agent Detection (Fallback)
+
+For browsers that don't support Client Hints, the User-Agent string is parsed:
+
+```http
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36
+```
+
+This is less reliable due to UA string inconsistencies and spoofing.
+
+## Browser Detection Code
+
+The detection code is structured to prioritize more reliable methods:
+
+```typescript
+// In acceptHeader.strategy.ts
+export class AcceptHeaderStrategy implements DetectionStrategy {
+  priority = 80;
+  name = 'accept-header';
+  
+  detect(request: Request): DetectionResult {
+    const accept = request.headers.get('Accept');
+    if (!accept) return null;
+    
+    return {
+      formats: {
+        avif: accept.includes('image/avif'),
+        webp: accept.includes('image/webp'),
+        webpLossless: accept.includes('image/webp'),
+        webpAlpha: accept.includes('image/webp'),
+        jpeg2000: false, // Not typically in Accept headers
+        jpegXl: accept.includes('image/jxl')
+      },
+      // Other detection results...
+    };
+  }
+  
+  isAvailable(request: Request): boolean {
+    return !!request.headers.get('Accept');
+  }
+}
+```
+
+## Format Selection Logic
+
+Format selection follows these principles:
+
+1. **Modern First**: Prefer modern, efficient formats when supported
+2. **Fallback Chain**: Have a clear progression of fallbacks
+3. **Universal Last**: Always have universally supported formats as final fallbacks
+
+The standard format priority order is:
+
+1. AVIF (if supported)
+2. WebP (if supported)
+3. JPEG (universal fallback)
+4. PNG (only for images requiring transparency)
+
+## Special Handling for Safari
+
+Safari requires special handling due to its unique format support pattern:
+
+- Supports JPEG 2000 (most browsers don't)
+- Added WebP support relatively recently (Safari 14+)
+- Added AVIF support in Safari 16+
+
+The detection system includes special cases for Safari to ensure optimal format selection.
+
+## Updating Browser Compatibility Data
+
+The browser compatibility data is generated during the build process:
+
+```bash
+npm run update-browser-data
+```
+
+This script:
+1. Fetches the latest data from @mdn/browser-compat-data
+2. Processes it into a compact format optimized for runtime use
+3. Generates a TypeScript file with the compatibility information
+
+This ensures the format support data stays current with browser releases.
+
+## Testing Format Detection
+
+The system includes tests for format detection across browsers:
+
+```typescript
+describe('Format detection', () => {
+  it('should detect AVIF support in Chrome 90', () => {
+    const request = new Request('https://example.com');
+    request.headers.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36');
+    
+    const detector = new ClientDetector(request, defaultConfig);
+    const result = detector.detect();
+    
+    expect(result.formats.avif).toBe(true);
+    expect(result.formats.webp).toBe(true);
+  });
+  
+  it('should detect no AVIF support in Firefox 88', () => {
+    const request = new Request('https://example.com');
+    request.headers.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:88.0) Gecko/20100101 Firefox/88.0');
+    
+    const detector = new ClientDetector(request, defaultConfig);
+    const result = detector.detect();
+    
+    expect(result.formats.avif).toBe(false);
+    expect(result.formats.webp).toBe(true);
+  });
+});
+```# Static Browser Support Dictionary Implementation Plan
 
 This document outlines the plan to replace the dependency on `caniuse-api` and `caniuse-lite` with a lightweight static dictionary for browser format support detection.
 

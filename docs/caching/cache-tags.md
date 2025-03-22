@@ -1,6 +1,14 @@
 # Cache Tags in Image Resizer
 
-This document explains the cache tag system in the Image Resizer project, including how to configure and use it effectively.
+This document explains the cache tag system in the Image Resizer project, including how to configure and use it effectively. Cache tags enable precise control over cache purging and management of cached assets.
+
+## Quick Navigation
+
+- [Back to Documentation Home](../index.md)
+- [Caching Overview](index.md)
+- [Core Architecture](../core/architecture.md)
+- [Configuration Reference](../core/configuration-reference.md)
+- [Debug Headers](../debugging/debug-headers.md)
 
 ## Overview
 
@@ -225,3 +233,36 @@ The cache tag system is implemented in the following files:
 - `src/cache.ts` - Contains the `generateCacheTags()` and `applyCloudflareCache()` functions
 - `src/config.ts` - Defines the configuration types and default settings
 - `src/transform.ts` - Passes response headers to the cache functions for metadata extraction
+
+## Troubleshooting
+
+### Tags Not Being Applied
+
+If you don't see cache tags being applied to your responses:
+
+1. Verify that `CACHE_TAGS_ENABLED` is set to `true`
+2. Check if you've reached the 125 tag limit per response
+3. Look for debug headers to see what tags are being generated
+4. Ensure the cache method is set to `cf` to use Cloudflare's cache
+
+### Purging Not Working
+
+If cache purging with tags isn't working:
+
+1. Confirm that the correct zone ID is being used
+2. Verify tag format matches those applied to resources
+3. Check Cloudflare API permissions for the API key being used
+4. Ensure tag prefixes match between tagging and purging
+
+## Related Resources
+
+- [Caching Overview](index.md)
+- [Core Architecture: Caching Service](../core/architecture.md#7-caching-service-cachets)
+- [Core Architecture: Cache Tag Implementation](../core/architecture.md#cache-tag-implementation-details)
+- [Configuration Reference](../core/configuration-reference.md)
+- [Debug Headers](../debugging/debug-headers.md)
+- [Cloudflare Cache Tags Documentation](https://developers.cloudflare.com/cache/how-to/purge-cache/purge-by-cache-tag/)
+
+---
+
+*Last Updated: March 22, 2025*

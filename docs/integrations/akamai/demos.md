@@ -2,6 +2,15 @@
 
 This document provides visual examples of Akamai Image Manager parameters and their Cloudflare Image Resizing equivalents. All examples use the same base image for easy comparison.
 
+## Quick Navigation
+
+- [Back to Documentation Home](../../index.md)
+- [Akamai Integration](index.md)
+- [Basic Features](basic-features.md)
+- [Advanced Features](advanced-features.md)
+- [Implementation Details](implementation.md)
+- [Transformation Guide](../../core/transformation.md)
+
 ## Base Image
 
 Original image without any transformations:
@@ -112,7 +121,7 @@ This will add debug headers to the response showing:
 - Whether advanced features were enabled
 - Processing time for the translation
 
-## Watermark Parameter Reference
+## Parameter Reference
 
 ### Akamai `im.composite` Parameters
 
@@ -161,3 +170,38 @@ Akamai supports several URL formats for transformation parameters:
    ```
 
 All these formats are automatically detected and converted to Cloudflare's query parameter format.
+
+## Troubleshooting
+
+### Image Rendering Issues
+
+If images aren't rendering as expected:
+
+1. Check the debug headers to see how parameters are being translated
+2. Verify the syntax of your Akamai parameters
+3. Compare with the examples in this document
+4. Try simplifying the parameters to isolate the issue
+5. Check if the parameters are being properly URL-encoded
+
+### Parameter Compatibility Problems
+
+If a specific Akamai parameter isn't working:
+
+1. Verify the parameter is supported by checking the parameter mapping table in [Basic Features](basic-features.md)
+2. Check if the feature requires `ENABLE_AKAMAI_ADVANCED_FEATURES` to be enabled
+3. Try an alternative parameter that achieves a similar effect
+4. Check the implementation details in [Implementation Details](implementation.md)
+5. Check for any syntax issues in the parameter value
+
+## Related Resources
+
+- [Basic Features](basic-features.md) - Parameter mapping documentation
+- [Advanced Features](advanced-features.md) - Complex Akamai feature implementations
+- [Implementation Details](implementation.md) - Technical implementation details
+- [Transformation Guide](../../core/transformation.md) - Native Cloudflare transformation options
+- [Debugger Reference](../../debugging/debug-headers.md) - Debug headers and tools
+- [Akamai Image Manager Documentation](https://techdocs.akamai.com/imaging/docs/image-manager) - Original Akamai documentation
+
+---
+
+*Last Updated: March 22, 2025*

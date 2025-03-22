@@ -1,6 +1,14 @@
 # Cloudflare Image Resizing Interceptor Pattern
 
-This document explains the interceptor pattern implementation in the Image Resizer, how it works with Cloudflare's Image Resizing service, and how it helps prevent 524 timeout errors.
+This document explains the interceptor pattern implementation in the Image Resizer, how it works with Cloudflare's Image Resizing service, and how it helps prevent 524 timeout errors. The interceptor pattern is critical for handling large images and preventing timeout issues.
+
+## Quick Navigation
+
+- [Back to Documentation Home](../../index.md)
+- [Cloudflare Integration](index.md)
+- [Core Architecture](../../core/architecture.md)
+- [Diagnosing Timeouts](../../debugging/diagnosing-timeouts.md)
+- [Path Transformations](../../storage/path-transforms.md)
 
 ## What is the Interceptor Pattern?
 
@@ -156,8 +164,15 @@ To optimize your implementation of the interceptor pattern:
 5. **Monitor Cache Headers**: Ensure proper caching for both original and transformed images
 6. **Consider Storage Priority**: Configure your storage priority order to optimize for your specific use case
 
-## Related Documentation
+## Related Resources
 
-- [DIAGNOSING_TIMEOUTS.md](./DIAGNOSING_TIMEOUTS.md): Detailed information on diagnosing 524 timeout errors
-- [STORAGE.md](./STORAGE.md): Storage configuration and priority system
-- [TRANSFORMATION.md](./TRANSFORMATION.md): Image transformation options and best practices
+- [Diagnosing Timeouts](../../debugging/diagnosing-timeouts.md) - Detailed information on diagnosing 524 timeout errors
+- [Storage Overview](../../storage/index.md) - Storage configuration and priority system
+- [Path Transformations](../../storage/path-transforms.md) - Path mapping for different storage backends
+- [Transformation Guide](../../core/transformation.md) - Image transformation options and best practices
+- [Core Architecture: Interceptor Pattern](../../core/architecture.md#interceptor-pattern) - Architectural overview of the interceptor pattern
+- [Cloudflare Image Resizing Documentation](https://developers.cloudflare.com/images/image-resizing/)
+
+---
+
+*Last Updated: March 22, 2025*

@@ -291,7 +291,7 @@ https://your-worker.com/assets/logo.png  # Transformed to different paths based 
 https://your-worker.com/content/blog.jpg  # Transformed to /content-images/blog.jpg for storage
 ```
 
-See [Cross-Origin Path Transformations](docs/CROSS_ORIGIN_PATH_TRANSFORMS.md) for more details.
+See [Path Transformations](docs/storage/path-transforms.md) for more details.
 
 ### Available Transformation Options
 
@@ -445,20 +445,34 @@ If you're experiencing 524 timeout errors, see our [Diagnosing Timeouts](docs/DI
 
 > **Note**: Basic authentication is deprecated in favor of Cloudflare's origin-auth feature and AWS S3/GCS authentication. The authentication system is now fully asynchronous to properly support AWS request signing.
 
-For complete authentication documentation, see [AUTHENTICATION.md](docs/AUTHENTICATION.md).
+For complete authentication documentation, see [Authentication](docs/storage/authentication.md).
 
 ## Documentation
 
-For more detailed documentation, please refer to the following resources:
+> **Note:** Our documentation has been reorganized into a more navigable structure. Start with the [Documentation Home](docs/index.md) for a complete guide to all features.
 
-- [Setup Guide](docs/SETUP.md) - Installation and configuration
-- [Transformation Guide](docs/TRANSFORMATION.md) - Image transformation options
-- [Architecture Documentation](docs/ARCHITECTURE.md) - System design
-- [Authentication Guide](docs/AUTHENTICATION.md) - Secure origins
-- [Akamai Compatibility](docs/AKAMAI_COMPATIBILITY.md) - Migration from Akamai
-- [Cache Tags Documentation](docs/CACHE_TAGS.md) - Cache management
-- [Logging Documentation](docs/LOGGING.md) - Structured logging
-- [Interceptor Pattern](docs/INTERCEPTOR_PATTERN.md) - Handling large images
+### Core Documentation
+- [Documentation Home](docs/index.md) - Main documentation index
+- [Architecture](docs/core/architecture.md) - System architecture and design
+- [Setup Guide](docs/core/setup.md) - Installation and configuration
+- [Transformation Guide](docs/core/transformation.md) - Image transformation options
+
+### Feature Documentation
+- [Client Detection](docs/client-detection/index.md) - Browser and device detection framework
+- [Caching System](docs/caching/index.md) - Cache management and tagging
+- [Storage Options](docs/storage/index.md) - Image storage configuration
+- [Authentication](docs/storage/authentication.md) - Secure access to origins
+
+### Integrations
+- [Akamai Compatibility](docs/integrations/akamai/index.md) - Migration from Akamai
+- [Cloudflare Integration](docs/integrations/cloudflare/index.md) - Cloudflare integration features
+
+### Debugging and Diagnostics
+- [Debugging Overview](docs/debugging/index.md) - Debugging tools and techniques
+- [Logging System](docs/debugging/logging.md) - Structured logging
+- [Diagnosing Timeouts](docs/debugging/diagnosing-timeouts.md) - Solving timeout issues
+- [Breadcrumb Tracing](docs/debugging/breadcrumbs.md) - Request flow tracking
+- [Debug Headers](docs/debugging/debug-headers.md) - Using debug headers and reports
 
 ## License
 

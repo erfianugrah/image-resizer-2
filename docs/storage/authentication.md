@@ -1,6 +1,14 @@
 # Authentication Guide
 
-This guide explains how to configure and use the authentication features of Image Resizer to access protected image origins.
+This guide explains how to configure and use the authentication features of Image Resizer to access protected image origins. The authentication system allows you to fetch images from protected sources that require credentials, API keys, or other authentication methods.
+
+## Quick Navigation
+
+- [Back to Documentation Home](../index.md)
+- [Storage Overview](index.md)
+- [Path Transformations](path-transforms.md)
+- [Core Architecture](../core/architecture.md)
+- [Configuration Reference](../core/configuration-reference.md)
 
 ## Authentication Overview
 
@@ -415,3 +423,16 @@ The AWS S3/GCS authentication now:
    ```
 
    Then check response headers for authentication debugging information.
+
+## Related Resources
+
+- [Storage Overview](index.md)
+- [Path Transformations](path-transforms.md)
+- [Core Architecture: Authentication Flow](../core/architecture.md#authentication-flow)
+- [Core Architecture: Secret Management](../core/architecture.md#secret-management)
+- [Debugging Guide](../debugging/index.md)
+- [Configuration Reference](../core/configuration-reference.md)
+
+---
+
+*Last Updated: March 22, 2025*

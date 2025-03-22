@@ -1,6 +1,15 @@
 # Akamai Image Manager Compatibility Implementation
 
-This document provides detailed information about the implementation of Akamai Image Manager compatibility in the Image Resizer 2 project.
+This document provides detailed information about the implementation of Akamai Image Manager compatibility in the Image Resizer 2 project. It explains the technical architecture, code organization, and integration points.
+
+## Quick Navigation
+
+- [Back to Documentation Home](../../index.md)
+- [Akamai Integration](index.md)
+- [Basic Features](basic-features.md)
+- [Advanced Features](advanced-features.md)
+- [Demos](demos.md)
+- [Core Architecture](../../core/architecture.md)
 
 ## Implementation Overview
 
@@ -203,6 +212,38 @@ The implementation includes comprehensive tests:
 2. **Integration Tests**: Test end-to-end functionality with real URLs
 3. **Edge Cases**: Test various parameter combinations and formats
 
+## Best Practices
+
+When extending or modifying the Akamai compatibility module:
+
+1. **Always add tests**: Ensure all new features have proper test coverage
+2. **Maintain backward compatibility**: Don't break existing parameter translations
+3. **Follow the parameter mapping pattern**: Use the established pattern for new parameters
+4. **Use defensive coding**: Handle edge cases and invalid inputs gracefully
+5. **Add logging for debugging**: Include appropriate logging for troubleshooting
+
+## Troubleshooting
+
+### Parameter Translation Issues
+
+If Akamai parameters aren't being translated correctly:
+
+1. Check that the Akamai parameter is correctly formatted
+2. Enable debug mode to see the detected parameters
+3. Look for malformed or unusual character sequences
+4. Verify the parameter is supported by the translation module
+5. Check if path-based parameters may be interfering with query parameters
+
+### Integration Problems
+
+When the module is not working as expected:
+
+1. Verify that `ENABLE_AKAMAI_COMPATIBILITY` is set to "true"
+2. Check the request logs for URL detection and translation
+3. Look for any errors in the parameter translation process
+4. Test with simple parameters first before trying complex combinations
+5. Verify URL encoding/decoding is not affecting parameter detection
+
 ## Future Improvements
 
 Future enhancements to the Akamai compatibility module could include:
@@ -212,8 +253,21 @@ Future enhancements to the Akamai compatibility module could include:
 3. **More comprehensive feature parity**: Support for additional Akamai features
 4. **Performance optimizations**: Streamline parameter parsing and conversion
 
+## Related Resources
+
+- [Basic Features](basic-features.md) - Fundamental Akamai parameter mapping
+- [Advanced Features](advanced-features.md) - Complex Akamai feature implementations
+- [Demos](demos.md) - Live examples showing Akamai compatibility in action
+- [Core Architecture](../../core/architecture.md#9-akamai-compatibility-utilsakamai-compatibilityts) - How Akamai compatibility fits into the overall architecture
+- [Transformation Guide](../../core/transformation.md) - Native Cloudflare transformation options
+- [Akamai Image Manager Documentation](https://techdocs.akamai.com/imaging/docs/image-manager) - Original Akamai documentation
+
 ## Conclusion
 
 The Akamai compatibility module provides a robust solution for migrating from Akamai Image Manager to Cloudflare Image Resizing. It supports key features like Aspect Crop while maintaining high performance and reliability.
 
 By translating parameters at the edge, it enables a seamless transition with no changes required to existing URLs, allowing for a gradual migration strategy.
+
+---
+
+*Last Updated: March 22, 2025*

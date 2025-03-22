@@ -1,6 +1,14 @@
 # Cross-Origin Path Transformations
 
-This document explains how to configure and use cross-origin path transformations in the Image Resizer Worker.
+This document explains how to configure and use cross-origin path transformations in the Image Resizer Worker. Path transformations allow you to map URLs differently depending on which storage backend is being used.
+
+## Quick Navigation
+
+- [Back to Documentation Home](../index.md)
+- [Storage Overview](index.md)
+- [Authentication Configuration](authentication.md)
+- [Core Architecture](../core/architecture.md)
+- [Configuration Reference](../core/configuration-reference.md)
 
 ## Overview
 
@@ -141,12 +149,54 @@ A request for `/legacy/docs/guide.pdf` would be transformed to:
 - R2: `/new-content/docs/guide.pdf`
 - Remote: `/old-content/docs/guide.pdf`
 
+## Best Practices
+
+- **Keep path mapping simple**: Complex mappings can be hard to maintain
+- **Document your path structure**: Create a reference document for your team
+- **Use consistent patterns**: Try to follow similar patterns across different storage backends
+- **Consider performance**: Excessive path transformations may impact request processing time
+- **Test configurations thoroughly**: Ensure all storage backends work correctly with your transformations
+
+## Troubleshooting
+
+### Path Not Being Transformed
+
+If your paths aren't being transformed as expected:
+
+1. Check that the segment name in the URL matches exactly with the key in your `PATH_TRANSFORMS` object
+2. Verify that the correct storage backend is being used (enable debug headers to see which one)
+3. Ensure your configuration has the correct prefixes and `removePrefix` settings
+4. Check that your `STORAGE_PRIORITY` setting is correct if you've customized it
+
+### 404 Errors After Transformation
+
+If you're getting 404 errors after path transformation:
+
+1. Enable debug mode to see the transformed paths in the response headers
+2. Verify the actual path structure in your storage backends
+3. Double-check the prefix values in your configuration
+4. Ensure your R2 bucket permissions are properly configured
+
 ## Debugging Path Transformations
 
 To debug path transformations, add `?debug=true` to your URL. The response headers will include:
 
 - `X-Original-Path`: The original path before transformation
 - `X-Storage-Type`: Which storage backend was used (r2, remote, or fallback)
+- `X-Transformed-Path`: The path after transformation
 - `X-Original-URL`: For remote or fallback sources, the full URL that was requested
 
 You can also check the worker logs for detailed transformation information when running in development mode.
+
+## Related Resources
+
+- [Storage Overview](index.md)
+- [Authentication Configuration](authentication.md)
+- [Core Architecture: Storage System](../core/architecture.md#5-storage-system-storagets)
+- [Configuration Reference](../core/configuration-reference.md)
+- [Debugging Headers](../debugging/debug-headers.md)
+- [Cloudflare R2 Documentation](https://developers.cloudflare.com/r2/)
+
+---
+
+*Last Updated: March 22, 2025*
