@@ -566,7 +566,7 @@ export function translateAkamaiParams(url: URL, config?: any): TransformOptions 
       const borderParts = imBorder.split(',');
       if (borderParts.length >= 1) {
         const borderWidth = parseInt(borderParts[0]);
-        let borderColor = borderParts[1] || '#000000';
+        const borderColor = borderParts[1] || '#000000';
         
         if (!isNaN(borderWidth) && borderWidth > 0) {
           cfParams.border = {
@@ -770,7 +770,7 @@ export function translateAkamaiParams(url: URL, config?: any): TransformOptions 
         fit?: string;
         gravity?: string;
         opacity?: number;
-        repeat?: boolean | "x" | "y";
+        repeat?: boolean | 'x' | 'y';
         top?: number;
         left?: number;
         bottom?: number;
@@ -830,14 +830,97 @@ export function translateAkamaiParams(url: URL, config?: any): TransformOptions 
         }
       }
       
+      // Handle explicit width and height parameters
+      if (compositeParams.width !== undefined) {
+        const width = parseInt(String(compositeParams.width), 10);
+        if (!isNaN(width) && width > 0) {
+          drawObj.width = width;
+          logger.debug('Setting watermark width', { width });
+        }
+      }
+      
+      if (compositeParams.height !== undefined) {
+        const height = parseInt(String(compositeParams.height), 10);
+        if (!isNaN(height) && height > 0) {
+          drawObj.height = height;
+          logger.debug('Setting watermark height', { height });
+        }
+      }
+      
+      // Handle fit parameter if specified
+      if (compositeParams.fit !== undefined) {
+        const validFits = ['scale-down', 'contain', 'cover', 'crop', 'pad'];
+        const fitValue = String(compositeParams.fit).toLowerCase();
+        
+        if (validFits.includes(fitValue)) {
+          drawObj.fit = fitValue;
+          logger.debug('Setting watermark fit mode', { fit: fitValue });
+        } else {
+          // Default to contain for invalid values
+          drawObj.fit = 'contain';
+          logger.debug('Setting default watermark fit mode for invalid value', { 
+            requestedFit: fitValue, 
+            defaultFit: 'contain' 
+          });
+        }
+      }
+      
       // Handle opacity (Cloudflare uses 0-1 range, Akamai uses 0-100)
       if (compositeParams.opacity !== undefined) {
-        drawObj.opacity = Math.max(0, Math.min(1, compositeParams.opacity / 100));
+        const opacityValue = parseInt(String(compositeParams.opacity), 10);
+        const normalizedOpacity = isNaN(opacityValue) 
+          ? 1 
+          : Math.max(0, Math.min(1, opacityValue / 100));
+          
+        drawObj.opacity = normalizedOpacity;
+        logger.debug('Setting watermark opacity', { 
+          akamaiOpacity: opacityValue, 
+          cloudflareOpacity: normalizedOpacity 
+        });
       }
       
       // Handle tiling
-      if (compositeParams.tile === true) {
+      if (compositeParams.tile === true || compositeParams.tile === 'true') {
         drawObj.repeat = true;
+        logger.debug('Setting watermark to repeat/tile');
+      } else if (compositeParams.repeat !== undefined) {
+        // Also support explicit repeat parameter
+        const repeatValue = String(compositeParams.repeat).toLowerCase();
+        if (repeatValue === 'true' || repeatValue === 'x' || repeatValue === 'y') {
+          drawObj.repeat = repeatValue === 'true' ? true : repeatValue;
+          logger.debug('Setting watermark repeat mode', { repeat: drawObj.repeat });
+        }
+      }
+      
+      // Handle background for watermark (usually for transparent PNGs)
+      if (compositeParams.background !== undefined) {
+        drawObj.background = String(compositeParams.background);
+        logger.debug('Setting watermark background', { background: drawObj.background });
+      }
+      
+      // Handle rotation for the watermark if specified
+      if (compositeParams.rotate !== undefined) {
+        const rotateValue = parseInt(String(compositeParams.rotate), 10);
+        if (!isNaN(rotateValue)) {
+          // Normalize rotation to 0, 90, 180, or 270 degrees (what Cloudflare supports)
+          const normalizedRotation = ((rotateValue % 360) + 360) % 360;
+          
+          if (normalizedRotation > 45 && normalizedRotation <= 135) {
+            drawObj.rotate = 90;
+          } else if (normalizedRotation > 135 && normalizedRotation <= 225) {
+            drawObj.rotate = 180;
+          } else if (normalizedRotation > 225 && normalizedRotation <= 315) {
+            drawObj.rotate = 270;
+          }
+          // If close to 0 or 360, no rotation needed
+          
+          if (drawObj.rotate !== undefined) {
+            logger.debug('Setting watermark rotation', { 
+              originalRotation: rotateValue, 
+              normalizedRotation: drawObj.rotate 
+            });
+          }
+        }
       }
       
       // Add to draw array
@@ -847,8 +930,13 @@ export function translateAkamaiParams(url: URL, config?: any): TransformOptions 
       logger.breadcrumb('Applied composite watermark', undefined, {
         url: compositeParams.url,
         placement: compositeParams.placement,
-        opacity: compositeParams.opacity,
-        tile: compositeParams.tile
+        width: drawObj.width,
+        height: drawObj.height,
+        fit: drawObj.fit,
+        opacity: drawObj.opacity,
+        repeat: drawObj.repeat,
+        background: drawObj.background,
+        rotate: drawObj.rotate
       });
     } catch (error) {
       logger.error('Failed to parse composite parameter', { 
@@ -914,17 +1002,43 @@ export function translateAkamaiParams(url: URL, config?: any): TransformOptions 
 function parseCompositeParams(composite: string): Record<string, any> {
   const result: Record<string, any> = {};
   
-  // Split by commas, but handle quoted values
-  const parts = splitParameters(composite);
+  // If empty or not a string, return empty object
+  if (!composite || typeof composite !== 'string') {
+    return result;
+  }
   
-  for (const part of parts) {
-    // Check for key:value or key=value format
-    const separator = part.includes(':') ? ':' : '=';
-    const [key, value] = part.split(separator).map(s => s.trim());
+  try {
+    // Split by commas, but handle quoted values
+    const parts = splitParameters(composite);
     
-    if (key && value !== undefined) {
+    for (const part of parts) {
+      // Skip empty parts
+      if (!part.trim()) {
+        continue;
+      }
+      
+      // Check for key:value or key=value format
+      let separator = '';
+      if (part.includes(':')) {
+        separator = ':';
+      } else if (part.includes('=')) {
+        separator = '=';
+      } else {
+        // Skip parts without a key-value separator
+        continue;
+      }
+      
+      const [key, ...valueParts] = part.split(separator);
+      // Join value parts in case the value itself contained the separator
+      const value = valueParts.join(separator).trim();
+      const trimmedKey = key.trim();
+      
+      if (!trimmedKey || value === undefined) {
+        continue;
+      }
+      
       // Special handling for url parameter
-      if (key === 'url') {
+      if (trimmedKey === 'url') {
         // Make sure the entire URL is preserved, not just the protocol part
         result.url = value;
         
@@ -937,43 +1051,95 @@ function parseCompositeParams(composite: string): Record<string, any> {
             result.url = 'https://' + urlPart.split(':')[0].trim();
           }
         }
+        
+        // Handle url with relative path (starting with /)
+        if (value.startsWith('/')) {
+          result.url = value;
+        }
       } 
       // Handle placement parameter
-      else if (key === 'placement') {
+      else if (trimmedKey === 'placement') {
         result.placement = value;
       }
-      // Handle opacity parameter (convert to 0-100)
-      else if (key === 'opacity') {
+      // Handle opacity parameter (keep as numeric value)
+      else if (trimmedKey === 'opacity') {
         const opacityValue = parseFloat(value);
         if (!isNaN(opacityValue)) {
           result.opacity = opacityValue;
         }
       }
       // Handle tile parameter (boolean)
-      else if (key === 'tile') {
+      else if (trimmedKey === 'tile') {
         result.tile = value.toLowerCase() === 'true';
       }
+      // Handle repeat parameter (could be boolean or 'x'/'y')
+      else if (trimmedKey === 'repeat') {
+        const lowerValue = value.toLowerCase();
+        if (lowerValue === 'true') {
+          result.repeat = true;
+        } else if (lowerValue === 'false') {
+          result.repeat = false;
+        } else if (lowerValue === 'x' || lowerValue === 'y') {
+          result.repeat = lowerValue;
+        }
+      }
       // Handle offset parameter
-      else if (key === 'offset') {
+      else if (trimmedKey === 'offset') {
         const offsetValue = parseFloat(value);
         if (!isNaN(offsetValue)) {
           result.offset = offsetValue;
         }
       }
-      // Other parameters
-      else {
-        // Convert to appropriate type (number, boolean, string)
-        if (value.toLowerCase() === 'true') {
-          result[key] = true;
-        } else if (value.toLowerCase() === 'false') {
-          result[key] = false;
-        } else if (!isNaN(Number(value))) {
-          result[key] = Number(value);
+      // Handle fit parameter (ensure valid value)
+      else if (trimmedKey === 'fit') {
+        const validFits = ['scale-down', 'contain', 'cover', 'crop', 'pad'];
+        const fitValue = value.toLowerCase();
+        
+        if (validFits.includes(fitValue)) {
+          result.fit = fitValue;
         } else {
-          result[key] = value;
+          // Default to contain for invalid values
+          result.fit = 'contain';
+        }
+      }
+      // Handle width and height parameters
+      else if (trimmedKey === 'width' || trimmedKey === 'height') {
+        const sizeValue = parseInt(value, 10);
+        if (!isNaN(sizeValue) && sizeValue > 0) {
+          result[trimmedKey] = sizeValue;
+        }
+      }
+      // Handle rotation parameter
+      else if (trimmedKey === 'rotate') {
+        const rotateValue = parseInt(value, 10);
+        if (!isNaN(rotateValue)) {
+          result.rotate = rotateValue;
+        }
+      }
+      // Handle background parameter
+      else if (trimmedKey === 'background') {
+        result.background = value;
+      }
+      // Other parameters - convert to appropriate type
+      else {
+        const lowerValue = value.toLowerCase();
+        if (lowerValue === 'true') {
+          result[trimmedKey] = true;
+        } else if (lowerValue === 'false') {
+          result[trimmedKey] = false;
+        } else if (!isNaN(Number(value)) && value.trim() !== '') {
+          result[trimmedKey] = Number(value);
+        } else {
+          result[trimmedKey] = value;
         }
       }
     }
+  } catch (error) {
+    // If there's an error during parsing, return empty object with the URL if available
+    if (result.url) {
+      return { url: result.url };
+    }
+    return {};
   }
   
   return result;
