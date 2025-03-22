@@ -15,6 +15,7 @@ import { AppError, NotFoundError, ValidationError, StorageError, TransformError,
 import { isAkamaiFormat, convertToCloudflareUrl, translateAkamaiParams, setLogger } from './utils/akamai-compatibility';
 import { createLogger, Logger } from './utils/logging';
 import { setLogger as setStorageLogger } from './storage';
+import { setConfig as setDetectorConfig } from './utils/detector';
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -41,6 +42,21 @@ export default {
     setStorageLogger(storageLogger);
     setTransformLogger(transformLogger);
     setDebugLogger(debugLogger);
+    
+    // Initialize detector with configuration if available
+    if (config.detector) {
+      setDetectorConfig(config.detector);
+      mainLogger.info('Client detector initialized with configuration', {
+        cacheSize: config.detector.cache.maxSize,
+        strategies: Object.keys(config.detector.strategies)
+          .filter(key => {
+            const strategy = config.detector?.strategies[key as keyof typeof config.detector.strategies];
+            return strategy?.enabled;
+          })
+          .join(', '),
+        hashAlgorithm: config.detector.hashAlgorithm || 'simple'
+      });
+    }
     
     // Use the main logger for this module
     const logger = mainLogger;

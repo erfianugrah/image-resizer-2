@@ -8,6 +8,7 @@
 // Define the configuration structure with TypeScript types
 import { PathTransforms } from './utils/path';
 import { Env } from './types';
+import { loadDetectorConfigFromEnv } from './utils/wrangler-config';
 
 // Define interfaces for cache tag configuration
 interface CacheTagsPathNormalization {
@@ -37,6 +38,121 @@ interface CacheTagsConfig {
   pathNormalization?: CacheTagsPathNormalization;
 }
 
+/**
+ * Configuration for the Client Detector framework
+ */
+export interface DetectorConfig {
+  cache: {
+    maxSize: number;       // Maximum cache entries
+    pruneAmount: number;   // How many to prune when limit reached
+    enableCache: boolean;  // Allow disabling cache entirely
+    ttl?: number;          // Optional TTL in milliseconds
+  };
+  strategies: {
+    clientHints: {
+      priority: number;
+      enabled: boolean;
+    };
+    acceptHeader: {
+      priority: number;
+      enabled: boolean;
+    };
+    userAgent: {
+      priority: number;
+      enabled: boolean;
+      maxUALength: number; // Max user agent length to process
+    };
+    staticData: {
+      priority: number;
+      enabled: boolean;
+    };
+    defaults: {
+      priority: number;
+      enabled: boolean;
+    };
+  };
+  performanceBudget: {
+    quality: {
+      low: {
+        min: number;
+        max: number;
+        target: number;
+      };
+      medium: {
+        min: number;
+        max: number;
+        target: number;
+      };
+      high: {
+        min: number;
+        max: number;
+        target: number;
+      };
+    };
+    dimensions: {
+      maxWidth: {
+        low: number;
+        medium: number;
+        high: number;
+      };
+      maxHeight: {
+        low: number;
+        medium: number;
+        high: number;
+      };
+    };
+    preferredFormats: {
+      low: string[];    // Ordered list of formats for low-end
+      medium: string[]; // Ordered list of formats for medium
+      high: string[];   // Ordered list of formats for high-end
+    };
+  };
+  
+  // New cascade configuration
+  cascade?: {
+    // Format selection cascade
+    format: {
+      enabled: boolean;           // Enable format cascade
+      acceptHeaderPriority: number;  // Priority for Accept header detection
+      clientHintsPriority: number;   // Priority for client hints detection
+      browserDetectionPriority: number; // Priority for browser detection
+      fallbackFormat: string;     // Default format when no detection works
+    };
+    // Quality selection cascade
+    quality: {
+      enabled: boolean;           // Enable quality cascade 
+      saveDataPriority: number;   // Priority for Save-Data header
+      networkConditionPriority: number; // Priority for network conditions
+      deviceCapabilityPriority: number; // Priority for device capabilities
+      dprAdjustmentEnabled: boolean; // Enable DPR-based quality adjustment
+      deviceMemoryThresholds: {
+        high: number;             // Memory threshold for high quality (in GB)
+        low: number;              // Memory threshold for low quality (in GB)
+      };
+      processorThresholds: {
+        high: number;             // CPU cores threshold for high quality
+        low: number;              // CPU cores threshold for low quality
+      };
+      adjustmentFactors: {
+        slowNetwork: number;      // Quality adjustment factor for slow networks
+        fastNetwork: number;      // Quality adjustment factor for fast networks
+        dprAdjustment: number;    // Quality adjustment per DPR point above 1
+      };
+    };
+  };
+  deviceClassification: {
+    thresholds: {
+      lowEnd: number;   // Score below this is low-end
+      highEnd: number;  // Score above this is high-end
+    };
+    platformScores?: {
+      [platform: string]: number; // Base score for platforms (deprecated, using client hints instead)
+    };
+  };
+  hashAlgorithm: 'simple' | 'fnv1a' | 'md5';  // Configurable hash algorithm
+  logLevel: 'debug' | 'info' | 'warn' | 'error';
+}
+
 export interface ImageResizerConfig {
   // Core configuration
   environment: 'development' | 'staging' | 'production';
@@ -47,6 +163,9 @@ export interface ImageResizerConfig {
     enableAkamaiCompatibility?: boolean;
     enableAkamaiAdvancedFeatures?: boolean;
   };
+  
+  // Client Detector configuration
+  detector?: DetectorConfig;
   
   // Debug settings
   debug: {
@@ -216,6 +335,91 @@ export const defaultConfig: ImageResizerConfig = {
   features: {
     enableAkamaiCompatibility: false,
     enableAkamaiAdvancedFeatures: false
+  },
+  
+  // Default detector configuration
+  detector: {
+    cache: {
+      maxSize: 1000,
+      pruneAmount: 100,
+      enableCache: true,
+      ttl: 3600000 // 1 hour in milliseconds
+    },
+    strategies: {
+      clientHints: {
+        priority: 100,
+        enabled: true
+      },
+      acceptHeader: {
+        priority: 80,
+        enabled: true
+      },
+      userAgent: {
+        priority: 60,
+        enabled: true,
+        maxUALength: 100
+      },
+      staticData: {
+        priority: 20,
+        enabled: true
+      },
+      defaults: {
+        priority: 0,
+        enabled: true
+      }
+    },
+    performanceBudget: {
+      quality: {
+        low: {
+          min: 60,
+          max: 80,
+          target: 70
+        },
+        medium: {
+          min: 65,
+          max: 85,
+          target: 75
+        },
+        high: {
+          min: 70,
+          max: 95,
+          target: 85
+        }
+      },
+      dimensions: {
+        maxWidth: {
+          low: 1000,
+          medium: 1500,
+          high: 2500
+        },
+        maxHeight: {
+          low: 1000,
+          medium: 1500,
+          high: 2500
+        }
+      },
+      preferredFormats: {
+        low: ['webp', 'jpeg'],
+        medium: ['webp', 'avif', 'jpeg'],
+        high: ['avif', 'webp', 'jpeg']
+      }
+    },
+    deviceClassification: {
+      thresholds: {
+        lowEnd: 30,
+        highEnd: 70
+      },
+      platformScores: {
+        'iOS': 70,
+        'macOS': 70,
+        'Windows': 50,
+        'Android': 40,
+        'Linux': 60,
+        'Chrome OS': 50
+      }
+    },
+    hashAlgorithm: 'simple',
+    logLevel: 'info'
   },
   
   debug: {
@@ -457,6 +661,90 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
       enableAkamaiCompatibility: true, // Enable in development for testing
       enableAkamaiAdvancedFeatures: true // Enable advanced features in development
     },
+    // Development-specific detector configuration
+    detector: {
+      cache: {
+        maxSize: 500, // Smaller cache in development
+        pruneAmount: 50,
+        enableCache: true,
+        ttl: 60000 // 1 minute cache in dev
+      },
+      strategies: {
+        clientHints: {
+          priority: 100,
+          enabled: true
+        },
+        acceptHeader: {
+          priority: 80,
+          enabled: true
+        },
+        userAgent: {
+          priority: 60,
+          enabled: true,
+          maxUALength: 200 // Process longer UAs for better debugging
+        },
+        staticData: {
+          priority: 20,
+          enabled: true
+        },
+        defaults: {
+          priority: 0,
+          enabled: true
+        }
+      },
+      performanceBudget: {
+        quality: {
+          low: {
+            min: 60,
+            max: 80,
+            target: 70
+          },
+          medium: {
+            min: 65,
+            max: 85,
+            target: 75
+          },
+          high: {
+            min: 70,
+            max: 95,
+            target: 85
+          }
+        },
+        dimensions: {
+          maxWidth: {
+            low: 1000,
+            medium: 1500,
+            high: 2500
+          },
+          maxHeight: {
+            low: 1000,
+            medium: 1500,
+            high: 2500
+          }
+        },
+        preferredFormats: {
+          low: ['webp', 'jpeg'],
+          medium: ['webp', 'avif', 'jpeg'],
+          high: ['avif', 'webp', 'jpeg']
+        }
+      },
+      deviceClassification: {
+        thresholds: {
+          lowEnd: 30,
+          highEnd: 70
+        },
+        platformScores: {
+          'iOS': 70,
+          'macOS': 70,
+          'Windows': 50,
+          'Android': 40,
+          'Linux': 60,
+          'Chrome OS': 50
+        }
+      },
+      hashAlgorithm: 'simple',
+      logLevel: 'debug' // More verbose logging in development
+    },
     debug: { 
       enabled: true,
       verbose: true,
@@ -553,6 +841,90 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
       enableAkamaiCompatibility: true, // Enable in staging for testing 
       enableAkamaiAdvancedFeatures: true // Enable advanced features in staging
     },
+    // Staging-specific detector configuration
+    detector: {
+      cache: {
+        maxSize: 2000, // Medium cache in staging
+        pruneAmount: 200,
+        enableCache: true,
+        ttl: 600000 // 10 minutes in staging
+      },
+      strategies: {
+        clientHints: {
+          priority: 100,
+          enabled: true
+        },
+        acceptHeader: {
+          priority: 80,
+          enabled: true
+        },
+        userAgent: {
+          priority: 60,
+          enabled: true,
+          maxUALength: 150 // Moderately long UAs in staging
+        },
+        staticData: {
+          priority: 20,
+          enabled: true
+        },
+        defaults: {
+          priority: 0,
+          enabled: true
+        }
+      },
+      performanceBudget: {
+        quality: {
+          low: {
+            min: 60,
+            max: 80,
+            target: 70
+          },
+          medium: {
+            min: 65,
+            max: 85,
+            target: 75
+          },
+          high: {
+            min: 70,
+            max: 95,
+            target: 85
+          }
+        },
+        dimensions: {
+          maxWidth: {
+            low: 1000,
+            medium: 1500,
+            high: 2500
+          },
+          maxHeight: {
+            low: 1000,
+            medium: 1500,
+            high: 2500
+          }
+        },
+        preferredFormats: {
+          low: ['webp', 'jpeg'],
+          medium: ['webp', 'avif', 'jpeg'],
+          high: ['avif', 'webp', 'jpeg']
+        }
+      },
+      deviceClassification: {
+        thresholds: {
+          lowEnd: 30,
+          highEnd: 70
+        },
+        platformScores: {
+          'iOS': 70,
+          'macOS': 70,
+          'Windows': 50,
+          'Android': 40,
+          'Linux': 60,
+          'Chrome OS': 50
+        }
+      },
+      hashAlgorithm: 'simple',
+      logLevel: 'info' // Standard logging in staging
+    },
     debug: { 
       enabled: true,
       verbose: true,
@@ -639,6 +1011,91 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
     features: {
       enableAkamaiCompatibility: false, // Initially disabled in production
       enableAkamaiAdvancedFeatures: false // Initially disabled in production
+    },
+    // Production-specific detector configuration
+    detector: {
+      cache: {
+        maxSize: 5000, // Larger cache in production for better performance
+        pruneAmount: 500,
+        enableCache: true,
+        ttl: 3600000 // 1 hour in production
+      },
+      strategies: {
+        clientHints: {
+          priority: 100,
+          enabled: true
+        },
+        acceptHeader: {
+          priority: 80,
+          enabled: true
+        },
+        userAgent: {
+          priority: 60,
+          enabled: true,
+          maxUALength: 100 // Standard UA length in production
+        },
+        staticData: {
+          priority: 20,
+          enabled: true
+        },
+        defaults: {
+          priority: 0,
+          enabled: true
+        }
+      },
+      performanceBudget: {
+        // Slightly higher quality targets for production
+        quality: {
+          low: {
+            min: 65,
+            max: 85,
+            target: 75
+          },
+          medium: {
+            min: 70,
+            max: 90,
+            target: 80
+          },
+          high: {
+            min: 75,
+            max: 95,
+            target: 90
+          }
+        },
+        dimensions: {
+          maxWidth: {
+            low: 1000,
+            medium: 1500,
+            high: 2500
+          },
+          maxHeight: {
+            low: 1000,
+            medium: 1500,
+            high: 2500
+          }
+        },
+        preferredFormats: {
+          low: ['webp', 'jpeg'],
+          medium: ['webp', 'avif', 'jpeg'],
+          high: ['avif', 'webp', 'jpeg']
+        }
+      },
+      deviceClassification: {
+        thresholds: {
+          lowEnd: 30,
+          highEnd: 70
+        },
+        platformScores: {
+          'iOS': 70,
+          'macOS': 70,
+          'Windows': 50,
+          'Android': 40,
+          'Linux': 60,
+          'Chrome OS': 50
+        }
+      },
+      hashAlgorithm: 'fnv1a', // Use more efficient hashing in production
+      logLevel: 'warn' // Only log warnings and errors in production
     },
     debug: { 
       enabled: false,
@@ -1243,6 +1700,35 @@ export function getConfig(env: Env): ImageResizerConfig {
       }
     }
   });
+  
+  // Load detector configuration from environment variables
+  if (!config.detector) {
+    // If no detector config exists yet, create one from environment variables
+    const detectorConfig = loadDetectorConfigFromEnv(env);
+    if (Object.keys(detectorConfig).length > 0) {
+      config.detector = detectorConfig as DetectorConfig;
+    }
+  } else {
+    // Merge environment values with existing detector config
+    const detectorEnvConfig = loadDetectorConfigFromEnv(env);
+    
+    // Merge cache configuration
+    if (detectorEnvConfig.cache && config.detector.cache) {
+      config.detector.cache = {
+        ...config.detector.cache,
+        ...detectorEnvConfig.cache
+      };
+    }
+    
+    // Set hash algorithm and log level if provided
+    if (detectorEnvConfig.hashAlgorithm) {
+      config.detector.hashAlgorithm = detectorEnvConfig.hashAlgorithm;
+    }
+    
+    if (detectorEnvConfig.logLevel) {
+      config.detector.logLevel = detectorEnvConfig.logLevel;
+    }
+  }
   
   return config;
 }

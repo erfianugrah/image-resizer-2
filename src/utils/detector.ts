@@ -122,6 +122,36 @@ function getConfig(): DetectorConfig {
           high: ['avif', 'webp', 'jpeg']
         }
       },
+      // Default cascade configuration
+      cascade: {
+        format: {
+          enabled: true,
+          acceptHeaderPriority: 100,
+          clientHintsPriority: 80,
+          browserDetectionPriority: 60,
+          fallbackFormat: 'jpeg'
+        },
+        quality: {
+          enabled: true,
+          saveDataPriority: 100,
+          networkConditionPriority: 80,
+          deviceCapabilityPriority: 60,
+          dprAdjustmentEnabled: true,
+          deviceMemoryThresholds: {
+            high: 8,
+            low: 2
+          },
+          processorThresholds: {
+            high: 8,
+            low: 2
+          },
+          adjustmentFactors: {
+            slowNetwork: 0.85,
+            fastNetwork: 1.1,
+            dprAdjustment: 5
+          }
+        }
+      },
       deviceClassification: {
         thresholds: {
           lowEnd: 30,
@@ -1273,85 +1303,185 @@ export class ClientDetector {
     const formatSupport = capabilities.formats;
     
     // Format selection (if auto format is requested)
-    // Cascade from most explicit to least explicit signals
+    // Cascade from most explicit to least explicit signals based on configuration
     if (options.format === 'auto' || options.format === undefined) {
+      // Get cascade configuration
+      const formatCascade = detectorConfig.cascade?.format;
+      const formatCascadeEnabled = formatCascade?.enabled !== false; // Default to true if not specified
+      
       logger.breadcrumb('Determining optimized format using cascading priority', undefined, {
         autoFormat: true,
+        cascadeEnabled: formatCascadeEnabled,
         acceptHeaderSource: formatSupport.source === 'accept-header',
         browserSource: formatSupport.source,
         avifSupport: formatSupport.avif,
         webpSupport: formatSupport.webp
       });
       
-      // Check format support using the most reliable method we have
-      if (formatSupport.avif && formatSupport.source === 'accept-header') {
-        // Accept header is most reliable - client explicitly says it supports AVIF
-        optimizations.format = 'avif';
-        logger.debug('Format selected based on Accept header', { format: 'avif' });
-        logger.breadcrumb('Format selection decision', undefined, {
-          format: 'avif',
-          decisionSource: 'accept-header',
-          decisionTier: 'explicit',
-          priority: 'highest'
-        });
-      } 
-      else if (formatSupport.webp && formatSupport.source === 'accept-header') {
-        // Accept header indicates WebP support but not AVIF
-        optimizations.format = 'webp';
-        logger.debug('Format selected based on Accept header', { format: 'webp' });
-        logger.breadcrumb('Format selection decision', undefined, {
-          format: 'webp',
-          decisionSource: 'accept-header',
-          decisionTier: 'explicit',
-          priority: 'high'
-        });
+      // If cascade is disabled, use the old performance budget approach
+      if (!formatCascadeEnabled) {
+        // Select preferred format based on device score
+        const score = deviceCapabilities.score || 50;
+        const preferredFormats = score >= detectorConfig.deviceClassification.thresholds.highEnd
+          ? detectorConfig.performanceBudget.preferredFormats.high
+          : score < detectorConfig.deviceClassification.thresholds.lowEnd
+            ? detectorConfig.performanceBudget.preferredFormats.low
+            : detectorConfig.performanceBudget.preferredFormats.medium;
+        
+        // Use the first supported format from the preferred formats list
+        let formatSelected = false;
+        for (const format of preferredFormats) {
+          if ((format === 'avif' && formatSupport.avif) || 
+              (format === 'webp' && formatSupport.webp) ||
+              format === 'jpeg' || format === 'png') {
+            optimizations.format = format;
+            formatSelected = true;
+            
+            logger.breadcrumb('Format selection using performance budget', undefined, {
+              format,
+              deviceScore: score,
+              budgetTier: score >= detectorConfig.deviceClassification.thresholds.highEnd ? 'high' :
+                         score < detectorConfig.deviceClassification.thresholds.lowEnd ? 'low' : 'medium',
+              preferredFormats: preferredFormats.join(',')
+            });
+            
+            break;
+          }
+        }
+        
+        // Fallback if no format was selected
+        if (!formatSelected) {
+          optimizations.format = 'jpeg';
+          logger.breadcrumb('Fallback format selected', undefined, {
+            format: 'jpeg',
+            reason: 'No matching format in preferred list'
+          });
+        }
       }
-      else if (formatSupport.avif) {
-        // Other detection methods indicate AVIF support
-        optimizations.format = 'avif';
-        logger.debug('Format selected based on browser detection', { 
-          format: 'avif', 
-          source: formatSupport.source
-        });
-        logger.breadcrumb('Format selection decision', undefined, {
-          format: 'avif',
-          decisionSource: formatSupport.source,
-          decisionTier: 'browser-detection',
-          priority: 'medium'
-        });
-      }
-      else if (formatSupport.webp) {
-        // Other detection methods indicate WebP support
-        optimizations.format = 'webp';
-        logger.debug('Format selected based on browser detection', { 
-          format: 'webp', 
-          source: formatSupport.source 
-        });
-        logger.breadcrumb('Format selection decision', undefined, {
-          format: 'webp',
-          decisionSource: formatSupport.source,
-          decisionTier: 'browser-detection',
-          priority: 'medium-low'
-        });
-      }
+      // Use the configurable cascade approach
       else {
-        // No modern format support detected, use JPEG
-        optimizations.format = 'jpeg';
-        logger.debug('Format defaulted to JPEG due to no modern format support');
-        logger.breadcrumb('Format selection decision', undefined, {
-          format: 'jpeg',
-          decisionSource: 'default-fallback',
-          decisionTier: 'fallback',
-          priority: 'lowest'
-        });
+        // Build an array of detection methods sorted by priority
+        type DetectionMethod = {
+          name: string;
+          priority: number;
+          check: () => {format: string | null, source: string} | null;
+        };
+        
+        const detectionMethods: DetectionMethod[] = [
+          // Accept header detection
+          {
+            name: 'accept-header',
+            priority: formatCascade?.acceptHeaderPriority || 100,
+            check: () => {
+              if (formatSupport.source === 'accept-header') {
+                if (formatSupport.avif) {
+                  return {format: 'avif', source: 'accept-header'};
+                } else if (formatSupport.webp) {
+                  return {format: 'webp', source: 'accept-header'};
+                }
+              }
+              return null;
+            }
+          },
+          // Client hints detection
+          {
+            name: 'client-hints',
+            priority: formatCascade?.clientHintsPriority || 80,
+            check: () => {
+              // Client hints about format support would be in formatSupport, but check source
+              if (formatSupport.source === 'client-hints') {
+                if (formatSupport.avif) {
+                  return {format: 'avif', source: 'client-hints'};
+                } else if (formatSupport.webp) {
+                  return {format: 'webp', source: 'client-hints'};
+                }
+              }
+              return null;
+            }
+          },
+          // Browser detection
+          {
+            name: 'browser-detection',
+            priority: formatCascade?.browserDetectionPriority || 60,
+            check: () => {
+              if (formatSupport.source === 'user-agent' || formatSupport.source === 'static-data') {
+                if (formatSupport.avif) {
+                  return {format: 'avif', source: formatSupport.source};
+                } else if (formatSupport.webp) {
+                  return {format: 'webp', source: formatSupport.source};
+                }
+              }
+              return null;
+            }
+          }
+        ];
+        
+        // Sort by priority (highest first)
+        detectionMethods.sort((a, b) => b.priority - a.priority);
+        
+        // Try each method in priority order
+        let formatSelected = false;
+        for (const method of detectionMethods) {
+          const result = method.check();
+          if (result) {
+            optimizations.format = result.format;
+            formatSelected = true;
+            
+            // Log the decision with priorities
+            const priorityLabels: Record<string, string> = {
+              'accept-header': 'explicit',
+              'client-hints': 'semi-explicit',
+              'browser-detection': 'browser-detection',
+            };
+            
+            logger.debug(`Format selected based on ${method.name}`, { 
+              format: result.format, 
+              source: result.source,
+              priority: method.priority
+            });
+            
+            logger.breadcrumb('Format selection decision', undefined, {
+              format: result.format,
+              decisionSource: result.source,
+              decisionMethod: method.name,
+              decisionTier: priorityLabels[method.name] || 'unknown',
+              configuredPriority: method.priority
+            });
+            
+            break;
+          }
+        }
+        
+        // Fallback if no method worked
+        if (!formatSelected) {
+          const fallbackFormat = formatCascade?.fallbackFormat || 'jpeg';
+          optimizations.format = fallbackFormat;
+          
+          logger.debug('Format defaulted to fallback format', {
+            format: fallbackFormat,
+            reason: 'No detection method succeeded'
+          });
+          
+          logger.breadcrumb('Format selection decision', undefined, {
+            format: fallbackFormat,
+            decisionSource: 'config-fallback',
+            decisionTier: 'fallback',
+            configuredFallback: fallbackFormat
+          });
+        }
       }
     }
     
     // Quality selection (if not specified)
-    // Cascade from explicit signals to reasonable defaults
+    // Cascade from explicit signals to reasonable defaults based on configuration
     if (!options.quality && optimizations.quality === undefined) {
+      // Get cascade configuration
+      const qualityCascade = detectorConfig.cascade?.quality;
+      const qualityCascadeEnabled = qualityCascade?.enabled !== false; // Default to true if not specified
+      
       logger.breadcrumb('Determining optimized quality using cascading priority', undefined, {
         autoQuality: true,
+        cascadeEnabled: qualityCascadeEnabled,
         hasSaveData: !!capabilities.clientHints.saveData,
         networkTier: networkQuality.tier,
         hasDeviceMemory: deviceCapabilities.memory !== undefined,
@@ -1361,164 +1491,203 @@ export class ClientDetector {
         dpr: capabilities.clientHints.dpr
       });
 
-      // Start with standard quality from config
-      const baseQuality = detectorConfig.performanceBudget?.quality?.medium?.target || 75;
-      let targetQuality = baseQuality;
-      let qualitySource = 'default';
-      let priorityTier = 'default';
-      
-      // First priority: Check for Save-Data header (most explicit user preference)
-      if (capabilities.clientHints.saveData) {
-        // User explicitly wants to save data, use lowest quality
-        targetQuality = detectorConfig.performanceBudget?.quality?.low?.min || 60;
-        qualitySource = 'save-data';
-        priorityTier = 'explicit-user-preference';
+      // If cascade is disabled, use device score directly
+      if (!qualityCascadeEnabled) {
+        // Select quality based on device score from performance budget
+        const score = deviceCapabilities.score || 50;
+        let targetQuality: number;
         
-        logger.breadcrumb('Quality decision - Save-Data detected', undefined, {
-          newQuality: targetQuality,
-          originalQuality: baseQuality,
-          decisionTier: 'explicit-user-preference',
-          priority: 'highest'
-        });
-      }
-      // Second priority: Check network conditions
-      else if (networkQuality.tier === 'slow') {
-        // Slow network detected, reduce quality
-        targetQuality = Math.floor(baseQuality * 0.85);
-        qualitySource = 'network-slow';
-        priorityTier = 'network-condition';
+        if (score >= detectorConfig.deviceClassification.thresholds.highEnd) {
+          targetQuality = detectorConfig.performanceBudget.quality.high.target;
+        } else if (score < detectorConfig.deviceClassification.thresholds.lowEnd) {
+          targetQuality = detectorConfig.performanceBudget.quality.low.target;
+        } else {
+          targetQuality = detectorConfig.performanceBudget.quality.medium.target;
+        }
         
-        logger.breadcrumb('Quality decision - Slow network detected', undefined, {
-          newQuality: targetQuality,
-          originalQuality: baseQuality,
-          adjustmentFactor: 0.85,
-          decisionTier: 'network-condition',
-          priority: 'high'
-        });
-      }
-      else if (networkQuality.tier === 'fast') {
-        // Fast network detected, can use higher quality
-        const maxQuality = detectorConfig.performanceBudget?.quality?.high?.max || 90;
-        targetQuality = Math.min(Math.floor(baseQuality * 1.1), maxQuality);
-        qualitySource = 'network-fast';
-        priorityTier = 'network-condition';
-        
-        logger.breadcrumb('Quality decision - Fast network detected', undefined, {
-          newQuality: targetQuality,
-          originalQuality: baseQuality,
-          adjustmentFactor: 1.1,
-          maxAllowed: maxQuality,
-          decisionTier: 'network-condition', 
-          priority: 'high'
-        });
-      }
-      // Third priority: Check device capabilities if we have them
-      else if (deviceCapabilities.memory !== undefined || deviceCapabilities.processors !== undefined) {
-        // We have actual device capability metrics, use them to adjust quality
-        if (deviceCapabilities.memory && deviceCapabilities.memory >= 8) {
-          // High memory device can handle higher quality
-          targetQuality = detectorConfig.performanceBudget?.quality?.high?.target || 85;
-          qualitySource = 'device-memory-high';
-          priorityTier = 'device-capability';
-          
-          logger.breadcrumb('Quality decision - High memory device', undefined, {
-            newQuality: targetQuality,
-            originalQuality: baseQuality,
-            deviceMemory: deviceCapabilities.memory,
-            threshold: '≥8GB',
-            decisionTier: 'device-capability',
-            priority: 'medium-high'
-          });
-        }
-        else if (deviceCapabilities.memory && deviceCapabilities.memory <= 2) {
-          // Low memory device needs lower quality
-          targetQuality = detectorConfig.performanceBudget?.quality?.low?.target || 70;
-          qualitySource = 'device-memory-low';
-          priorityTier = 'device-capability';
-          
-          logger.breadcrumb('Quality decision - Low memory device', undefined, {
-            newQuality: targetQuality,
-            originalQuality: baseQuality,
-            deviceMemory: deviceCapabilities.memory,
-            threshold: '≤2GB',
-            decisionTier: 'device-capability',
-            priority: 'medium-high'
-          });
-        }
-        else if (deviceCapabilities.processors && deviceCapabilities.processors >= 8) {
-          // Many CPU cores indicates a powerful device
-          targetQuality = detectorConfig.performanceBudget?.quality?.high?.target || 85;
-          qualitySource = 'device-cpu-high';
-          priorityTier = 'device-capability';
-          
-          logger.breadcrumb('Quality decision - High CPU core count', undefined, {
-            newQuality: targetQuality,
-            originalQuality: baseQuality,
-            processorCores: deviceCapabilities.processors,
-            threshold: '≥8 cores',
-            decisionTier: 'device-capability',
-            priority: 'medium'
-          });
-        }
-        else if (deviceCapabilities.processors && deviceCapabilities.processors <= 2) {
-          // Few CPU cores indicates a less powerful device
-          targetQuality = detectorConfig.performanceBudget?.quality?.low?.target || 70;
-          qualitySource = 'device-cpu-low';
-          priorityTier = 'device-capability';
-          
-          logger.breadcrumb('Quality decision - Low CPU core count', undefined, {
-            newQuality: targetQuality,
-            originalQuality: baseQuality,
-            processorCores: deviceCapabilities.processors,
-            threshold: '≤2 cores',
-            decisionTier: 'device-capability',
-            priority: 'medium'
-          });
-        }
-      }
-      else {
-        // No specific signals, using default quality
-        logger.breadcrumb('Quality decision - Using default quality', undefined, {
+        logger.breadcrumb('Quality selection using device score', undefined, {
           quality: targetQuality,
-          reason: 'no-specific-signals',
-          decisionTier: 'default',
-          priority: 'low'
+          deviceScore: score,
+          budgetTier: score >= detectorConfig.deviceClassification.thresholds.highEnd ? 'high' :
+                     score < detectorConfig.deviceClassification.thresholds.lowEnd ? 'low' : 'medium'
         });
-      }
-      
-      // Apply DPR adjustment if available
-      if (capabilities.clientHints.dpr && capabilities.clientHints.dpr > 1) {
-        // Higher DPR screens need higher quality images
-        const originalQuality = targetQuality;
-        targetQuality = Math.min(targetQuality + 5, 95);
-        qualitySource += '-dpr-adjusted';
         
-        logger.breadcrumb('Quality decision - DPR adjustment applied', undefined, {
-          newQuality: targetQuality,
-          previousQuality: originalQuality,
-          dpr: capabilities.clientHints.dpr,
-          adjustment: +5,
-          maxCap: 95,
-          decisionTier: 'enhancement',
-          priority: 'low'
+        // Set the final quality value
+        optimizations.quality = targetQuality;
+      }
+      // Use the configurable quality cascade
+      else {
+        // Start with standard quality from config
+        const baseQuality = detectorConfig.performanceBudget?.quality?.medium?.target || 75;
+        let targetQuality = baseQuality;
+        let qualitySource = 'default';
+        let priorityTier = 'default';
+        
+        // Build an array of quality decision methods sorted by priority
+        type QualityMethod = {
+          name: string;
+          priority: number;
+          check: () => {quality: number, source: string} | null;
+        };
+        
+        const qualityMethods: QualityMethod[] = [
+          // Save-Data header - highest priority
+          {
+            name: 'save-data',
+            priority: qualityCascade?.saveDataPriority || 100,
+            check: () => {
+              if (capabilities.clientHints.saveData) {
+                return {
+                  quality: detectorConfig.performanceBudget?.quality?.low?.min || 60,
+                  source: 'save-data'
+                };
+              }
+              return null;
+            }
+          },
+          // Network conditions
+          {
+            name: 'network-condition',
+            priority: qualityCascade?.networkConditionPriority || 80,
+            check: () => {
+              if (networkQuality.tier === 'slow') {
+                const factor = qualityCascade?.adjustmentFactors?.slowNetwork || 0.85;
+                return {
+                  quality: Math.floor(baseQuality * factor),
+                  source: 'network-slow'
+                };
+              } 
+              else if (networkQuality.tier === 'fast') {
+                const factor = qualityCascade?.adjustmentFactors?.fastNetwork || 1.1;
+                const maxQuality = detectorConfig.performanceBudget?.quality?.high?.max || 90;
+                return {
+                  quality: Math.min(Math.floor(baseQuality * factor), maxQuality),
+                  source: 'network-fast'
+                };
+              }
+              return null;
+            }
+          },
+          // Device memory
+          {
+            name: 'device-memory',
+            priority: qualityCascade?.deviceCapabilityPriority || 60,
+            check: () => {
+              const highThreshold = qualityCascade?.deviceMemoryThresholds?.high || 8;
+              const lowThreshold = qualityCascade?.deviceMemoryThresholds?.low || 2;
+              
+              if (deviceCapabilities.memory !== undefined) {
+                if (deviceCapabilities.memory >= highThreshold) {
+                  return {
+                    quality: detectorConfig.performanceBudget?.quality?.high?.target || 85,
+                    source: 'device-memory-high'
+                  };
+                } 
+                else if (deviceCapabilities.memory <= lowThreshold) {
+                  return {
+                    quality: detectorConfig.performanceBudget?.quality?.low?.target || 70,
+                    source: 'device-memory-low'
+                  };
+                }
+              }
+              
+              // Try processors if memory didn't yield a result
+              const highProcessorThreshold = qualityCascade?.processorThresholds?.high || 8;
+              const lowProcessorThreshold = qualityCascade?.processorThresholds?.low || 2;
+              
+              if (deviceCapabilities.processors !== undefined) {
+                if (deviceCapabilities.processors >= highProcessorThreshold) {
+                  return {
+                    quality: detectorConfig.performanceBudget?.quality?.high?.target || 85,
+                    source: 'device-cpu-high'
+                  };
+                } 
+                else if (deviceCapabilities.processors <= lowProcessorThreshold) {
+                  return {
+                    quality: detectorConfig.performanceBudget?.quality?.low?.target || 70,
+                    source: 'device-cpu-low'
+                  };
+                }
+              }
+              
+              return null;
+            }
+          }
+        ];
+        
+        // Sort methods by priority
+        qualityMethods.sort((a, b) => b.priority - a.priority);
+        
+        // Try each method in priority order
+        let qualitySelected = false;
+        
+        for (const method of qualityMethods) {
+          const result = method.check();
+          if (result) {
+            targetQuality = result.quality;
+            qualitySource = result.source;
+            priorityTier = method.name;
+            qualitySelected = true;
+            
+            logger.breadcrumb(`Quality decision - ${method.name}`, undefined, {
+              newQuality: targetQuality,
+              originalQuality: baseQuality,
+              source: result.source,
+              decisionMethod: method.name,
+              decisionTier: method.name,
+              configuredPriority: method.priority
+            });
+            
+            break;
+          }
+        }
+        
+        // If no method was successful, use default
+        if (!qualitySelected) {
+          logger.breadcrumb('Quality decision - Using default quality', undefined, {
+            quality: targetQuality,
+            reason: 'no-specific-signals',
+            decisionTier: 'default',
+            priority: 'low'
+          });
+        }
+        
+        // Apply DPR adjustment if enabled and available
+        if (qualityCascade?.dprAdjustmentEnabled !== false && capabilities.clientHints.dpr && capabilities.clientHints.dpr > 1) {
+          // Higher DPR screens need higher quality images
+          const originalQuality = targetQuality;
+          const dprAdjustment = qualityCascade?.adjustmentFactors?.dprAdjustment || 5;
+          targetQuality = Math.min(targetQuality + dprAdjustment, 95);
+          qualitySource += '-dpr-adjusted';
+          
+          logger.breadcrumb('Quality decision - DPR adjustment applied', undefined, {
+            newQuality: targetQuality,
+            previousQuality: originalQuality,
+            dpr: capabilities.clientHints.dpr,
+            adjustment: dprAdjustment,
+            maxCap: 95,
+            decisionTier: 'enhancement',
+            configuredAdjustment: dprAdjustment
+          });
+        }
+        
+        // Set the final quality value
+        optimizations.quality = targetQuality;
+        
+        logger.debug('Quality selected based on cascade', { 
+          quality: targetQuality,
+          source: qualitySource
+        });
+        
+        logger.breadcrumb('Final quality decision', undefined, {
+          finalQuality: targetQuality,
+          primarySource: qualitySource,
+          decisionTier: priorityTier,
+          hasDeviceInfo: deviceCapabilities.memory !== undefined || deviceCapabilities.processors !== undefined,
+          deviceScore: deviceCapabilities.score || 0,
+          cascadeEnabled: qualityCascadeEnabled
         });
       }
-      
-      // Set the final quality value
-      optimizations.quality = targetQuality;
-      
-      logger.debug('Quality selected based on cascade', { 
-        quality: targetQuality,
-        source: qualitySource
-      });
-      
-      logger.breadcrumb('Final quality decision', undefined, {
-        finalQuality: targetQuality,
-        primarySource: qualitySource,
-        decisionTier: priorityTier,
-        hasDeviceInfo: deviceCapabilities.memory !== undefined || deviceCapabilities.processors !== undefined,
-        deviceScore: deviceCapabilities.score || 0
-      });
     }
     
     // Record all cascading decision results for debugging
