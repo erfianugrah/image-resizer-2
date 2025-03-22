@@ -63,6 +63,7 @@ export interface ClientCapabilities {
   performance: PerformanceBudget;
   clientHints: ClientHintsData;
   detectionTime: number;
+  detectionSource?: string;
   optimizedFor?: {
     saveData?: boolean;
     reducedMotion?: boolean;
@@ -77,16 +78,46 @@ const detectionCache = new Map<string, ClientCapabilities>();
 
 /**
  * Generate a cache key for the detection result
+ * OPTIMIZATION: Use a fast hash generation approach for cache keys
  */
 function generateCacheKey(request: Request): string {
+  // Only extract the parts of headers we need for the key
   const userAgent = request.headers.get('User-Agent') || 'unknown';
+  // Hash the user agent to avoid storing long strings
+  const uaHash = hashString(userAgent);
+  
+  // Get the minimal set of headers needed for reliable caching
   const acceptHeader = request.headers.get('Accept') || '';
+  const acceptHash = acceptHeader.includes('image/webp') ? 'W' : '';
+  const acceptHash2 = acceptHeader.includes('image/avif') ? 'A' : '';
+  
   const dpr = request.headers.get('Sec-CH-DPR') || request.headers.get('DPR') || '1';
   const viewportWidth = request.headers.get('Sec-CH-Viewport-Width') || request.headers.get('Viewport-Width') || '';
-  const saveData = request.headers.get('Save-Data') || '';
+  const saveData = request.headers.get('Save-Data') === 'on' ? 'S' : '';
+  const clientHints = request.headers.has('Sec-CH-UA') ? 'C' : '';
   
-  // Use a simplified hash of key headers
-  return `${userAgent.substring(0, 50)}|${acceptHeader.substring(0, 20)}|${dpr}|${viewportWidth}|${saveData}`;
+  // Combine into a compact string key
+  return `${uaHash}|${acceptHash}${acceptHash2}|${dpr}|${viewportWidth}|${saveData}|${clientHints}`;
+}
+
+/**
+ * Simple string hash function
+ * OPTIMIZATION: Fast string hashing for cache keys
+ */
+function hashString(str: string): string {
+  let hash = 0;
+  if (str.length === 0) return hash.toString(36);
+  
+  // Take only first 100 chars max to avoid processing very long UAs
+  const maxLen = Math.min(str.length, 100);
+  
+  for (let i = 0; i < maxLen; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  
+  return hash.toString(36); // Convert to alphanumeric for shorter keys
 }
 
 /**
@@ -100,27 +131,61 @@ interface DetectionStrategy {
 
 /**
  * Client Hints detection strategy
+ * OPTIMIZATION: Fast path for client hint detection with minimal parsing
  */
 class ClientHintsStrategy implements DetectionStrategy {
   priority = 100; // Highest priority
   name = 'client-hints';
   
+  // Cache for client hint support detection by user agent
+  private static supportCache = new Map<string, boolean>();
+  
   async detect(request: Request): Promise<Partial<ClientCapabilities> | null> {
     const start = Date.now();
     const userAgent = request.headers.get('User-Agent') || '';
     
-    // Check if browser supports client hints
-    if (!browserSupportsClientHints(userAgent)) {
-      logger.debug('Browser does not support client hints', { userAgent });
+    // OPTIMIZATION: Fast browser support check with caching
+    let browserSupportsHints: boolean;
+    
+    if (userAgent) {
+      const uaHash = hashString(userAgent);
+      
+      // Check if we've already determined client hint support for this browser
+      if (ClientHintsStrategy.supportCache.has(uaHash)) {
+        browserSupportsHints = ClientHintsStrategy.supportCache.get(uaHash)!;
+      } else {
+        // Determine client hint support and cache the result
+        browserSupportsHints = browserSupportsClientHints(userAgent);
+        ClientHintsStrategy.supportCache.set(uaHash, browserSupportsHints);
+      }
+      
+      if (!browserSupportsHints) {
+        logger.debug('Browser does not support client hints', { userAgent: userAgent.substring(0, 50) });
+        return null;
+      }
+    }
+    
+    // OPTIMIZATION: Quick check for minimal client hints
+    // If none of these are present, we can skip the full parsing
+    const hasAnyClientHints = request.headers.has('Sec-CH-UA') || 
+                              request.headers.has('Sec-CH-UA-Mobile') || 
+                              request.headers.has('Sec-CH-UA-Platform') ||
+                              request.headers.has('Sec-CH-DPR') ||
+                              request.headers.has('DPR') ||
+                              request.headers.has('Viewport-Width') ||
+                              request.headers.has('Save-Data');
+    
+    if (!hasAnyClientHints) {
+      logger.debug('No client hints found in request headers');
       return null;
     }
     
-    // Parse client hints
+    // OPTIMIZATION: Parse client hints in a focused way
     const hints = parseClientHints(request);
     
-    // If no meaningful client hints were found, return null
+    // If no meaningful client hints were parsed, return null
     if (Object.keys(hints).length === 0) {
-      logger.debug('No client hints found in request');
+      logger.debug('No useful client hints found after parsing');
       return null;
     }
     
@@ -128,7 +193,9 @@ class ClientHintsStrategy implements DetectionStrategy {
       hintsFound: Object.keys(hints).length 
     });
     
-    // Extract browser info
+    // OPTIMIZATION: Compute only what's needed in a streamlined way
+    
+    // Extract browser info efficiently
     const browser: BrowserInfo = {
       name: 'unknown',
       version: '0',
@@ -136,35 +203,29 @@ class ClientHintsStrategy implements DetectionStrategy {
       source: 'client-hints'
     };
     
-    // Extract browser name and version from brands
+    // Add brand info if available (single branching)
     if (hints.uaBrands && hints.uaBrands.length > 0) {
       browser.name = normalizeBrowserName(hints.uaBrands[0]);
-      // Use a sensible version since exact version is often not available in client hints
-      browser.version = '100'; // Modern version
+      browser.version = '100'; // Use a standard modern version
+      
+      if (hints.uaPlatform) {
+        browser.platform = hints.uaPlatform;
+      }
     }
     
-    // Add platform if available
-    if (hints.uaPlatform) {
-      browser.platform = hints.uaPlatform;
-    }
-    
-    // Format support from client hints
+    // Format support - rely directly on computed values to avoid recomputation
     const formats: FormatSupport = {
-      webp: hints.supportsWebP || false,
-      avif: hints.supportsAVIF || false,
+      webp: !!hints.supportsWebP,
+      avif: !!hints.supportsAVIF,
       source: 'client-hints'
     };
     
-    // Network quality
+    // Network and device capabilities - use shared data where possible
     const network = getNetworkQuality(hints);
-    
-    // Device capabilities
     const device = getDeviceCapabilities(hints);
-    
-    // Performance budget
     const performance = calculatePerformanceBudget(hints);
     
-    // Optimized-for preferences
+    // Optimized-for preferences - use efficient property access
     const optimizedFor = {
       saveData: hints.saveData,
       reducedMotion: hints.prefersReducedMotion,
@@ -583,6 +644,9 @@ class StaticDataStrategy implements DetectionStrategy {
   priority = 20; // Low priority
   name = 'static-data';
   
+  // Cache of format support by browser
+  private static formatSupportCache = new Map<string, FormatSupport>();
+  
   async detect(request: Request): Promise<Partial<ClientCapabilities> | null> {
     const start = Date.now();
     const userAgent = request.headers.get('User-Agent') || '';
@@ -595,9 +659,13 @@ class StaticDataStrategy implements DetectionStrategy {
       userAgent: userAgent.substring(0, 100) 
     });
     
-    // Try to get browser info from any previous strategies
+    // Get browser info either from the request object (if available from a previous strategy)
+    // or by parsing the user agent
+    let browserInfo: BrowserInfo | null = null;
+    
+    // Try to get from previous strategy (optimization to avoid re-parsing)
     const uaStrategy = new UserAgentStrategy();
-    const browserInfo = await uaStrategy.detect(request).then(
+    browserInfo = await uaStrategy.detect(request).then(
       result => result?.browser || null
     );
     
@@ -606,12 +674,33 @@ class StaticDataStrategy implements DetectionStrategy {
       return null;
     }
     
+    // Check if we have cached format support for this browser
+    const cacheKey = `${browserInfo.name}:${browserInfo.version}`;
+    if (StaticDataStrategy.formatSupportCache.has(cacheKey)) {
+      const cachedFormats = StaticDataStrategy.formatSupportCache.get(cacheKey)!;
+      
+      logger.debug('Using cached format support', {
+        browser: browserInfo.name,
+        version: browserInfo.version,
+        webp: cachedFormats.webp,
+        avif: cachedFormats.avif
+      });
+      
+      return {
+        formats: cachedFormats,
+        detectionTime: Date.now() - start
+      };
+    }
+    
     // Format support from static data
     const formats: FormatSupport = {
       webp: isFormatSupported('webp', browserInfo.name, browserInfo.version),
       avif: isFormatSupported('avif', browserInfo.name, browserInfo.version),
       source: 'static-data'
     };
+    
+    // Cache for future use
+    StaticDataStrategy.formatSupportCache.set(cacheKey, formats);
     
     return {
       formats,
@@ -651,7 +740,7 @@ export class ClientDetector {
   async detect(request: Request, useCache = true): Promise<ClientCapabilities> {
     const startTime = Date.now();
     
-    // Check cache first if enabled
+    // OPTIMIZATION: Check cache first if enabled (fastest path)
     if (useCache) {
       const cacheKey = generateCacheKey(request);
       const cached = detectionCache.get(cacheKey);
@@ -676,8 +765,26 @@ export class ClientDetector {
     // Track which fields have been filled by better strategies
     const filledFields = new Set<string>();
     
-    // Apply each strategy in order of priority
+    // OPTIMIZATION: Pre-check headers to avoid running strategies that will definitely fail
+    const hasUserAgent = !!request.headers.get('User-Agent');
+    const hasClientHints = !!request.headers.get('Sec-CH-UA') || 
+                          !!request.headers.get('Sec-CH-UA-Mobile') ||
+                          !!request.headers.get('Sec-CH-UA-Platform');
+    const hasAcceptHeader = !!request.headers.get('Accept');
+    
+    // OPTIMIZATION: Apply each strategy in order of priority, but skip incompatible ones
     for (const strategy of this.strategies) {
+      // Skip strategies that can't possibly work based on headers
+      if ((strategy.name === 'client-hints' && !hasClientHints) ||
+          (strategy.name === 'user-agent' && !hasUserAgent) ||
+          (strategy.name === 'accept-header' && !hasAcceptHeader)) {
+        logger.debug('Skipping incompatible strategy', { 
+          strategy: strategy.name,
+          reason: `missing required headers`
+        });
+        continue;
+      }
+      
       const strategyStart = Date.now();
       logger.debug('Trying detection strategy', { 
         strategy: strategy.name,
@@ -688,22 +795,19 @@ export class ClientDetector {
         const partialResult = await strategy.detect(request);
         
         if (partialResult) {
+          const strategyTime = Date.now() - strategyStart;
           logger.debug('Strategy provided partial result', {
             strategy: strategy.name,
             fields: Object.keys(partialResult).filter(k => k !== 'detectionTime').join(', '),
-            time: Date.now() - strategyStart
+            time: strategyTime
           });
           
-          // Merge the partial result, but don't overwrite fields from higher priority strategies
+          // OPTIMIZATION: Merge the partial result, but don't overwrite fields from higher priority strategies
+          // Use Object.entries for better performance on large objects compared to for...in loops
           Object.entries(partialResult).forEach(([key, value]) => {
             if (!filledFields.has(key) && value !== undefined && value !== null) {
               (result as any)[key] = value;
               filledFields.add(key);
-              
-              logger.debug('Field filled by strategy', {
-                field: key,
-                strategy: strategy.name
-              });
             }
           });
         }
@@ -714,7 +818,7 @@ export class ClientDetector {
         });
       }
       
-      // Check if we've filled all the required fields
+      // OPTIMIZATION: Check early if we've filled all the required fields to avoid unnecessary work
       const requiredFields = ['browser', 'formats', 'network', 'device', 'performance'];
       const allFieldsFilled = requiredFields.every(field => filledFields.has(field));
       
@@ -738,28 +842,34 @@ export class ClientDetector {
     // Ensure the result is a complete ClientCapabilities object
     const completeResult = result as ClientCapabilities;
     
-    // Cache the result if caching is enabled
+    // Log strategies used
+    if (completeResult.browser && completeResult.formats) {
+      completeResult.detectionSource = `browser:${completeResult.browser.source},formats:${completeResult.formats.source}`;
+    }
+    
+    // OPTIMIZATION: Cache the result if caching is enabled - use a more efficient approach
     if (useCache) {
       const cacheKey = generateCacheKey(request);
-      detectionCache.set(cacheKey, completeResult);
       
-      // Log cache statistics
-      logger.debug('Cached detection result', { 
-        cacheKey, 
-        cacheSize: detectionCache.size
-      });
+      // Use cache with limited size to prevent memory issues
+      const MAX_CACHE_SIZE = 1000;
+      const PRUNE_AMOUNT = 100;
       
-      // Limit cache size to prevent memory issues
-      if (detectionCache.size > 1000) {
-        // Remove oldest entries
-        const keysToDelete = Array.from(detectionCache.keys()).slice(0, 100);
-        keysToDelete.forEach(key => detectionCache.delete(key));
+      if (detectionCache.size >= MAX_CACHE_SIZE) {
+        // More efficient cache pruning by converting only the keys we need to delete
+        const keys = Array.from(detectionCache.keys());
+        for (let i = 0; i < PRUNE_AMOUNT && i < keys.length; i++) {
+          detectionCache.delete(keys[i]);
+        }
         
         logger.debug('Pruned detection cache', {
-          deletedEntries: keysToDelete.length,
+          deletedEntries: Math.min(PRUNE_AMOUNT, keys.length),
           newSize: detectionCache.size
         });
       }
+      
+      // Cache after pruning
+      detectionCache.set(cacheKey, completeResult);
     }
     
     logger.debug('Client detection complete', {
