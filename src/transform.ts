@@ -13,8 +13,13 @@ import { createLogger, Logger, defaultLogger } from './utils/logging';
 // Use default logger until a configured one is provided
 let logger: Logger = defaultLogger;
 
-// Import the static browser format support utility
+// Import utilities
 import { isFormatSupported } from './utils/browser-formats';
+import { 
+  parseClientHints, 
+  suggestOptimizations, 
+  addClientHintsHeaders 
+} from './utils/client-hints';
 
 /**
  * Set the logger for the transform module
@@ -177,6 +182,21 @@ function getFormat(
   // If a specific format is requested, use that
   if (options.format && options.format !== 'auto') {
     return options.format;
+  }
+  
+  // Parse client hints if available
+  const clientHints = parseClientHints(request);
+  
+  // Check if we have a format suggestion from client hints
+  if (options.format === 'auto' && Object.keys(clientHints).length > 0) {
+    const optimizations = suggestOptimizations(options, clientHints);
+    if (optimizations.format) {
+      logger.debug('Using client hints-suggested format', { 
+        format: optimizations.format,
+        clientHintsAvailable: true
+      });
+      return optimizations.format;
+    }
   }
   
   // Get headers to determine browser support
@@ -520,24 +540,55 @@ export function buildTransformOptions(
     delete transformOptions.width; // Remove 'auto' so it doesn't get sent to Cloudflare
   }
   
+  // Parse client hints for advanced device/network detection
+  const clientHints = parseClientHints(request);
+  
   // Get responsive width if not explicitly set
   if (!transformOptions.width) {
     logger.breadcrumb('Calculating responsive width', undefined, { 
       hasWidth: false,
       userAgent: request.headers.get('User-Agent') || 'unknown',
       viewportWidth: request.headers.get('Sec-CH-Viewport-Width') || request.headers.get('Viewport-Width') || 'unknown',
-      deviceType: request.headers.get('CF-Device-Type') || 'unknown'
+      deviceType: request.headers.get('CF-Device-Type') || 'unknown',
+      clientHints: Object.keys(clientHints).length > 0 ? 'available' : 'not available'
     });
-    const responsiveWidthStart = Date.now();
-    const responsiveWidth = getResponsiveWidth(transformOptions, request, config);
-    logger.breadcrumb('Responsive width calculated', Date.now() - responsiveWidthStart, { 
-      calculatedWidth: responsiveWidth
-    });
-    if (responsiveWidth) {
-      transformOptions.width = responsiveWidth;
-      logger.breadcrumb('Applied responsive width', undefined, { width: responsiveWidth });
+    
+    // Check if we have width suggestion from client hints
+    if (clientHints.viewportWidth && !transformOptions.width) {
+      const optimizations = suggestOptimizations(transformOptions, clientHints);
+      if (optimizations.optimizedWidth) {
+        transformOptions.width = optimizations.optimizedWidth;
+        logger.breadcrumb('Applied client hint-based width', undefined, { 
+          width: transformOptions.width,
+          dpr: clientHints.dpr
+        });
+      } else {
+        // Fall back to traditional responsive width calculation
+        const responsiveWidthStart = Date.now();
+        const responsiveWidth = getResponsiveWidth(transformOptions, request, config);
+        logger.breadcrumb('Responsive width calculated', Date.now() - responsiveWidthStart, { 
+          calculatedWidth: responsiveWidth
+        });
+        if (responsiveWidth) {
+          transformOptions.width = responsiveWidth;
+          logger.breadcrumb('Applied responsive width', undefined, { width: responsiveWidth });
+        } else {
+          logger.breadcrumb('No responsive width determined, using original dimensions');
+        }
+      }
     } else {
-      logger.breadcrumb('No responsive width determined, using original dimensions');
+      // Fall back to traditional responsive width calculation
+      const responsiveWidthStart = Date.now();
+      const responsiveWidth = getResponsiveWidth(transformOptions, request, config);
+      logger.breadcrumb('Responsive width calculated', Date.now() - responsiveWidthStart, { 
+        calculatedWidth: responsiveWidth
+      });
+      if (responsiveWidth) {
+        transformOptions.width = responsiveWidth;
+        logger.breadcrumb('Applied responsive width', undefined, { width: responsiveWidth });
+      } else {
+        logger.breadcrumb('No responsive width determined, using original dimensions');
+      }
     }
   }
   
@@ -588,8 +639,22 @@ export function buildTransformOptions(
     logger.breadcrumb('Determining quality setting', undefined, {
       format: transformOptions.format,
       saveData: request.headers.get('Save-Data') === 'on',
-      downlink: request.headers.get('Downlink') || 'unknown'
+      downlink: request.headers.get('Downlink') || 'unknown',
+      clientHints: Object.keys(clientHints).length > 0 ? 'available' : 'not available'
     });
+    
+    // Check for client hints suggestion first
+    if (Object.keys(clientHints).length > 0) {
+      const optimizations = suggestOptimizations(transformOptions, clientHints);
+      if (optimizations.quality) {
+        transformOptions.quality = optimizations.quality;
+        logger.breadcrumb('Applied client hint-based quality', undefined, { 
+          quality: transformOptions.quality,
+          connectionQuality: clientHints.ect || (clientHints.rtt ? `RTT: ${clientHints.rtt}ms` : 'unknown'),
+          saveData: clientHints.saveData
+        });
+      }
+    }
     
     const qualityStart = Date.now();
     // Check for network conditions and Save-Data
@@ -1510,7 +1575,7 @@ export async function transformImage(
     
     // Create a new response with appropriate headers
     logger.breadcrumb('Creating final response');
-    const response = new Response(transformed.body, {
+    let response = new Response(transformed.body, {
       headers: transformed.headers,
       status: transformed.status,
       statusText: transformed.statusText,
@@ -1523,6 +1588,12 @@ export async function transformImage(
         cacheControl: `public, max-age=${config.cache.ttl.ok}`
       });
     }
+    
+    // Add client hints headers to response
+    response = addClientHintsHeaders(response, request);
+    logger.breadcrumb('Added client hints headers to response', undefined, {
+      userAgent: request.headers.get('User-Agent')?.substring(0, 50) || 'unknown'
+    });
     
     return response;
   } catch (error) {
