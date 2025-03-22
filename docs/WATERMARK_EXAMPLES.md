@@ -17,112 +17,112 @@ https://images.erfi.dev/Granna_1.JPG
 
 ### Simple Logo in Bottom-Right Corner
 
-![Logo Bottom Right](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","bottom":10,"right":10,"width":150}])
+![Logo Bottom Right](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","bottom":10,"right":10,"width":60}])
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","bottom":10,"right":10,"width":150}]
+https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","bottom":10,"right":10,"width":60}]
 ```
 
 ### Logo in Bottom-Left Corner
 
-![Logo Bottom Left](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","bottom":10,"left":10,"width":150}])
+![Logo Bottom Left](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","bottom":10,"left":10,"width":60}])
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","bottom":10,"left":10,"width":150}]
+https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","bottom":10,"left":10,"width":60}]
 ```
 
 ### Semi-Transparent Watermark Centered
 
-![Centered Watermark](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","opacity":0.5,"width":300}])
+![Centered Watermark](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","opacity":0.5,"width":120}])
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","opacity":0.5,"width":300}]
+https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","opacity":0.5,"width":120}]
 ```
 
 ### Tiled Background Watermark
 
-![Tiled Watermark](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","repeat":true,"opacity":0.2}])
+![Tiled Watermark](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","repeat":true,"opacity":0.2,"width":40}])
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","repeat":true,"opacity":0.2}]
+https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","repeat":true,"opacity":0.2,"width":40}]
 ```
 
 ### Play Button Overlay for Video Thumbnails
 
-![Play Button](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","width":80}])
+![Play Button](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","width":50}])
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","width":80}]
+https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","width":50}]
 ```
 
 ### Multiple Watermarks in Different Positions
 
-![Multiple Watermarks](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","bottom":10,"left":10,"width":100},{"url":"https://cdn.erfianugrah.com/ea_favicon.png","bottom":10,"right":10,"width":100}])
+![Multiple Watermarks](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","bottom":10,"left":10,"width":40},{"url":"https://cdn.erfianugrah.com/ea_favicon.png","bottom":10,"right":10,"width":40}])
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","bottom":10,"left":10,"width":100},{"url":"https://cdn.erfianugrah.com/ea_favicon.png","bottom":10,"right":10,"width":100}]
+https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","bottom":10,"left":10,"width":40},{"url":"https://cdn.erfianugrah.com/ea_favicon.png","bottom":10,"right":10,"width":40}]
 ```
 
 ### "New" Badge in Top-Right Corner
 
-![New Badge](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","top":10,"right":10,"width":80}])
+![New Badge](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","top":10,"right":10,"width":40}])
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","top":10,"right":10,"width":80}]
+https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","top":10,"right":10,"width":40}]
 ```
 
 ### Horizontal Banner Watermark
 
-![Banner](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","bottom":0,"left":0,"width":1000,"height":80,"fit":"cover"}])
+![Banner](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","bottom":0,"left":0,"width":500,"height":40,"fit":"cover"}])
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","bottom":0,"left":0,"width":1000,"height":80,"fit":"cover"}]
+https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","bottom":0,"left":0,"width":500,"height":40,"fit":"cover"}]
 ```
 
 ## Using Akamai Compatibility Parameters
 
 ### Simple Watermark (Bottom-Right Corner)
 
-![Akamai Bottom Right](https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:southeast,width:150,offset:10)
+![Akamai Bottom Right](https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:southeast,width:60,offset:10)
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:southeast,width:150,offset:10
+https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:southeast,width:60,offset:10
 ```
 
 ### Semi-Transparent Centered Watermark
 
-![Akamai Centered](https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,opacity:50,width:300)
+![Akamai Centered](https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,opacity:50,width:120)
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,opacity:50,width:300
+https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,opacity:50,width:120
 ```
 
 ### Tiled Background Watermark
 
-![Akamai Tiled](https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,tile:true,opacity:20)
+![Akamai Tiled](https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,tile:true,opacity:20,width:40)
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,tile:true,opacity:20
+https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,tile:true,opacity:20,width:40
 ```
 
 ### Using im.watermark Alias
 
-![Watermark Alias](https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.watermark=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:northeast,opacity:70)
+![Watermark Alias](https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.watermark=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:northeast,opacity:70,width:40)
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.watermark=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:northeast,opacity:70
+https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.watermark=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:northeast,opacity:70,width:40
 ```
 
 ## Usage Instructions
@@ -136,6 +136,7 @@ https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.watermark=url:https:
       "url": "https://cdn.erfianugrah.com/ea_favicon.png",
       "bottom": 10,
       "right": 10,
+      "width": 60,
       "opacity": 0.8
     }
   ]
@@ -160,7 +161,7 @@ https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.watermark=url:https:
 ### Akamai Compatibility Syntax
 
 ```
-im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:southeast,opacity:80
+im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:southeast,width:60,opacity:80
 ```
 
 #### Placement Options:
@@ -199,7 +200,9 @@ im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:southeast,
 
 7. **Absolute URLs**: Use absolute URLs for watermark images to ensure they work correctly in all contexts.
 
-8. **URL Parameter Format**: The draw parameter must be URL-encoded JSON. For example:
+8. **Optimal Sizing**: Keep watermark sizes proportional to the main image - typically 5-15% of the main image width for logos and watermarks.
+
+9. **URL Parameter Format**: The draw parameter must be URL-encoded JSON. For example:
    ```
-   ?draw=%5B%7B%22url%22%3A%22https%3A%2F%2Fcdn.erfianugrah.com%2Fea_favicon.png%22%7D%5D
+   ?draw=%5B%7B%22url%22%3A%22https%3A%2F%2Fcdn.erfianugrah.com%2Fea_favicon.png%22%2C%22width%22%3A60%7D%5D
    ```
