@@ -17,120 +17,129 @@ https://images.erfi.dev/Granna_1.JPG
 
 ### Simple Logo in Bottom-Right Corner
 
-![Logo Bottom Right](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"/watermarks/logo.png","bottom":10,"right":10,"width":150}])
+![Logo Bottom Right](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://images.erfi.dev/watermarks/logo.png","bottom":10,"right":10,"width":150}])
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"/watermarks/logo.png","bottom":10,"right":10,"width":150}]
+https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://images.erfi.dev/watermarks/logo.png","bottom":10,"right":10,"width":150}]
 ```
 
 ### SVG Logo in Bottom-Right Corner
 
-![SVG Logo Bottom Right](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"/watermarks/logo.svg","bottom":10,"right":10,"width":150}])
+![SVG Logo Bottom Right](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://images.erfi.dev/watermarks/logo.svg","bottom":10,"right":10,"width":150}])
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"/watermarks/logo.svg","bottom":10,"right":10,"width":150}]
+https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://images.erfi.dev/watermarks/logo.svg","bottom":10,"right":10,"width":150}]
 ```
 
 ### Semi-Transparent Watermark Centered
 
-![Centered Watermark](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"/watermarks/ea-logo.svg","opacity":0.5,"width":300}])
+![Centered Watermark](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://images.erfi.dev/watermarks/ea-logo.svg","opacity":0.5,"width":300}])
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"/watermarks/ea-logo.svg","opacity":0.5,"width":300}]
+https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://images.erfi.dev/watermarks/ea-logo.svg","opacity":0.5,"width":300}]
 ```
 
 ### Tiled Background Watermark
 
-![Tiled Watermark](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"/watermarks/logo.png","repeat":true,"opacity":0.2}])
+![Tiled Watermark](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://images.erfi.dev/watermarks/logo.png","repeat":true,"opacity":0.2}])
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"/watermarks/logo.png","repeat":true,"opacity":0.2}]
+https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://images.erfi.dev/watermarks/logo.png","repeat":true,"opacity":0.2}]
 ```
 
 ### Play Button Overlay for Video Thumbnails
 
-![Play Button](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"/watermarks/ea-logo.svg","width":80}])
+![Play Button](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://images.erfi.dev/watermarks/ea-logo.svg","width":80}])
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"/watermarks/ea-logo.svg","width":80}]
+https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://images.erfi.dev/watermarks/ea-logo.svg","width":80}]
 ```
 
 ### Combined Copyright and Logo
 
-![Multiple Watermarks](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"/watermarks/copyright.svg","bottom":10,"left":10,"width":100},{"url":"/watermarks/logo.svg","bottom":10,"right":10,"width":100}])
+![Multiple Watermarks](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://images.erfi.dev/watermarks/copyright.svg","bottom":10,"left":10,"width":100},{"url":"https://images.erfi.dev/watermarks/logo.svg","bottom":10,"right":10,"width":100}])
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"/watermarks/copyright.svg","bottom":10,"left":10,"width":100},{"url":"/watermarks/logo.svg","bottom":10,"right":10,"width":100}]
+https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://images.erfi.dev/watermarks/copyright.svg","bottom":10,"left":10,"width":100},{"url":"https://images.erfi.dev/watermarks/logo.svg","bottom":10,"right":10,"width":100}]
 ```
 
 ### Copyright in Top-Right Corner
 
-![Copyright Badge](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"/watermarks/copyright-ea.svg","top":10,"right":10,"width":120}])
+![Copyright Badge](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://images.erfi.dev/watermarks/copyright-ea.svg","top":10,"right":10,"width":120}])
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"/watermarks/copyright-ea.svg","top":10,"right":10,"width":120}]
+https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://images.erfi.dev/watermarks/copyright-ea.svg","top":10,"right":10,"width":120}]
 ```
 
 ### Horizontal Banner Watermark
 
-![Banner](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"/watermarks/logo.svg","bottom":0,"left":0,"width":1000,"height":80,"fit":"cover"}])
+![Banner](https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://images.erfi.dev/watermarks/logo.svg","bottom":0,"left":0,"width":1000,"height":80,"fit":"cover"}])
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"/watermarks/logo.svg","bottom":0,"left":0,"width":1000,"height":80,"fit":"cover"}]
+https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://images.erfi.dev/watermarks/logo.svg","bottom":0,"left":0,"width":1000,"height":80,"fit":"cover"}]
 ```
 
 ## Using Akamai Compatibility Parameters
 
 ### Simple Watermark (Bottom-Right Corner)
 
-![Akamai Bottom Right](https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:/watermarks/logo.svg,placement:southeast,width:150,offset:10)
+![Akamai Bottom Right](https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://images.erfi.dev/watermarks/logo.svg,placement:southeast,width:150,offset:10)
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:/watermarks/logo.svg,placement:southeast,width:150,offset:10
+https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://images.erfi.dev/watermarks/logo.svg,placement:southeast,width:150,offset:10
 ```
 
 ### Semi-Transparent Centered Watermark
 
-![Akamai Centered](https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:/watermarks/ea-logo.svg,opacity:50,width:300)
+![Akamai Centered](https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://images.erfi.dev/watermarks/ea-logo.svg,opacity:50,width:300)
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:/watermarks/ea-logo.svg,opacity:50,width:300
+https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://images.erfi.dev/watermarks/ea-logo.svg,opacity:50,width:300
 ```
 
 ### Tiled Background Watermark
 
-![Akamai Tiled](https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:/watermarks/logo.png,tile:true,opacity:20)
+![Akamai Tiled](https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://images.erfi.dev/watermarks/logo.png,tile:true,opacity:20)
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:/watermarks/logo.png,tile:true,opacity:20
+https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://images.erfi.dev/watermarks/logo.png,tile:true,opacity:20
 ```
 
 ### Using im.watermark Alias
 
-![Watermark Alias](https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.watermark=url:/watermarks/copyright-ea.svg,placement:northeast,opacity:70)
+![Watermark Alias](https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.watermark=url:https://images.erfi.dev/watermarks/copyright-ea.svg,placement:northeast,opacity:70)
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.watermark=url:/watermarks/copyright-ea.svg,placement:northeast,opacity:70
+https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.watermark=url:https://images.erfi.dev/watermarks/copyright-ea.svg,placement:northeast,opacity:70
 ```
 
 ## Usage Instructions
 
 ### Cloudflare Native Syntax
 
-```
-https://images.erfi.dev/Granna_1.JPG?draw=[{"url":"/watermarks/logo.svg","bottom":10,"right":10,"opacity":0.8}]
+```json
+{
+  "draw": [
+    {
+      "url": "https://images.erfi.dev/watermarks/logo.svg",
+      "bottom": 10,
+      "right": 10,
+      "opacity": 0.8
+    }
+  ]
+}
 ```
 
 #### Positioning Options:
@@ -151,7 +160,7 @@ https://images.erfi.dev/Granna_1.JPG?draw=[{"url":"/watermarks/logo.svg","bottom
 ### Akamai Compatibility Syntax
 
 ```
-https://images.erfi.dev/Granna_1.JPG?im.composite=url:/watermarks/logo.svg,placement:southeast,opacity:80
+im.composite=url:https://images.erfi.dev/watermarks/logo.svg,placement:southeast,opacity:80
 ```
 
 #### Placement Options:
@@ -188,4 +197,9 @@ https://images.erfi.dev/Granna_1.JPG?im.composite=url:/watermarks/logo.svg,place
 
 6. **SVG Support**: SVG files are fully supported and offer better scaling for logos and text overlays.
 
-7. **Relative Paths**: When using watermarks from the same domain, you can use relative paths like `/watermarks/logo.svg`.
+7. **Absolute URLs**: Use absolute URLs for watermark images to ensure they work correctly in all contexts.
+
+8. **URL Parameter Format**: The draw parameter must be URL-encoded JSON. For example:
+   ```
+   ?draw=%5B%7B%22url%22%3A%22https%3A%2F%2Fimages.erfi.dev%2Fwatermarks%2Flogo.svg%22%7D%5D
+   ```
