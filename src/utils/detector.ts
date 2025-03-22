@@ -19,9 +19,13 @@ import {
   DeviceCapabilities,
   PerformanceBudget
 } from './client-hints';
+import { DetectorConfig, ImageResizerConfig } from '../config';
 
 // Use default logger until a configured one is provided
 let logger: Logger = defaultLogger;
+
+// Configuration instance
+let config: DetectorConfig | undefined;
 
 /**
  * Set the logger for the client detector module
@@ -30,6 +34,106 @@ let logger: Logger = defaultLogger;
  */
 export function setLogger(configuredLogger: Logger): void {
   logger = configuredLogger;
+}
+
+/**
+ * Set the detector configuration
+ * 
+ * @param detectorConfig Configuration for the detector
+ */
+export function setConfig(detectorConfig: DetectorConfig): void {
+  config = detectorConfig;
+  logger.debug('Detector configuration set', { 
+    cacheSize: config.cache.maxSize,
+    strategies: Object.keys(config.strategies),
+    logLevel: config.logLevel
+  });
+}
+
+/**
+ * Get the current detector configuration, using defaults if not set
+ */
+function getConfig(): DetectorConfig {
+  if (!config) {
+    logger.debug('Using default detector configuration as no config was provided');
+    // Default configuration if none is provided
+    return {
+      cache: {
+        maxSize: 1000,
+        pruneAmount: 100,
+        enableCache: true
+      },
+      strategies: {
+        clientHints: {
+          priority: 100,
+          enabled: true
+        },
+        acceptHeader: {
+          priority: 80,
+          enabled: true
+        },
+        userAgent: {
+          priority: 60,
+          enabled: true,
+          maxUALength: 100
+        },
+        staticData: {
+          priority: 20,
+          enabled: true
+        },
+        defaults: {
+          priority: 0,
+          enabled: true
+        }
+      },
+      performanceBudget: {
+        quality: {
+          low: {
+            min: 60,
+            max: 80,
+            target: 70
+          },
+          medium: {
+            min: 65,
+            max: 85,
+            target: 75
+          },
+          high: {
+            min: 70,
+            max: 95,
+            target: 85
+          }
+        },
+        dimensions: {
+          maxWidth: {
+            low: 1000,
+            medium: 1500,
+            high: 2500
+          },
+          maxHeight: {
+            low: 1000,
+            medium: 1500,
+            high: 2500
+          }
+        },
+        preferredFormats: {
+          low: ['webp', 'jpeg'],
+          medium: ['webp', 'avif', 'jpeg'],
+          high: ['avif', 'webp', 'jpeg']
+        }
+      },
+      deviceClassification: {
+        thresholds: {
+          lowEnd: 30,
+          highEnd: 70
+        }
+        // Platform-based scoring removed in favor of client-hints detection
+      },
+      hashAlgorithm: 'simple',
+      logLevel: 'info'
+    };
+  }
+  return config;
 }
 
 /**
@@ -101,23 +205,87 @@ function generateCacheKey(request: Request): string {
 }
 
 /**
- * Simple string hash function
- * OPTIMIZATION: Fast string hashing for cache keys
+ * Fast string hashing for cache keys, with configurable algorithm
+ * 
+ * @param str String to hash
+ * @returns Hashed string
  */
 function hashString(str: string): string {
+  if (str.length === 0) return '0';
+  
+  const detectorConfig = getConfig();
+  const algorithm = detectorConfig.hashAlgorithm || 'simple';
+  const maxUALength = detectorConfig.strategies.userAgent?.maxUALength || 100;
+  
+  // Take only first N chars max to avoid processing very long UAs (configurable)
+  const maxLen = Math.min(str.length, maxUALength);
+  const input = str.substring(0, maxLen);
+  
+  // Choose hashing algorithm based on configuration
+  switch (algorithm) {
+    case 'fnv1a':
+      return fnv1aHash(input);
+    case 'md5':
+      return md5Hash(input);
+    case 'simple':
+    default:
+      return simpleHash(input);
+  }
+}
+
+/**
+ * Simple hash function (djb2)
+ */
+function simpleHash(str: string): string {
   let hash = 0;
-  if (str.length === 0) return hash.toString(36);
   
-  // Take only first 100 chars max to avoid processing very long UAs
-  const maxLen = Math.min(str.length, 100);
-  
-  for (let i = 0; i < maxLen; i++) {
+  for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
     hash = hash & hash; // Convert to 32bit integer
   }
   
   return hash.toString(36); // Convert to alphanumeric for shorter keys
+}
+
+/**
+ * FNV-1a hash function - faster and better distribution than simple hash
+ */
+function fnv1aHash(str: string): string {
+  // FNV-1a hash algorithm constants
+  const FNV_PRIME = 0x01000193;
+  const FNV_OFFSET_BASIS = 0x811c9dc5;
+  
+  let hash = FNV_OFFSET_BASIS;
+  
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i);
+    hash = Math.imul(hash, FNV_PRIME);
+  }
+  
+  return (hash >>> 0).toString(36); // Convert to unsigned 32-bit integer then to alphanumeric
+}
+
+/**
+ * MD5-like hash function for browsers
+ * Note: This is not a cryptographic hash, just a string hashing algorithm for cache keys
+ */
+function md5Hash(str: string): string {
+  // Simple implementation of a hash function with MD5-like properties
+  // Not as good as real MD5 but better than simple hash for our needs
+  let h1 = 0x67452301;
+  let h2 = 0xEFCDAB89;
+  
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    h1 = ((h1 << 5) | (h1 >>> 27)) + char;
+    h2 = ((h2 << 13) | (h2 >>> 19)) + char;
+    h1 = (h1 ^ h2) & 0xFFFFFFFF;
+  }
+  
+  // Combine the two values and return a base-36 representation for compactness
+  const combined = ((h1 & 0xFFFF) << 16) | (h2 & 0xFFFF);
+  return (combined >>> 0).toString(36);
 }
 
 /**
@@ -134,13 +302,27 @@ interface DetectionStrategy {
  * OPTIMIZATION: Fast path for client hint detection with minimal parsing
  */
 class ClientHintsStrategy implements DetectionStrategy {
-  priority = 100; // Highest priority
+  priority: number;
   name = 'client-hints';
+  enabled: boolean;
   
   // Cache for client hint support detection by user agent
   private static supportCache = new Map<string, boolean>();
   
+  constructor() {
+    // Get configuration for this strategy
+    const detectorConfig = getConfig();
+    this.priority = detectorConfig.strategies.clientHints?.priority ?? 100;
+    this.enabled = detectorConfig.strategies.clientHints?.enabled ?? true;
+  }
+  
   async detect(request: Request): Promise<Partial<ClientCapabilities> | null> {
+    // Check if this strategy is enabled
+    if (!this.enabled) {
+      logger.debug('ClientHintsStrategy is disabled in configuration');
+      return null;
+    }
+    
     const start = Date.now();
     const userAgent = request.headers.get('User-Agent') || '';
     
@@ -252,10 +434,24 @@ class ClientHintsStrategy implements DetectionStrategy {
  * Used primarily for format support detection
  */
 class AcceptHeaderStrategy implements DetectionStrategy {
-  priority = 80;
+  priority: number;
   name = 'accept-header';
+  enabled: boolean;
+  
+  constructor() {
+    // Get configuration for this strategy
+    const detectorConfig = getConfig();
+    this.priority = detectorConfig.strategies.acceptHeader?.priority ?? 80;
+    this.enabled = detectorConfig.strategies.acceptHeader?.enabled ?? true;
+  }
   
   async detect(request: Request): Promise<Partial<ClientCapabilities> | null> {
+    // Check if this strategy is enabled
+    if (!this.enabled) {
+      logger.debug('AcceptHeaderStrategy is disabled in configuration');
+      return null;
+    }
+    
     const start = Date.now();
     const acceptHeader = request.headers.get('Accept') || '';
     
@@ -286,10 +482,26 @@ class AcceptHeaderStrategy implements DetectionStrategy {
  * User-Agent detection strategy
  */
 class UserAgentStrategy implements DetectionStrategy {
-  priority = 60;
+  priority: number;
   name = 'user-agent';
+  enabled: boolean;
+  maxUALength: number;
+  
+  constructor() {
+    // Get configuration for this strategy
+    const detectorConfig = getConfig();
+    this.priority = detectorConfig.strategies.userAgent?.priority ?? 60;
+    this.enabled = detectorConfig.strategies.userAgent?.enabled ?? true;
+    this.maxUALength = detectorConfig.strategies.userAgent?.maxUALength ?? 100;
+  }
   
   async detect(request: Request): Promise<Partial<ClientCapabilities> | null> {
+    // Check if this strategy is enabled
+    if (!this.enabled) {
+      logger.debug('UserAgentStrategy is disabled in configuration');
+      return null;
+    }
+    
     const start = Date.now();
     const userAgent = request.headers.get('User-Agent') || '';
     
@@ -297,8 +509,10 @@ class UserAgentStrategy implements DetectionStrategy {
       return null;
     }
     
+    // Use configured maximum UA length
     logger.debug('Using User-Agent for detection', { 
-      userAgent: userAgent.substring(0, 100) 
+      userAgent: userAgent.substring(0, this.maxUALength),
+      maxLength: this.maxUALength
     });
     
     // Extract browser info from User-Agent
@@ -571,11 +785,28 @@ class UserAgentStrategy implements DetectionStrategy {
  * Used when no other strategy provides the needed information
  */
 class DefaultFallbackStrategy implements DetectionStrategy {
-  priority = 0; // Lowest priority
+  priority: number;
   name = 'defaults';
+  enabled: boolean;
+  
+  constructor() {
+    // Get configuration for this strategy
+    const detectorConfig = getConfig();
+    this.priority = detectorConfig.strategies.defaults?.priority ?? 0;
+    this.enabled = detectorConfig.strategies.defaults?.enabled ?? true;
+  }
   
   async detect(request: Request): Promise<Partial<ClientCapabilities>> {
+    // Check if this strategy is enabled
+    if (!this.enabled) {
+      logger.debug('DefaultFallbackStrategy is disabled in configuration');
+      // Return empty object as we need some fallback values regardless
+      // This will ensure at least minimal defaults are applied
+      return {};
+    }
+    
     const start = Date.now();
+    const detectorConfig = getConfig();
     
     logger.debug('Using default fallback values for detection');
     
@@ -611,16 +842,16 @@ class DefaultFallbackStrategy implements DetectionStrategy {
       estimated: true
     };
     
-    // Conservative performance budget
+    // Performance budget based on configuration
     const performance: PerformanceBudget = {
       quality: {
-        min: 60,
-        max: 85,
-        target: 75
+        min: detectorConfig.performanceBudget?.quality?.medium?.min ?? 60,
+        max: detectorConfig.performanceBudget?.quality?.medium?.max ?? 85,
+        target: detectorConfig.performanceBudget?.quality?.medium?.target ?? 75
       },
-      maxWidth: 1200,
-      maxHeight: 1200,
-      preferredFormat: 'jpeg',
+      maxWidth: detectorConfig.performanceBudget?.dimensions?.maxWidth?.medium ?? 1200,
+      maxHeight: detectorConfig.performanceBudget?.dimensions?.maxHeight?.medium ?? 1200,
+      preferredFormat: detectorConfig.performanceBudget?.preferredFormats?.medium?.[0] ?? 'jpeg',
       dpr: 1
     };
     
@@ -641,13 +872,27 @@ class DefaultFallbackStrategy implements DetectionStrategy {
  * Used as a last resort for format detection when other strategies fail
  */
 class StaticDataStrategy implements DetectionStrategy {
-  priority = 20; // Low priority
+  priority: number;
   name = 'static-data';
+  enabled: boolean;
   
   // Cache of format support by browser
   private static formatSupportCache = new Map<string, FormatSupport>();
   
+  constructor() {
+    // Get configuration for this strategy
+    const detectorConfig = getConfig();
+    this.priority = detectorConfig.strategies.staticData?.priority ?? 20;
+    this.enabled = detectorConfig.strategies.staticData?.enabled ?? true;
+  }
+  
   async detect(request: Request): Promise<Partial<ClientCapabilities> | null> {
+    // Check if this strategy is enabled
+    if (!this.enabled) {
+      logger.debug('StaticDataStrategy is disabled in configuration');
+      return null;
+    }
+    
     const start = Date.now();
     const userAgent = request.headers.get('User-Agent') || '';
     
@@ -655,8 +900,12 @@ class StaticDataStrategy implements DetectionStrategy {
       return null;
     }
     
+    // Get configured max UA length
+    const detectorConfig = getConfig();
+    const maxUALength = detectorConfig.strategies.userAgent?.maxUALength ?? 100;
+    
     logger.debug('Using static data for detection', { 
-      userAgent: userAgent.substring(0, 100) 
+      userAgent: userAgent.substring(0, maxUALength) 
     });
     
     // Get browser info either from the request object (if available from a previous strategy)
@@ -714,8 +963,29 @@ class StaticDataStrategy implements DetectionStrategy {
  */
 export class ClientDetector {
   private strategies: DetectionStrategy[] = [];
+  private detectorConfig: DetectorConfig;
   
-  constructor() {
+  constructor(config?: DetectorConfig) {
+    // Store the configuration
+    if (config) {
+      setConfig(config);
+    }
+    this.detectorConfig = getConfig();
+    
+    logger.debug('Initializing ClientDetector', {
+      haveConfig: !!config,
+      cacheSize: this.detectorConfig.cache.maxSize,
+      hashAlgorithm: this.detectorConfig.hashAlgorithm
+    });
+    
+    // Initialize strategies with configuration
+    this.initializeStrategies();
+  }
+  
+  /**
+   * Initialize strategy instances based on configuration
+   */
+  private initializeStrategies(): void {
     // Register strategies in order of preference
     this.strategies = [
       new ClientHintsStrategy(),
@@ -725,8 +995,31 @@ export class ClientDetector {
       new DefaultFallbackStrategy()
     ];
     
+    // Filter out disabled strategies
+    this.strategies = this.strategies.filter(strategy => {
+      // Check if this strategy is enabled in configuration
+      const isEnabled = 
+        (strategy.name === 'client-hints' && this.detectorConfig.strategies.clientHints?.enabled !== false) ||
+        (strategy.name === 'accept-header' && this.detectorConfig.strategies.acceptHeader?.enabled !== false) ||
+        (strategy.name === 'user-agent' && this.detectorConfig.strategies.userAgent?.enabled !== false) ||
+        (strategy.name === 'static-data' && this.detectorConfig.strategies.staticData?.enabled !== false) ||
+        (strategy.name === 'defaults' && this.detectorConfig.strategies.defaults?.enabled !== false);
+      
+      if (!isEnabled) {
+        logger.debug(`Strategy ${strategy.name} disabled by configuration`);
+      }
+      
+      return isEnabled;
+    });
+    
     // Sort by priority (highest first)
     this.strategies.sort((a, b) => b.priority - a.priority);
+    
+    logger.debug('Initialized detection strategies', {
+      count: this.strategies.length,
+      enabled: this.strategies.map(s => s.name).join(', '),
+      priorities: this.strategies.map(s => `${s.name}:${s.priority}`).join(', ')
+    });
   }
   
   /**
@@ -756,25 +1049,53 @@ export class ClientDetector {
    */
   async detect(request: Request, useCache = true): Promise<ClientCapabilities> {
     const startTime = Date.now();
+    const detectorConfig = getConfig();
+    
+    // Apply configuration settings for cache
+    const enableCache = useCache && detectorConfig.cache.enableCache !== false;
+    const maxCacheSize = detectorConfig.cache.maxSize || 1000;
+    const pruneAmount = detectorConfig.cache.pruneAmount || 100;
+    
+    // Use configured log level
+    const logLevel = detectorConfig.logLevel || 'info';
+    const isDebugLogging = logLevel === 'debug';
     
     // OPTIMIZATION: Check cache first if enabled (fastest path)
-    if (useCache) {
+    if (enableCache) {
       const cacheKey = generateCacheKey(request);
       const cached = detectionCache.get(cacheKey);
       
       if (cached) {
-        logger.debug('Using cached client detection result', { 
-          cacheKey, 
-          age: Date.now() - startTime
-        });
-        return cached;
+        if (isDebugLogging) {
+          logger.debug('Using cached client detection result', { 
+            cacheKey, 
+            age: Date.now() - startTime
+          });
+        }
+        
+        // Check for TTL expiration if configured
+        if (detectorConfig.cache.ttl && cached.detectionTime) {
+          const age = Date.now() - cached.detectionTime;
+          if (age > detectorConfig.cache.ttl) {
+            logger.debug('Cached result expired based on TTL', {
+              ttl: detectorConfig.cache.ttl,
+              age
+            });
+          } else {
+            return cached;
+          }
+        } else {
+          return cached;
+        }
       }
     }
     
-    logger.debug('Starting client detection', { 
-      useCache,
-      strategiesAvailable: this.strategies.length
-    });
+    if (isDebugLogging) {
+      logger.debug('Starting client detection', { 
+        useCache: enableCache,
+        strategiesAvailable: this.strategies.length
+      });
+    }
     
     // Build up the result from multiple strategies
     let result: Partial<ClientCapabilities> = {};
@@ -795,29 +1116,35 @@ export class ClientDetector {
       if ((strategy.name === 'client-hints' && !hasClientHints) ||
           (strategy.name === 'user-agent' && !hasUserAgent) ||
           (strategy.name === 'accept-header' && !hasAcceptHeader)) {
-        logger.debug('Skipping incompatible strategy', { 
-          strategy: strategy.name,
-          reason: `missing required headers`
-        });
+        if (isDebugLogging) {
+          logger.debug('Skipping incompatible strategy', { 
+            strategy: strategy.name,
+            reason: `missing required headers`
+          });
+        }
         continue;
       }
       
       const strategyStart = Date.now();
-      logger.debug('Trying detection strategy', { 
-        strategy: strategy.name,
-        priority: strategy.priority
-      });
+      if (isDebugLogging) {
+        logger.debug('Trying detection strategy', { 
+          strategy: strategy.name,
+          priority: strategy.priority
+        });
+      }
       
       try {
         const partialResult = await strategy.detect(request);
         
         if (partialResult) {
           const strategyTime = Date.now() - strategyStart;
-          logger.debug('Strategy provided partial result', {
-            strategy: strategy.name,
-            fields: Object.keys(partialResult).filter(k => k !== 'detectionTime').join(', '),
-            time: strategyTime
-          });
+          if (isDebugLogging) {
+            logger.debug('Strategy provided partial result', {
+              strategy: strategy.name,
+              fields: Object.keys(partialResult).filter(k => k !== 'detectionTime').join(', '),
+              time: strategyTime
+            });
+          }
           
           // OPTIMIZATION: Merge the partial result, but don't overwrite fields from higher priority strategies
           // Use Object.entries for better performance on large objects compared to for...in loops
@@ -843,9 +1170,11 @@ export class ClientDetector {
       const allFieldsFilled = requiredFields.every(field => filledFields.has(field));
       
       if (allFieldsFilled) {
-        logger.debug('All required fields filled, stopping detection', {
-          filledBy: strategy.name
-        });
+        if (isDebugLogging) {
+          logger.debug('All required fields filled, stopping detection', {
+            filledBy: strategy.name
+          });
+        }
         break;
       }
     }
@@ -868,37 +1197,39 @@ export class ClientDetector {
     }
     
     // OPTIMIZATION: Cache the result if caching is enabled - use a more efficient approach
-    if (useCache) {
+    if (enableCache) {
       const cacheKey = generateCacheKey(request);
       
-      // Use cache with limited size to prevent memory issues
-      const MAX_CACHE_SIZE = 1000;
-      const PRUNE_AMOUNT = 100;
-      
-      if (detectionCache.size >= MAX_CACHE_SIZE) {
+      // Use cache with configurable size to prevent memory issues
+      if (detectionCache.size >= maxCacheSize) {
         // More efficient cache pruning by converting only the keys we need to delete
         const keys = Array.from(detectionCache.keys());
-        for (let i = 0; i < PRUNE_AMOUNT && i < keys.length; i++) {
+        for (let i = 0; i < pruneAmount && i < keys.length; i++) {
           detectionCache.delete(keys[i]);
         }
         
-        logger.debug('Pruned detection cache', {
-          deletedEntries: Math.min(PRUNE_AMOUNT, keys.length),
-          newSize: detectionCache.size
-        });
+        if (isDebugLogging) {
+          logger.debug('Pruned detection cache', {
+            deletedEntries: Math.min(pruneAmount, keys.length),
+            newSize: detectionCache.size,
+            maxSize: maxCacheSize
+          });
+        }
       }
       
       // Cache after pruning
       detectionCache.set(cacheKey, completeResult);
     }
     
-    logger.debug('Client detection complete', {
-      totalTimeMs: totalTime,
-      browser: `${completeResult.browser.name} ${completeResult.browser.version}`,
-      formats: `WebP: ${completeResult.formats.webp}, AVIF: ${completeResult.formats.avif}`,
-      networkQuality: completeResult.network.tier,
-      deviceClass: completeResult.device.class
-    });
+    if (isDebugLogging) {
+      logger.debug('Client detection complete', {
+        totalTimeMs: totalTime,
+        browser: `${completeResult.browser.name} ${completeResult.browser.version}`,
+        formats: `WebP: ${completeResult.formats.webp}, AVIF: ${completeResult.formats.avif}`,
+        networkQuality: completeResult.network.tier,
+        deviceClass: completeResult.device.class
+      });
+    }
     
     return completeResult;
   }
@@ -913,9 +1244,72 @@ export class ClientDetector {
   async getOptimizedOptions(request: Request, options: Record<string, any> = {}): Promise<Record<string, any>> {
     // Detect client capabilities
     const capabilities = await this.detect(request);
+    const detectorConfig = getConfig();
     
-    // Apply client hints-based optimizations
+    // Apply client hints-based optimizations using performance budget configuration
     const optimizations = suggestOptimizations(options, capabilities.clientHints);
+    
+    // Get device capability metrics
+    const deviceCapabilities = capabilities.device;
+    const networkTier = capabilities.network.tier;
+    
+    // Determine quality and format based on device capabilities
+    if (deviceCapabilities.score !== undefined && detectorConfig.performanceBudget) {
+      const score = deviceCapabilities.score;
+      
+      // Quality settings based on device capability score
+      if (!options.quality && optimizations.quality === undefined) {
+        let targetQuality: number | undefined;
+        
+        // Use score to determine quality level
+        if (score >= 65 && detectorConfig.performanceBudget.quality.high) {
+          targetQuality = detectorConfig.performanceBudget.quality.high.target;
+        } else if (score < 35 && detectorConfig.performanceBudget.quality.low) {
+          targetQuality = detectorConfig.performanceBudget.quality.low.target;
+        } else if (detectorConfig.performanceBudget.quality.medium) {
+          targetQuality = detectorConfig.performanceBudget.quality.medium.target;
+        }
+        
+        // Adjust quality based on network quality
+        if (targetQuality && networkTier === 'slow') {
+          // Reduce quality by 10% for slow networks
+          targetQuality = Math.floor(targetQuality * 0.9);
+        } else if (targetQuality && networkTier === 'fast') {
+          // Increase quality by 5% for fast networks, capped at corresponding max
+          const maxQuality = score >= 65 
+            ? detectorConfig.performanceBudget.quality.high.max
+            : score < 35
+              ? detectorConfig.performanceBudget.quality.low.max
+              : detectorConfig.performanceBudget.quality.medium.max;
+              
+          targetQuality = Math.min(Math.floor(targetQuality * 1.05), maxQuality);
+        }
+        
+        if (targetQuality) {
+          optimizations.quality = targetQuality;
+        }
+      }
+      
+      // Format preference based on device capabilities
+      if (options.format === 'auto' || options.format === undefined) {
+        // Select preferred format based on score
+        const preferredFormats = score >= 65 
+          ? detectorConfig.performanceBudget.preferredFormats.high
+          : score < 35
+            ? detectorConfig.performanceBudget.preferredFormats.low
+            : detectorConfig.performanceBudget.preferredFormats.medium;
+        
+        // Use the first supported format from the preferred formats list
+        for (const format of preferredFormats) {
+          if ((format === 'avif' && capabilities.formats.avif) || 
+              (format === 'webp' && capabilities.formats.webp) ||
+              format === 'jpeg' || format === 'png') {
+            optimizations.format = format;
+            break;
+          }
+        }
+      }
+    }
     
     // Return the original options enhanced with optimizations
     return {
@@ -923,13 +1317,17 @@ export class ClientDetector {
       ...optimizations,
       __detectionMetrics: {
         browser: `${capabilities.browser.name} ${capabilities.browser.version}`,
-        deviceClass: capabilities.device.class,
+        deviceScore: capabilities.device.score || 0,
+        deviceMemory: capabilities.device.memory,
+        deviceProcessors: capabilities.device.processors,
         networkQuality: capabilities.network.tier,
         detectionTime: capabilities.detectionTime,
         source: {
           browser: capabilities.browser.source,
           formats: capabilities.formats.source
-        }
+        },
+        configuredHash: detectorConfig.hashAlgorithm,
+        cacheEnabled: detectorConfig.cache.enableCache
       }
     };
   }
@@ -941,6 +1339,39 @@ export class ClientDetector {
     const cacheSize = detectionCache.size;
     detectionCache.clear();
     logger.debug('Detection cache cleared', { previousSize: cacheSize });
+  }
+  
+  /**
+   * Update detector configuration
+   * 
+   * @param newConfig New configuration to apply
+   */
+  updateConfig(newConfig: Partial<DetectorConfig>): void {
+    const currentConfig = getConfig();
+    
+    // Merge with current config
+    const mergedConfig: DetectorConfig = {
+      ...currentConfig,
+      ...newConfig,
+      // Deep merge for nested objects
+      cache: { ...currentConfig.cache, ...newConfig.cache },
+      strategies: { ...currentConfig.strategies, ...newConfig.strategies },
+      performanceBudget: { ...currentConfig.performanceBudget, ...newConfig.performanceBudget },
+      deviceClassification: { ...currentConfig.deviceClassification, ...newConfig.deviceClassification }
+    };
+    
+    // Apply the merged config
+    setConfig(mergedConfig);
+    
+    // Reinitialize strategies
+    this.detectorConfig = mergedConfig;
+    this.initializeStrategies();
+    
+    logger.debug('Detector configuration updated', {
+      newCacheSize: mergedConfig.cache.maxSize,
+      strategiesCount: Object.keys(mergedConfig.strategies).length,
+      hashAlgorithm: mergedConfig.hashAlgorithm
+    });
   }
 }
 

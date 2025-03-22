@@ -534,15 +534,13 @@ export function getConnectionQuality(hints: ClientHintsData): 'slow' | 'medium' 
  * Device capability assessment based on client hints
  */
 export interface DeviceCapabilities {
-  class: 'high-end' | 'mid-range' | 'low-end' | 'unknown';
-  description: string;
-  estimated: boolean;
-  // Actual values when measured
-  memory?: number;    // Device memory in GB
-  processors?: number; // Logical processors available
-  mobile?: boolean;    // Whether it's a mobile device
-  platform?: string;   // Platform (OS) name
-  score?: number;      // Computed capability score (0-100)
+  memory?: number;       // Device memory in GB
+  processors?: number;   // Logical processors available
+  mobile?: boolean;      // Whether it's a mobile device
+  platform?: string;     // Platform (OS) name
+  score?: number;        // Raw capability score (0-100)
+  description: string;   // Human-readable description
+  estimated: boolean;    // Whether the capabilities are estimated
 }
 
 /**
@@ -552,9 +550,8 @@ export interface DeviceCapabilities {
  * @returns Detailed device capabilities assessment
  */
 export function getDeviceCapabilities(hints: ClientHintsData): DeviceCapabilities {
-  // Default result with unknown class
+  // Default result with minimal information
   const result: DeviceCapabilities = {
-    class: 'unknown',
     description: 'No device capability information available',
     estimated: true
   };
@@ -572,55 +569,80 @@ export function getDeviceCapabilities(hints: ClientHintsData): DeviceCapabilitie
   if (hints.uaMobile !== undefined) result.mobile = hints.uaMobile;
   if (hints.uaPlatform) result.platform = hints.uaPlatform;
   
-  // Start with assumption of mid-range
+  // Start with a base score
   let score = 50;
   
-  // Adjust based on available hints
+  // Adjust based on available client hints
+  // Device memory is the most reliable indicator of device capability
   if (hints.deviceMemory !== undefined) {
-    if (hints.deviceMemory >= 8) score += 20;
-    else if (hints.deviceMemory >= 4) score += 10;
-    else if (hints.deviceMemory <= 2) score -= 10;
-    else if (hints.deviceMemory <= 1) score -= 20;
+    if (hints.deviceMemory >= 8) score += 30;
+    else if (hints.deviceMemory >= 4) score += 15;
+    else if (hints.deviceMemory <= 2) score -= 15;
+    else if (hints.deviceMemory <= 1) score -= 30;
   }
   
+  // CPU cores provide good insight into processing power
   if (hints.hardwareConcurrency !== undefined) {
-    if (hints.hardwareConcurrency >= 8) score += 15;
-    else if (hints.hardwareConcurrency >= 4) score += 5;
-    else if (hints.hardwareConcurrency <= 2) score -= 10;
+    if (hints.hardwareConcurrency >= 8) score += 20;
+    else if (hints.hardwareConcurrency >= 4) score += 10;
+    else if (hints.hardwareConcurrency <= 2) score -= 15;
   }
   
+  // Network quality is an important factor in device capability assessment
+  if (hints.rtt !== undefined || hints.downlink !== undefined || hints.ect) {
+    const networkQuality = getNetworkQuality(hints);
+    
+    // Consider network quality more strongly when we lack other signals
+    const networkImpact = (hints.deviceMemory === undefined && hints.hardwareConcurrency === undefined) ? 1.5 : 1;
+    
+    if (networkQuality.tier === 'fast') {
+      score += Math.round(15 * networkImpact); // Better network = better experience
+    } else if (networkQuality.tier === 'medium') {
+      score += Math.round(5 * networkImpact);  // Medium network = slight boost
+    } else if (networkQuality.tier === 'slow') {
+      score -= Math.round(10 * networkImpact); // Slow network = worse experience
+    }
+    
+    // If Save-Data is requested, that's an extra strong signal
+    if (networkQuality.saveData) {
+      score -= 15; // User explicitly wants to save data
+    }
+  }
+  
+  // Mobile isn't automatically negative, but affects context
   if (hints.uaMobile === true) {
-    score -= 15; // Mobile devices are typically less powerful
+    // Only adjust if we don't have better indicators
+    if (hints.deviceMemory === undefined && hints.hardwareConcurrency === undefined) {
+      score -= 10; 
+    }
   }
   
   // Record the calculated score
   result.score = score;
   result.estimated = false;
   
-  // Categorize based on score
-  if (score >= 65) {
-    result.class = 'high-end';
-    result.description = createDeviceDescription('High-end', hints);
-  } else if (score >= 35) {
-    result.class = 'mid-range';
-    result.description = createDeviceDescription('Mid-range', hints);
-  } else if (score >= 0) {
-    result.class = 'low-end';
-    result.description = createDeviceDescription('Low-end', hints);
-  } else {
-    result.class = 'unknown';
-    result.description = 'Unknown device capabilities';
-    result.estimated = true;
-  }
+  // Create a descriptive string based on the actual metrics
+  result.description = createDeviceDescription(hints, score);
   
   return result;
 }
 
 /**
- * Helper function to create a device description based on available hints
+ * Helper function to create a device description based on available hints and score
  */
-function createDeviceDescription(baseClass: string, hints: ClientHintsData): string {
-  const parts: string[] = [baseClass];
+function createDeviceDescription(hints: ClientHintsData, score: number): string {
+  const parts: string[] = [];
+  
+  // Add capability level based on score
+  if (score >= 65) {
+    parts.push('Capable device');
+  } else if (score >= 35) {
+    parts.push('Standard device');
+  } else if (score >= 0) {
+    parts.push('Basic device');
+  } else {
+    parts.push('Unknown device');
+  }
   
   if (hints.uaMobile === true) {
     parts.push('mobile');
@@ -648,14 +670,26 @@ function createDeviceDescription(baseClass: string, hints: ClientHintsData): str
 }
 
 /**
- * Simple helper that returns just the device class
+ * Helper function that returns a device class based on score
  * For backward compatibility with existing code
  * 
  * @param hints Client hints data
  * @returns Device class: 'high-end', 'mid-range', 'low-end', or 'unknown'
  */
 export function getDeviceClass(hints: ClientHintsData): 'high-end' | 'mid-range' | 'low-end' | 'unknown' {
-  return getDeviceCapabilities(hints).class;
+  const capabilities = getDeviceCapabilities(hints);
+  const score = capabilities.score || 0;
+  
+  // Map score to device class for backward compatibility
+  if (score >= 65) {
+    return 'high-end';
+  } else if (score >= 35) {
+    return 'mid-range';
+  } else if (score >= 0) {
+    return 'low-end';
+  } else {
+    return 'unknown';
+  }
 }
 
 /**

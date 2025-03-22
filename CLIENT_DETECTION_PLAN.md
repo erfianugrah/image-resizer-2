@@ -131,17 +131,18 @@ This document outlines the plan for enhancing client detection in the image-resi
 - High-DPR Displays: Balance quality and file size
 - CPU Architecture: Consider decoding/rendering capabilities
 
-### Format Selection Matrix
-| Priority | High-End Device | Mid-Range Device | Low-End Device |
+### Format Selection Matrix by Capability Score
+| Priority | High Score (65+) | Medium Score (35-64) | Low Score (<35) |
 |----------|----------------|-----------------|----------------|
 | 1 | AVIF (high quality) | WebP (medium quality) | WebP (low quality) |
 | 2 | WebP (high quality) | WebP (low quality) | JPEG (low quality) |
 | 3 | JPEG (high quality) | JPEG (medium quality) | GIF (static only) |
 
 ### Quality Adjustment Signals
+- Memory: More memory = higher quality and more complex formats
+- CPU Cores: More cores = better ability to decode complex formats
+- Network Quality: Better network = higher quality images
 - DPR: Higher DPR = higher base quality needed
 - Viewport: Smaller viewport = lower quality acceptable
-- ECT: Slower connection = lower quality
-- Memory: Less memory = simpler formats
 - Save-Data: Enable = lowest acceptable quality
 - RTT: Higher latency = more aggressive optimization

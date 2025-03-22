@@ -20,7 +20,7 @@ import {
   suggestOptimizations, 
   addClientHintsHeaders 
 } from './utils/client-hints';
-import { detector, setLogger as setDetectorLogger } from './utils/detector';
+import { detector, setLogger as setDetectorLogger, setConfig } from './utils/detector';
 
 /**
  * Set the logger for the transform module
@@ -355,7 +355,9 @@ export async function buildTransformOptions(
   if (detectionMetrics) {
     logger.debug('Client detection metrics', {
       browser: detectionMetrics.browser,
-      deviceClass: detectionMetrics.deviceClass,
+      deviceScore: detectionMetrics.deviceScore,
+      deviceMemory: detectionMetrics.deviceMemory || 'unknown',
+      deviceProcessors: detectionMetrics.deviceProcessors || 'unknown',
       networkQuality: detectionMetrics.networkQuality,
       detectionTime: `${detectionMetrics.detectionTime}ms`,
       source: detectionMetrics.source

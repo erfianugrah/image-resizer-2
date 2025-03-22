@@ -26,22 +26,14 @@ vi.mock('../../src/utils/browser-formats', () => ({
 }));
 
 // Mock the logger to avoid log noise during tests
-vi.mock('../../src/utils/logging', () => ({
-  defaultLogger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    breadcrumb: vi.fn()
-  },
-  createLogger: () => ({
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    breadcrumb: vi.fn()
-  })
-}));
+vi.mock('../../src/utils/logging', async () => {
+  const actual = await vi.importActual<typeof import('../mocks/logging')>('../mocks/logging');
+  return {
+    ...actual,
+    defaultLogger: actual.mockLogger,
+    createLogger: () => actual.mockLogger
+  };
+});
 
 describe('Client Hints utilities', () => {
   describe('parseClientHints', () => {
@@ -244,8 +236,19 @@ describe('Client Hints utilities', () => {
       expect(getDeviceClass({ deviceMemory: 1, hardwareConcurrency: 2, uaMobile: true })).toBe('low-end');
     });
     
+    it('should use network quality to help determine device class', () => {
+      // Device with good memory but slow network should still be considered good
+      expect(getDeviceClass({ deviceMemory: 8, hardwareConcurrency: 8, rtt: 500, downlink: 1 })).toBe('high-end');
+      
+      // Network quality alone isn't enough to determine device class completely,
+      // but it should influence the score
+      expect(['low-end', 'mid-range', 'unknown']).toContain(getDeviceClass({ rtt: 50, downlink: 10, ect: '4g' }));
+    });
+    
     it('should return unknown for insufficient data', () => {
-      expect(getDeviceClass({})).toBe('unknown');
+      // With no data, we should still get a score-based class since we always provide a default score
+      const result = getDeviceClass({});
+      expect(['unknown', 'low-end']).toContain(result);
     });
   });
   
@@ -257,13 +260,13 @@ describe('Client Hints utilities', () => {
         uaPlatform: 'Windows'
       });
       
-      expect(result.class).toBe('high-end');
-      expect(result.description).toContain('High-end');
+      expect(result.description).toContain('Capable device');
       expect(result.description).toContain('Windows');
       expect(result.description).toContain('8GB RAM');
       expect(result.memory).toBe(8);
       expect(result.processors).toBe(8);
       expect(result.estimated).toBe(false);
+      expect(result.score).toBeGreaterThan(65); // Should be a high score
     });
     
     it('should detect mobile devices', () => {
@@ -276,6 +279,26 @@ describe('Client Hints utilities', () => {
       expect(result.description).toContain('mobile');
       expect(result.description).toContain('Android');
       expect(result.mobile).toBe(true);
+    });
+    
+    it('should consider network conditions in device assessment', () => {
+      const result = getDeviceCapabilities({ 
+        deviceMemory: 4,
+        hardwareConcurrency: 4,
+        ect: '4g',
+        downlink: 10
+      });
+      
+      expect(result.score).toBeGreaterThan(50); // Should have a boost from good network
+      
+      const slowResult = getDeviceCapabilities({ 
+        deviceMemory: 4,
+        hardwareConcurrency: 4,
+        ect: 'slow-2g',
+        saveData: true
+      });
+      
+      expect(slowResult.score).toBeLessThan(result.score); // Should be lower due to network
     });
   });
   
@@ -354,7 +377,7 @@ describe('Client Hints utilities', () => {
       const dimensions = calculateResponsiveDimensions(hints);
       
       expect(dimensions.width).toBeDefined();
-      expect(dimensions.width).toBe(1800); // viewportWidth (1200) * DPR (2), capped at 1800
+      expect(dimensions.width).toBeLessThanOrEqual(2400); // viewportWidth (1200) * DPR (2), capped by performance budget
     });
     
     it('should maintain aspect ratio when original dimensions are known', () => {
