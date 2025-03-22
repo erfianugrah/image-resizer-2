@@ -12,10 +12,10 @@ import {
   getDeviceCapabilities,
   calculatePerformanceBudget,
   suggestOptimizations
-} from '../client-hints';
+} from '../../src/utils/client-hints';
 
 // Mock the logger to avoid log noise during tests
-vi.mock('../logging', () => ({
+vi.mock('../../src/utils/logging', () => ({
   defaultLogger: {
     debug: vi.fn(),
     info: vi.fn(),
