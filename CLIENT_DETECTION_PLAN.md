@@ -52,13 +52,16 @@ This document outlines the plan for enhancing client detection in the image-resi
 - [x] Cache detection results when possible 
 - [x] Add detection metrics to debug output
 - [x] Optimize detection performance
+- [x] Integrate detector framework with transform pipeline
 
 ## Integration Points
 
-### transform.ts
-- Update `getFormat()` function to check client hints first
-- Add client hint parsing to transform pipeline
-- Modify `getBrowserInfo()` to use client hints when available
+### transform.ts ✅
+- [x] Replace direct client hints usage with unified detector
+- [x] Update `getFormat()` to use detector for format support
+- [x] Integrate metrics collection for performance monitoring
+- [x] Replace manual browser detection with strategy pattern
+- [x] Maintain backward compatibility with existing functionality
 
 ### index.ts
 - Add client hint request headers

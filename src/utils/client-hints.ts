@@ -6,6 +6,7 @@
  */
 
 import { createLogger, Logger, defaultLogger } from './logging';
+import { isFormatSupported } from './browser-formats';
 
 // Use default logger until a configured one is provided
 let logger: Logger = defaultLogger;
@@ -34,6 +35,7 @@ export interface ClientHintsData {
   uaMobile?: boolean;         // Whether the device is mobile
   uaPlatform?: string;        // Platform name
   uaArch?: string;            // CPU architecture
+  uaBitness?: string;         // Architecture bitness (e.g. "64")
   
   // Network conditions
   saveData?: boolean;         // Whether data saving is requested
@@ -48,6 +50,13 @@ export interface ClientHintsData {
   // Device capabilities
   deviceMemory?: number;             // Device memory in GB
   hardwareConcurrency?: number;      // Number of logical CPU cores
+  
+  // Accept header information (parsed)
+  acceptFormats?: string[];          // Image formats specified in Accept header  
+
+  // Format support information
+  supportsWebP?: boolean;            // Whether the browser supports WebP
+  supportsAVIF?: boolean;            // Whether the browser supports AVIF
 }
 
 /**
@@ -123,6 +132,11 @@ export function parseClientHints(request: Request): ClientHintsData {
     if (uaArch) {
       hints.uaArch = uaArch.replace(/"/g, '');
     }
+
+    const uaBitness = headers.get('Sec-CH-UA-Bitness');
+    if (uaBitness) {
+      hints.uaBitness = uaBitness.replace(/"/g, '');
+    }
     
     // Network conditions
     const saveData = headers.get('Save-Data');
@@ -157,7 +171,7 @@ export function parseClientHints(request: Request): ClientHintsData {
     }
     
     // Device capabilities
-    const deviceMemory = headers.get('Device-Memory');
+    const deviceMemory = headers.get('Device-Memory') || headers.get('Sec-CH-Device-Memory');
     if (deviceMemory) {
       hints.deviceMemory = parseFloat(deviceMemory);
     }
@@ -165,6 +179,38 @@ export function parseClientHints(request: Request): ClientHintsData {
     const hardwareConcurrency = headers.get('Hardware-Concurrency');
     if (hardwareConcurrency) {
       hints.hardwareConcurrency = parseInt(hardwareConcurrency, 10);
+    }
+    
+    // Parse Accept header for image format support
+    const acceptHeader = headers.get('Accept');
+    if (acceptHeader) {
+      const imageFormats = parseAcceptHeader(acceptHeader);
+      if (imageFormats.length > 0) {
+        hints.acceptFormats = imageFormats;
+        
+        // Set format support flags based on Accept header
+        hints.supportsWebP = imageFormats.includes('webp');
+        hints.supportsAVIF = imageFormats.includes('avif');
+      }
+    }
+
+    // Detect format support from browser information if available
+    if ((hints.supportsWebP === undefined || hints.supportsAVIF === undefined) && 
+        hints.uaBrands && hints.uaBrands.length > 0) {
+      
+      // Extract browser information from UA brands and other data
+      const browserInfo = getBrowserInfoFromClientHints(hints);
+      
+      if (browserInfo) {
+        // Check format support for this browser
+        if (hints.supportsWebP === undefined) {
+          hints.supportsWebP = isFormatSupported('webp', browserInfo.name, browserInfo.version);
+        }
+        
+        if (hints.supportsAVIF === undefined) {
+          hints.supportsAVIF = isFormatSupported('avif', browserInfo.name, browserInfo.version);
+        }
+      }
     }
   } catch (error) {
     logger.warn('Error parsing client hints', { 
@@ -183,6 +229,97 @@ export function parseClientHints(request: Request): ClientHintsData {
   }
   
   return hints;
+}
+
+/**
+ * Parse image formats from the Accept header
+ * 
+ * @param acceptHeader The Accept header value
+ * @returns Array of supported image formats
+ */
+function parseAcceptHeader(acceptHeader: string): string[] {
+  const supportedFormats: string[] = [];
+  
+  try {
+    // Split the header on commas and process each part
+    const parts = acceptHeader.split(',');
+    
+    for (const part of parts) {
+      // Extract the MIME type and quality factor
+      const [mimeType, ...params] = part.trim().split(';');
+      
+      // Check if this is an image format
+      if (mimeType.startsWith('image/')) {
+        // Extract the format name (after image/)
+        const format = mimeType.substring(6).toLowerCase();
+        supportedFormats.push(format);
+      }
+    }
+  } catch (error) {
+    logger.debug('Error parsing Accept header', { 
+      error: error instanceof Error ? error.message : String(error),
+      acceptHeader
+    });
+  }
+  
+  return supportedFormats;
+}
+
+/**
+ * Extract browser information from client hints
+ * 
+ * @param hints Client hints data
+ * @returns Object with browser name and version, or null if not available
+ */
+function getBrowserInfoFromClientHints(hints: ClientHintsData): { name: string; version: string } | null {
+  if (!hints.uaBrands || hints.uaBrands.length === 0) {
+    return null;
+  }
+  
+  // Map common brand names to our normalized browser names
+  const brandMap: Record<string, string> = {
+    'Chrome': 'chrome',
+    'Chromium': 'chrome',
+    'Microsoft Edge': 'edge_chromium',
+    'Firefox': 'firefox',
+    'Safari': 'safari',
+    'Opera': 'opera',
+    'Samsung Browser': 'samsung'
+  };
+
+  // Check for common browsers
+  for (const brand of hints.uaBrands) {
+    for (const [key, value] of Object.entries(brandMap)) {
+      if (brand.includes(key)) {
+        // Found a match - now determine version
+        // Use a default recent version since exact version is not available in client hints
+        // This is a limitation of current client hints implementation
+        let version = '100'; // Default to a recent version
+        
+        // For mobile, adjust the browser type
+        if (hints.uaMobile === true) {
+          if (value === 'chrome') return { name: 'and_chr', version };
+          if (value === 'firefox') return { name: 'and_ff', version };
+          if (value === 'safari' && hints.uaPlatform === 'iOS') return { name: 'ios_saf', version: '15.0' };
+        }
+        
+        return { name: value, version };
+      }
+    }
+  }
+  
+  // If no direct browser brand match, try to infer from platform
+  if (hints.uaPlatform) {
+    if (hints.uaPlatform === 'iOS' || hints.uaPlatform === 'iPadOS') {
+      return { name: 'ios_saf', version: '15.0' }; // Assume recent iOS Safari
+    }
+    
+    if (hints.uaPlatform === 'Android' && hints.uaMobile) {
+      return { name: 'and_chr', version: '100' }; // Assume Chrome on Android
+    }
+  }
+  
+  return null;
 }
 
 /**
@@ -233,7 +370,7 @@ export function addClientHintsHeaders(response: Response, request: Request): Res
     const match = userAgent.match(/Chrome\/(\d+)/i);
     if (match && parseInt(match[1], 10) >= 90) {
       // More complete set of hints for newer browsers
-      headers.set('Accept-CH', 'DPR, Viewport-Width, Width, Sec-CH-UA, Sec-CH-UA-Mobile, Sec-CH-UA-Platform, Sec-CH-UA-Arch, Device-Memory, Save-Data, ECT, RTT, Downlink');
+      headers.set('Accept-CH', 'DPR, Viewport-Width, Width, Sec-CH-UA, Sec-CH-UA-Mobile, Sec-CH-UA-Platform, Sec-CH-UA-Arch, Sec-CH-UA-Bitness, Sec-CH-Prefers-Color-Scheme, Sec-CH-Prefers-Reduced-Motion, Device-Memory, Save-Data, ECT, RTT, Downlink');
       
       // Critical hints (ones we really need)
       headers.set('Critical-CH', 'DPR, Viewport-Width, Sec-CH-UA-Mobile');
@@ -610,7 +747,90 @@ export function calculatePerformanceBudget(hints: ClientHintsData): PerformanceB
   // Cap DPR to prevent excessive scaling
   budget.dpr = Math.max(1, Math.min(hints.dpr || 1, 3));
   
+  // Set preferred format based on client support
+  if (hints.supportsAVIF) {
+    budget.preferredFormat = 'avif';
+  } else if (hints.supportsWebP) {
+    budget.preferredFormat = 'webp';
+  }
+  
   return budget;
+}
+
+/**
+ * Calculates responsive image dimensions based on client hints and viewport
+ * 
+ * @param hints Client hints data
+ * @param originalWidth Original image width (if known)
+ * @param originalHeight Original image height (if known)
+ * @returns Optimized dimensions object with width and height
+ */
+export function calculateResponsiveDimensions(
+  hints: ClientHintsData,
+  originalWidth?: number,
+  originalHeight?: number
+): { width?: number; height?: number } {
+  const result: { width?: number; height?: number } = {};
+  
+  // Use viewport width as baseline if available
+  if (hints.viewportWidth) {
+    const dpr = hints.dpr || 1;
+    
+    // Calculate initial width based on viewport and DPR
+    let calculatedWidth = Math.round(hints.viewportWidth * dpr);
+    
+    // Apply performance budget limits
+    const budget = calculatePerformanceBudget(hints);
+    calculatedWidth = Math.min(calculatedWidth, budget.maxWidth);
+    
+    // Store calculated width
+    result.width = calculatedWidth;
+    
+    // If we have both original dimensions, calculate height maintaining aspect ratio
+    if (originalWidth && originalHeight && calculatedWidth < originalWidth) {
+      const aspectRatio = originalHeight / originalWidth;
+      result.height = Math.round(calculatedWidth * aspectRatio);
+      
+      // Cap height at budget maximum
+      if (result.height > budget.maxHeight) {
+        result.height = budget.maxHeight;
+        // Recalculate width to maintain aspect ratio
+        result.width = Math.round(result.height / aspectRatio);
+      }
+    }
+    // If we have viewport height as well, use that for additional constraints
+    else if (hints.viewportHeight && !originalHeight) {
+      const viewportHeight = hints.viewportHeight * dpr;
+      // Don't make image taller than viewport in most cases
+      result.height = Math.min(viewportHeight, budget.maxHeight);
+    }
+  }
+  
+  // Special case for reduced motion preference
+  if (hints.prefersReducedMotion && result.width) {
+    // For users who prefer reduced motion, we can optimize further
+    // by slightly reducing dimensions for static content
+    result.width = Math.round(result.width * 0.9);
+    if (result.height) {
+      result.height = Math.round(result.height * 0.9);
+    }
+  }
+  
+  return result;
+}
+
+/**
+ * Get color scheme preference from client hints
+ * 
+ * @param hints Client hints data
+ * @returns Color scheme preference: 'dark', 'light', or undefined if not specified
+ */
+export function getColorSchemePreference(hints: ClientHintsData): 'dark' | 'light' | undefined {
+  if (hints.prefersColorScheme) {
+    if (hints.prefersColorScheme === 'dark') return 'dark';
+    if (hints.prefersColorScheme === 'light') return 'light';
+  }
+  return undefined;
 }
 
 /**
@@ -648,24 +868,16 @@ export function suggestOptimizations(
   
   // Optimize dimensions based on viewport, device and performance budget
   if (hints.viewportWidth !== undefined && options.width === undefined) {
-    // Calculate optimal width based on viewport and DPR
-    const viewportBasedWidth = hints.viewportWidth * (hints.dpr || 1);
+    // Get responsive dimensions recommendations
+    const dimensions = calculateResponsiveDimensions(hints);
     
-    // Cap at performance budget maximum
-    const cappedWidth = Math.min(viewportBasedWidth, performanceBudget.maxWidth);
+    if (dimensions.width) {
+      suggestions.optimizedWidth = dimensions.width;
+    }
     
-    // For small viewports, add a small buffer to account for slightly larger screens
-    const finalWidth = hints.viewportWidth < 600 
-      ? Math.min(cappedWidth * 1.2, performanceBudget.maxWidth) // Add 20% buffer for small screens
-      : cappedWidth;
-    
-    suggestions.optimizedWidth = Math.round(finalWidth);
-  }
-  
-  // Handle height similarly if viewport height is available
-  if (hints.viewportHeight !== undefined && options.height === undefined) {
-    const viewportBasedHeight = hints.viewportHeight * (hints.dpr || 1);
-    suggestions.optimizedHeight = Math.min(viewportBasedHeight, performanceBudget.maxHeight);
+    if (dimensions.height) {
+      suggestions.optimizedHeight = dimensions.height;
+    }
   }
   
   // Optimize quality based on the performance budget

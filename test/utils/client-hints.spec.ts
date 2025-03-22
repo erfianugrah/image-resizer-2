@@ -11,8 +11,19 @@ import {
   getDeviceClass,
   getDeviceCapabilities,
   calculatePerformanceBudget,
-  suggestOptimizations
+  suggestOptimizations,
+  calculateResponsiveDimensions,
+  getColorSchemePreference
 } from '../../src/utils/client-hints';
+
+// Mock browser-formats to avoid external dependencies
+vi.mock('../../src/utils/browser-formats', () => ({
+  isFormatSupported: (format: string, browser: string, version: string) => {
+    if (format === 'webp') return true;
+    if (format === 'avif' && browser === 'chrome' && parseFloat(version) >= 85) return true;
+    return false;
+  }
+}));
 
 // Mock the logger to avoid log noise during tests
 vi.mock('../../src/utils/logging', () => ({
@@ -78,6 +89,77 @@ describe('Client Hints utilities', () => {
       // Should not throw an error and should return empty object
       expect(hints).toBeDefined();
       expect(isNaN(hints.dpr as number)).toBe(true);
+    });
+
+    it('should detect format support from Accept header', () => {
+      const headers = new Headers({
+        'Accept': 'image/avif,image/webp,image/png,image/jpeg,*/*'
+      });
+      
+      const request = new Request('https://example.com/image.jpg', {
+        headers
+      });
+      
+      const hints = parseClientHints(request);
+      
+      expect(hints.acceptFormats).toContain('avif');
+      expect(hints.acceptFormats).toContain('webp');
+      expect(hints.supportsWebP).toBe(true);
+      expect(hints.supportsAVIF).toBe(true);
+    });
+
+    it('should detect format support from browser information', () => {
+      const headers = new Headers({
+        'Sec-CH-UA': '"Chrome"; v="90", "Not?A_Brand"; v="24"',
+        'Sec-CH-UA-Mobile': '?0',
+        'Sec-CH-UA-Platform': '"Windows"'
+      });
+      
+      const request = new Request('https://example.com/image.jpg', {
+        headers
+      });
+      
+      const hints = parseClientHints(request);
+      
+      // Our mock should return true for WebP and AVIF with Chrome 90
+      expect(hints.supportsWebP).toBe(true);
+      expect(hints.supportsAVIF).toBe(true);
+    });
+
+    it('should extract color scheme and reduced motion preferences', () => {
+      const headers = new Headers({
+        'Sec-CH-Prefers-Color-Scheme': 'dark',
+        'Sec-CH-Prefers-Reduced-Motion': 'reduce'
+      });
+      
+      const request = new Request('https://example.com/image.jpg', {
+        headers
+      });
+      
+      const hints = parseClientHints(request);
+      
+      expect(hints.prefersColorScheme).toBe('dark');
+      expect(hints.prefersReducedMotion).toBe(true);
+    });
+
+    it('should extract device capabilities from bitness and architecture', () => {
+      const headers = new Headers({
+        'Sec-CH-UA-Arch': 'x86',
+        'Sec-CH-UA-Bitness': '64',
+        'Sec-CH-Device-Memory': '8',
+        'Hardware-Concurrency': '8'
+      });
+      
+      const request = new Request('https://example.com/image.jpg', {
+        headers
+      });
+      
+      const hints = parseClientHints(request);
+      
+      expect(hints.uaArch).toBe('x86');
+      expect(hints.uaBitness).toBe('64');
+      expect(hints.deviceMemory).toBe(8);
+      expect(hints.hardwareConcurrency).toBe(8);
     });
   });
   
@@ -240,6 +322,97 @@ describe('Client Hints utilities', () => {
       expect(budget.maxWidth).toBeLessThanOrEqual(800); // Very low resolution
       expect(budget.preferredFormat).toBe('webp'); // Force efficient format
     });
+
+    it('should set preferred format based on browser support', () => {
+      // Test with browser supporting AVIF
+      const hintsWithAvif = { 
+        supportsAVIF: true,
+        supportsWebP: true
+      };
+      
+      const budgetWithAvif = calculatePerformanceBudget(hintsWithAvif);
+      expect(budgetWithAvif.preferredFormat).toBe('avif');
+      
+      // Test with browser supporting only WebP
+      const hintsWithWebP = { 
+        supportsAVIF: false,
+        supportsWebP: true
+      };
+      
+      const budgetWithWebP = calculatePerformanceBudget(hintsWithWebP);
+      expect(budgetWithWebP.preferredFormat).toBe('webp');
+    });
+  });
+
+  describe('calculateResponsiveDimensions', () => {
+    it('should calculate dimensions based on viewport width and DPR', () => {
+      const hints = {
+        viewportWidth: 1200,
+        dpr: 2
+      };
+      
+      const dimensions = calculateResponsiveDimensions(hints);
+      
+      expect(dimensions.width).toBeDefined();
+      expect(dimensions.width).toBe(1800); // viewportWidth (1200) * DPR (2), capped at 1800
+    });
+    
+    it('should maintain aspect ratio when original dimensions are known', () => {
+      const hints = {
+        viewportWidth: 800,
+        dpr: 1
+      };
+      
+      const originalWidth = 1600;
+      const originalHeight = 900; // 16:9 aspect ratio
+      
+      const dimensions = calculateResponsiveDimensions(hints, originalWidth, originalHeight);
+      
+      expect(dimensions.width).toBe(800);
+      expect(dimensions.height).toBe(450); // Maintains 16:9 ratio
+    });
+    
+    it('should cap dimensions based on performance budget', () => {
+      const hints = {
+        viewportWidth: 1200,
+        dpr: 3,
+        ect: 'slow-2g' // This triggers a lower budget
+      };
+      
+      const dimensions = calculateResponsiveDimensions(hints);
+      
+      expect(dimensions.width).toBeLessThanOrEqual(1200); // Should be capped by slow-2g budget
+    });
+    
+    it('should adjust dimensions for reduced motion preference', () => {
+      const hints = {
+        viewportWidth: 1000,
+        dpr: 1,
+        prefersReducedMotion: true
+      };
+      
+      const dimensions = calculateResponsiveDimensions(hints);
+      
+      // Should be 10% smaller than the regular calculation
+      expect(dimensions.width).toBe(900); // 1000 * 0.9
+    });
+  });
+
+  describe('getColorSchemePreference', () => {
+    it('should detect dark mode preference', () => {
+      const hints = { prefersColorScheme: 'dark' };
+      expect(getColorSchemePreference(hints)).toBe('dark');
+    });
+    
+    it('should detect light mode preference', () => {
+      const hints = { prefersColorScheme: 'light' };
+      expect(getColorSchemePreference(hints)).toBe('light');
+    });
+    
+    it('should return undefined when no preference is specified', () => {
+      const hints = {};
+      expect(getColorSchemePreference(hints)).toBeUndefined();
+    });
   });
   
   describe('suggestOptimizations', () => {
@@ -286,6 +459,33 @@ describe('Client Hints utilities', () => {
       
       expect(suggestions.quality).toBeDefined();
       expect(suggestions.quality).toBeLessThanOrEqual(65); // Should be significantly lower for slow connection
+    });
+
+    it('should suggest responsive dimensions based on viewport', () => {
+      const options = {};
+      const hints = { 
+        viewportWidth: 800,
+        dpr: 2
+      };
+      
+      const suggestions = suggestOptimizations(options, hints);
+      
+      expect(suggestions.optimizedWidth).toBeDefined();
+      expect(suggestions.optimizedWidth).toBeGreaterThanOrEqual(800);
+      expect(suggestions.optimizedWidth).toBeLessThanOrEqual(1600);
+    });
+
+    it('should suggest optimal format based on browser support', () => {
+      const options = { format: 'auto' };
+      const hints = { 
+        supportsAVIF: true,
+        supportsWebP: true
+      };
+      
+      const suggestions = suggestOptimizations(options, hints);
+      
+      expect(suggestions.format).toBeDefined();
+      expect(suggestions.format).toBe('avif'); // Should prefer AVIF when supported
     });
   });
 });

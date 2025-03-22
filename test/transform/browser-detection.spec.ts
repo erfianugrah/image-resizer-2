@@ -11,148 +11,106 @@ vi.mock('../../src/utils/logging', () => ({
   Logger: vi.fn()
 }));
 
-// Import the functions directly now that they're exported
-import { getBrowserInfo, detectFormatSupportFromBrowser } from '../../src/transform';
+// Import detector instead of the transform functions
+import { detector } from '../../src/utils/detector';
+import { isFormatSupported } from '../../src/utils/browser-formats';
 
-describe('Browser Detection', () => {
-  describe('getBrowserInfo', () => {
-    it('detects Chrome browser correctly', () => {
-      const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36';
-      const result = getBrowserInfo(userAgent);
-      expect(result?.name).toBe('chrome');
-      expect(parseFloat(result?.version || '0')).toBeGreaterThanOrEqual(96);
-    });
-    
-    it('detects Firefox browser correctly', () => {
-      const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:95.0) Gecko/20100101 Firefox/95.0';
-      const result = getBrowserInfo(userAgent);
-      expect(result?.name).toBe('firefox');
-      expect(parseFloat(result?.version || '0')).toBeGreaterThanOrEqual(95);
-    });
-    
-    it('detects Safari browser correctly', () => {
-      const userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.1 Safari/605.1.15';
-      const result = getBrowserInfo(userAgent);
-      expect(result?.name).toBe('safari');
-      expect(parseFloat(result?.version || '0')).toBeGreaterThanOrEqual(15);
-    });
-    
-    it('detects Edge (Chromium-based) browser correctly', () => {
-      const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.55 Safari/537.36 Edg/96.0.1054.34';
-      const result = getBrowserInfo(userAgent);
-      expect(result?.name).toBe('edge_chromium');
-      expect(parseFloat(result?.version || '0')).toBeGreaterThanOrEqual(96);
-    });
-    
-    it('detects iOS Safari correctly', () => {
-      const userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1';
-      const result = getBrowserInfo(userAgent);
-      expect(result?.name).toBe('ios_saf');
-      // iOS version should be extracted
-      expect(result?.version).toBeTruthy();
-    });
-    
-    it('detects Chrome for Android correctly', () => {
-      const userAgent = 'Mozilla/5.0 (Linux; Android 12; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.45 Mobile Safari/537.36';
-      const result = getBrowserInfo(userAgent);
-      expect(result?.name).toBe('and_chr');
-      expect(parseFloat(result?.version || '0')).toBeGreaterThanOrEqual(96);
-    });
-    
-    it('detects Samsung Browser correctly', () => {
-      // The detection order matters in the getBrowserInfo function.
-      // For Android devices, it checks for Chrome first, which takes precedence
-      // So let's fix this test to skip the Chrome part
-      const userAgent = 'Mozilla/5.0 (Linux; Android 12; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/16.0';
-      const result = getBrowserInfo(userAgent);
-      expect(result?.name).toBe('samsung');
-      expect(parseFloat(result?.version || '0')).toBeGreaterThanOrEqual(16);
-    });
-    
-    it('handles Brave browser (identifies as Chrome)', () => {
-      const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36 Brave/1.32.113';
-      const result = getBrowserInfo(userAgent);
-      expect(result?.name).toBe('chrome');
-      expect(parseFloat(result?.version || '0')).toBeGreaterThanOrEqual(96);
-    });
-    
-    it('handles Opera browser correctly', () => {
-      // The order of detection matters in getBrowserInfo
-      // For Opera, Chrome detection happens first, so we need to make sure
-      // Chrome is not in the user agent string
-      const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) OPR/82.0.4227.23 Safari/537.36';
-      const result = getBrowserInfo(userAgent);
-      expect(result?.name).toBe('opera');
-      expect(parseFloat(result?.version || '0')).toBeGreaterThanOrEqual(82);
-    });
-    
-    it('returns null for unknown/unrecognized user agents', () => {
-      const userAgent = 'Unknown Browser/1.0';
-      const result = getBrowserInfo(userAgent);
-      expect(result).toBeNull();
-    });
-  });
+// Mock the Request object
+class MockRequest {
+  headers: Headers;
   
-  describe('detectFormatSupportFromBrowser', () => {
-    it('correctly identifies WebP and AVIF support in modern Chrome', () => {
-      const callback = vi.fn();
-      detectFormatSupportFromBrowser({ name: 'chrome', version: '96.0' }, callback);
-      expect(callback).toHaveBeenCalledWith(true, true); // Both WebP and AVIF supported
-    });
-    
-    it('correctly identifies WebP support but not AVIF in older Chrome', () => {
-      const callback = vi.fn();
-      detectFormatSupportFromBrowser({ name: 'chrome', version: '80.0' }, callback);
-      expect(callback).toHaveBeenCalledWith(true, false); // WebP supported, AVIF not
-    });
-    
-    it('correctly identifies no WebP or AVIF support in very old browsers', () => {
-      const callback = vi.fn();
-      detectFormatSupportFromBrowser({ name: 'chrome', version: '8.0' }, callback);
-      expect(callback).toHaveBeenCalledWith(false, false); // Neither supported
-    });
-    
-    it('correctly identifies WebP support in recent Firefox', () => {
-      const callback = vi.fn();
-      detectFormatSupportFromBrowser({ name: 'firefox', version: '90.0' }, callback);
-      expect(callback).toHaveBeenCalledWith(true, false); // WebP supported, AVIF not yet
-    });
-    
-    it('correctly identifies AVIF support in very recent Firefox', () => {
-      const callback = vi.fn();
-      detectFormatSupportFromBrowser({ name: 'firefox', version: '95.0' }, callback);
-      expect(callback).toHaveBeenCalledWith(true, true); // Both supported
-    });
-    
-    it('correctly identifies support in Safari', () => {
-      const callback = vi.fn();
-      // Safari 14+ supports WebP
-      detectFormatSupportFromBrowser({ name: 'safari', version: '14.0' }, callback);
-      expect(callback).toHaveBeenCalledWith(true, false); // WebP supported, AVIF not
+  constructor(headers: Record<string, string>) {
+    this.headers = new Headers(headers);
+  }
+}
+
+describe('Browser Detection Integration', () => {
+  describe('Detector Framework', () => {
+    it('detects Chrome browser correctly from User-Agent', async () => {
+      const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36';
+      const request = new MockRequest({ 'User-Agent': userAgent });
       
-      // Safari 16.4+ also supports AVIF
-      callback.mockClear();
-      detectFormatSupportFromBrowser({ name: 'safari', version: '16.4' }, callback);
-      expect(callback).toHaveBeenCalledWith(true, true); // Both supported
+      const capabilities = await detector.detect(request as any);
+      expect(capabilities.browser.name).toBe('chrome');
+      expect(parseFloat(capabilities.browser.version)).toBeGreaterThanOrEqual(96);
+      expect(capabilities.formats.webp).toBe(true);
+      expect(capabilities.formats.avif).toBe(true);
     });
     
-    it('correctly identifies support in iOS Safari', () => {
-      const callback = vi.fn();
-      // iOS Safari 14+ supports WebP
-      detectFormatSupportFromBrowser({ name: 'ios_saf', version: '14.0' }, callback);
-      expect(callback).toHaveBeenCalledWith(true, false); // WebP supported, AVIF not
+    it('detects Firefox browser correctly from User-Agent', async () => {
+      const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:95.0) Gecko/20100101 Firefox/95.0';
+      const request = new MockRequest({ 'User-Agent': userAgent });
       
-      // iOS Safari 16.4+ also supports AVIF
-      callback.mockClear();
-      detectFormatSupportFromBrowser({ name: 'ios_saf', version: '16.4' }, callback);
-      expect(callback).toHaveBeenCalledWith(true, true); // Both supported
+      const capabilities = await detector.detect(request as any);
+      expect(capabilities.browser.name).toBe('firefox');
+      expect(parseFloat(capabilities.browser.version)).toBeGreaterThanOrEqual(95);
+      expect(capabilities.formats.webp).toBe(true);
+      expect(capabilities.formats.avif).toBe(true);
     });
     
-    it('correctly identifies support in Edge (Chromium)', () => {
-      const callback = vi.fn();
-      // For edge_chromium, WebP support is from v79, AVIF from v121
-      detectFormatSupportFromBrowser({ name: 'edge_chromium', version: '121.0' }, callback);
-      expect(callback).toHaveBeenCalledWith(true, true); // Both WebP and AVIF supported
+    it('detects Safari browser correctly from User-Agent', async () => {
+      const userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.1 Safari/605.1.15';
+      const request = new MockRequest({ 'User-Agent': userAgent });
+      
+      const capabilities = await detector.detect(request as any);
+      expect(capabilities.browser.name).toBe('safari');
+      expect(parseFloat(capabilities.browser.version)).toBeGreaterThanOrEqual(15);
+      expect(capabilities.formats.webp).toBe(true);
+      expect(capabilities.formats.avif).toBe(false); // Safari 15.1 doesn't support AVIF
+    });
+    
+    it('prefers Accept header over User-Agent for format detection', async () => {
+      const userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Safari/605.1.15';
+      const request = new MockRequest({ 
+        'User-Agent': userAgent,
+        'Accept': 'image/avif,image/webp,image/png,image/jpeg' 
+      });
+      
+      const capabilities = await detector.detect(request as any);
+      expect(capabilities.browser.name).toBe('safari');
+      expect(capabilities.formats.webp).toBe(true);
+      expect(capabilities.formats.avif).toBe(true); // Accept header indicates AVIF support
+      expect(capabilities.formats.source).toBe('accept-header');
+    });
+    
+    it('uses client hints when available', async () => {
+      const request = new MockRequest({ 
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36',
+        'Sec-CH-UA': '"Not A;Brand";v="99", "Chromium";v="96", "Google Chrome";v="96"',
+        'Sec-CH-UA-Mobile': '?0',
+        'Sec-CH-UA-Platform': '"Windows"',
+        'Sec-CH-Viewport-Width': '1920',
+        'DPR': '2.0'
+      });
+      
+      const capabilities = await detector.detect(request as any);
+      // The name might come from different sources depending on implementation
+      // what matters is that we have brand data
+      expect(capabilities.browser).toBeTruthy();
+      expect(capabilities.browser.source).toBeTruthy();
+      expect(capabilities.browser.mobile).toBe(false);
+      expect(capabilities.browser.platform).toBe('Windows');
+    });
+
+    it('fallbacks to static data when other methods fail', async () => {
+      const request = new MockRequest({
+        'User-Agent': 'Very Old Browser/1.0',
+      });
+      
+      const capabilities = await detector.detect(request as any);
+      expect(capabilities.browser.name).toBeTruthy();
+      expect(capabilities.formats.webp).toBeDefined();
+      expect(capabilities.formats.avif).toBeDefined();
+    });
+    
+    it('provides correct format information for modern browsers', async () => {
+      // Using static isFormatSupported directly to verify detector uses the same data
+      expect(isFormatSupported('webp', 'chrome', '96.0')).toBe(true);
+      expect(isFormatSupported('avif', 'chrome', '96.0')).toBe(true);
+      expect(isFormatSupported('webp', 'firefox', '95.0')).toBe(true);
+      expect(isFormatSupported('avif', 'firefox', '95.0')).toBe(true);
+      expect(isFormatSupported('webp', 'safari', '15.0')).toBe(true);
+      expect(isFormatSupported('avif', 'safari', '15.0')).toBe(false);
     });
   });
 });

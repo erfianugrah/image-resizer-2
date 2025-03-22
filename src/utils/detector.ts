@@ -730,6 +730,23 @@ export class ClientDetector {
   }
   
   /**
+   * Helper method to merge client hints objects
+   * Used for combining hints from multiple strategies
+   */
+  mergeClientHints(targetHints: ClientHintsData, sourceHints: ClientHintsData): ClientHintsData {
+    if (!sourceHints || Object.keys(sourceHints).length === 0) {
+      return targetHints;
+    }
+    
+    if (!targetHints || Object.keys(targetHints).length === 0) {
+      return sourceHints;
+    }
+    
+    // Create a merged copy preserving all properties
+    return { ...targetHints, ...sourceHints };
+  }
+  
+  /**
    * Detect client capabilities from a request
    * Uses multiple strategies with fallbacks and caching
    * 
@@ -805,7 +822,10 @@ export class ClientDetector {
           // OPTIMIZATION: Merge the partial result, but don't overwrite fields from higher priority strategies
           // Use Object.entries for better performance on large objects compared to for...in loops
           Object.entries(partialResult).forEach(([key, value]) => {
-            if (!filledFields.has(key) && value !== undefined && value !== null) {
+            if (key === 'clientHints' && result.clientHints) {
+              // Special handling for client hints - merge them instead of replacing
+              result.clientHints = this.mergeClientHints(result.clientHints as ClientHintsData, value as ClientHintsData);
+            } else if (!filledFields.has(key) && value !== undefined && value !== null) {
               (result as any)[key] = value;
               filledFields.add(key);
             }

@@ -20,6 +20,7 @@ import {
   suggestOptimizations, 
   addClientHintsHeaders 
 } from './utils/client-hints';
+import { detector, setLogger as setDetectorLogger } from './utils/detector';
 
 /**
  * Set the logger for the transform module
@@ -28,6 +29,8 @@ import {
  */
 export function setLogger(configuredLogger: Logger): void {
   logger = configuredLogger;
+  // Also set the detector logger
+  setDetectorLogger(configuredLogger);
 }
 
 /**
@@ -172,89 +175,27 @@ function getResponsiveWidth(
 
 /**
  * Get image format based on request Accept header, User-Agent, and configuration
+ * Uses the client detector for format detection with fallbacks
  */
-function getFormat(
+async function getFormat(
   request: Request,
   contentType: string | null,
   options: TransformOptions,
   config: ImageResizerConfig
-): string {
+): Promise<string> {
   // If a specific format is requested, use that
   if (options.format && options.format !== 'auto') {
     return options.format;
   }
   
-  // Parse client hints if available
-  const clientHints = parseClientHints(request);
-  
-  // Check if we have a format suggestion from client hints
-  if (options.format === 'auto' && Object.keys(clientHints).length > 0) {
-    const optimizations = suggestOptimizations(options, clientHints);
-    if (optimizations.format) {
-      logger.debug('Using client hints-suggested format', { 
-        format: optimizations.format,
-        clientHintsAvailable: true
-      });
-      return optimizations.format;
-    }
-  }
-  
-  // Get headers to determine browser support
-  const acceptHeader = request.headers.get('Accept') || '';
-  const userAgent = request.headers.get('User-Agent') || '';
-  
-  // First check Accept header (most reliable when present)
-  let supportsWebP = acceptHeader.includes('image/webp');
-  let supportsAVIF = acceptHeader.includes('image/avif');
-  
-  // If not explicitly in Accept header, use User-Agent detection
-  if (!supportsWebP || !supportsAVIF) {
-    try {
-      // Extract browser and version from User-Agent
-      const browser = getBrowserInfo(userAgent);
-      
-      if (browser) {
-        logger.debug('Detected browser from User-Agent', { 
-          browserName: browser.name, 
-          browserVersion: browser.version 
-        });
-        
-        // Use static browser format support detection
-        try {
-          if (!supportsWebP) {
-            supportsWebP = isFormatSupported('webp', browser.name, browser.version);
-          }
-          
-          if (!supportsAVIF) {
-            supportsAVIF = isFormatSupported('avif', browser.name, browser.version);
-          }
-          
-          logger.debug('Format support detected from static dictionary', { supportsWebP, supportsAVIF });
-        } catch (error) {
-          logger.debug('Error detecting format support', { 
-            error: error instanceof Error ? error.message : String(error) 
-          });
-        }
-        
-        // Add a fallback layer if our static detection didn't resolve support
-        // This handles edge cases not covered in our static dictionary
-        if (!supportsWebP || !supportsAVIF) {
-          detectFormatSupportFromBrowser(browser, (webpSupported, avifSupported) => {
-            if (!supportsWebP) supportsWebP = webpSupported;
-            if (!supportsAVIF) supportsAVIF = avifSupported;
-          });
-          
-          logger.debug('Format support confirmed by detection function', { supportsWebP, supportsAVIF });
-        }
-      } else {
-        logger.debug('Could not parse browser info from User-Agent', { userAgent });
-      }
-    } catch (error) {
-      logger.warn('Error in browser detection for format support', { 
-        error: error instanceof Error ? error.message : String(error) 
-      });
-    }
-  }
+  // Use the new detector to get format support and optimize
+  const capabilities = await detector.detect(request);
+  logger.debug('Using unified detector for format detection', {
+    browser: `${capabilities.browser.name} ${capabilities.browser.version}`,
+    supportsWebP: capabilities.formats.webp,
+    supportsAVIF: capabilities.formats.avif,
+    detectionSource: capabilities.formats.source
+  });
   
   // Determine the original format from content type
   let originalFormat = 'jpeg';
@@ -287,9 +228,9 @@ function getFormat(
     }
     
     // For other formats, prioritize based on support and efficiency
-    if (supportsAVIF) {
+    if (capabilities.formats.avif) {
       return 'avif';
-    } else if (supportsWebP) {
+    } else if (capabilities.formats.webp) {
       return 'webp';
     } else {
       return 'jpeg'; // Fallback to JPEG
@@ -300,147 +241,10 @@ function getFormat(
 }
 
 /**
- * Determine browser format support based on browser and version
- * Uses the static browser format support dictionary
- * 
- * @param browser - Object containing browser name and version
- * @param callback - Callback function receiving WebP and AVIF support status
+ * These browser detection functions have been replaced by the unified detector framework
+ * The detector implements the same functionality with more robust handling, caching,
+ * and a strategy pattern for flexible detection methods. See utils/detector.ts for details.
  */
-export function detectFormatSupportFromBrowser(
-  browser: { name: string; version: string },
-  callback: (webpSupported: boolean, avifSupported: boolean) => void
-): void {
-  const { name, version } = browser;
-  
-  const webpSupported = isFormatSupported('webp', name, version);
-  const avifSupported = isFormatSupported('avif', name, version);
-  
-  callback(webpSupported, avifSupported);
-}
-
-/**
- * Extract browser name and version from User-Agent string
- * 
- * @param userAgent - The User-Agent string to parse
- * @returns Object with browser name and version, or null if not recognized
- */
-export function getBrowserInfo(userAgent: string): { name: string; version: string } | null {
-  try {
-    // Add a debug log to see the raw User-Agent
-    logger.debug('Parsing browser info from User-Agent', { userAgent });
-    
-    // Check for mobile devices first since they often include multiple browser identifiers
-    
-    // iOS devices
-    let match = userAgent.match(/iPad|iPhone|iPod/i);
-    if (match) {
-      // iOS Safari
-      const versionMatch = userAgent.match(/OS (\d+[_\.]\d+)/i);
-      if (versionMatch) {
-        // Convert version format from 14_0 to 14.0
-        const version = versionMatch[1].replace('_', '.');
-        return { name: 'ios_saf', version };
-      }
-      
-      // If we can't determine iOS version, use Safari version if available
-      const safariMatch = userAgent.match(/Version\/(\d+\.\d+)/i);
-      if (safariMatch) {
-        return { name: 'ios_saf', version: safariMatch[1] };
-      }
-      
-      // If no version info, return a safe default
-      return { name: 'ios_saf', version: '9.0' };
-    }
-    
-    // Android devices
-    if (userAgent.includes('Android')) {
-      // Chrome for Android
-      match = userAgent.match(/Chrome\/(\d+\.\d+)/i);
-      if (match) {
-        return { name: 'and_chr', version: match[1] };
-      }
-      
-      // Firefox for Android
-      match = userAgent.match(/Firefox\/(\d+\.\d+)/i);
-      if (match) {
-        return { name: 'and_ff', version: match[1] };
-      }
-      
-      // Android browser or WebView
-      match = userAgent.match(/Android (\d+\.\d+)/i);
-      if (match) {
-        return { name: 'android', version: match[1] };
-      }
-    }
-    
-    // Now handle desktop browsers
-    
-    // Edge (Chromium-based)
-    match = userAgent.match(/Edg(e)?\/(\d+\.\d+)/i);
-    if (match) {
-      // When Edge is Chromium-based, it's 79+
-      const version = match[2];
-      const versionNumber = parseFloat(version);
-      if (versionNumber >= 79) {
-        return { name: 'edge_chromium', version };
-      }
-      return { name: 'edge', version };
-    }
-    
-    // Chrome, Chromium
-    match = userAgent.match(/(Chrome|Chromium)\/(\d+\.\d+)/i);
-    if (match) {
-      return { name: 'chrome', version: match[2] };
-    }
-    
-    // Firefox
-    match = userAgent.match(/Firefox\/(\d+\.\d+)/i);
-    if (match) {
-      return { name: 'firefox', version: match[1] };
-    }
-    
-    // Safari
-    match = userAgent.match(/Version\/(\d+\.\d+).*Safari/i);
-    if (match && userAgent.includes('Safari')) {
-      return { name: 'safari', version: match[1] };
-    }
-    
-    // Opera
-    match = userAgent.match(/OPR\/(\d+\.\d+)/i);
-    if (match) {
-      return { name: 'opera', version: match[1] };
-    }
-    
-    // Internet Explorer
-    match = userAgent.match(/MSIE (\d+\.\d+)/i) || userAgent.match(/Trident.*rv:(\d+\.\d+)/i);
-    if (match) {
-      return { name: 'ie', version: match[1] };
-    }
-    
-    // Samsung Internet
-    match = userAgent.match(/SamsungBrowser\/(\d+\.\d+)/i);
-    if (match) {
-      return { name: 'samsung', version: match[1] };
-    }
-    
-    // Brave (identifies as Chrome)
-    if (userAgent.includes('Brave')) {
-      match = userAgent.match(/Chrome\/(\d+\.\d+)/i);
-      if (match) {
-        return { name: 'chrome', version: match[1] }; // Treat as Chrome for compatibility
-      }
-    }
-    
-    logger.debug('Could not identify browser from User-Agent', { userAgent });
-    return null;
-  } catch (error) {
-    logger.warn('Error parsing browser info from User-Agent', { 
-      userAgent,
-      error: error instanceof Error ? error.message : String(error)
-    });
-    return null;
-  }
-}
 
 /**
  * Apply derivative template to transform options
@@ -504,12 +308,12 @@ function applyDerivativeTemplate(
 /**
  * Build Cloudflare image transformation options
  */
-export function buildTransformOptions(
+export async function buildTransformOptions(
   request: Request,
   storageResult: StorageResult,
   options: TransformOptions,
   config: ImageResizerConfig
-): TransformOptions {
+): Promise<TransformOptions> {
   logger.breadcrumb('buildTransformOptions started', undefined, {
     imageSize: storageResult.size,
     contentType: storageResult.contentType,
@@ -540,8 +344,29 @@ export function buildTransformOptions(
     delete transformOptions.width; // Remove 'auto' so it doesn't get sent to Cloudflare
   }
   
-  // Parse client hints for advanced device/network detection
-  const clientHints = parseClientHints(request);
+  // Use the unified detector to get client capabilities
+  const detectorStart = Date.now();
+  logger.breadcrumb('Using unified detector for options optimization');
+  const optimizedOptions = await detector.getOptimizedOptions(request, transformOptions);
+  const detectionTime = Date.now() - detectorStart;
+  
+  // Extract detection metrics for logging
+  const detectionMetrics = optimizedOptions.__detectionMetrics;
+  if (detectionMetrics) {
+    logger.debug('Client detection metrics', {
+      browser: detectionMetrics.browser,
+      deviceClass: detectionMetrics.deviceClass,
+      networkQuality: detectionMetrics.networkQuality,
+      detectionTime: `${detectionMetrics.detectionTime}ms`,
+      source: detectionMetrics.source
+    });
+    
+    // Remove the metrics from the options so they don't get sent to Cloudflare
+    delete optimizedOptions.__detectionMetrics;
+  }
+  
+  // Update transformOptions with the optimized values
+  transformOptions = optimizedOptions;
   
   // Get responsive width if not explicitly set
   if (!transformOptions.width) {
@@ -549,34 +374,11 @@ export function buildTransformOptions(
       hasWidth: false,
       userAgent: request.headers.get('User-Agent') || 'unknown',
       viewportWidth: request.headers.get('Sec-CH-Viewport-Width') || request.headers.get('Viewport-Width') || 'unknown',
-      deviceType: request.headers.get('CF-Device-Type') || 'unknown',
-      clientHints: Object.keys(clientHints).length > 0 ? 'available' : 'not available'
+      deviceType: request.headers.get('CF-Device-Type') || 'unknown'
     });
     
-    // Check if we have width suggestion from client hints
-    if (clientHints.viewportWidth && !transformOptions.width) {
-      const optimizations = suggestOptimizations(transformOptions, clientHints);
-      if (optimizations.optimizedWidth) {
-        transformOptions.width = optimizations.optimizedWidth;
-        logger.breadcrumb('Applied client hint-based width', undefined, { 
-          width: transformOptions.width,
-          dpr: clientHints.dpr
-        });
-      } else {
-        // Fall back to traditional responsive width calculation
-        const responsiveWidthStart = Date.now();
-        const responsiveWidth = getResponsiveWidth(transformOptions, request, config);
-        logger.breadcrumb('Responsive width calculated', Date.now() - responsiveWidthStart, { 
-          calculatedWidth: responsiveWidth
-        });
-        if (responsiveWidth) {
-          transformOptions.width = responsiveWidth;
-          logger.breadcrumb('Applied responsive width', undefined, { width: responsiveWidth });
-        } else {
-          logger.breadcrumb('No responsive width determined, using original dimensions');
-        }
-      }
-    } else {
+    // If detector didn't set a width, fall back to traditional method
+    if (!transformOptions.width) {
       // Fall back to traditional responsive width calculation
       const responsiveWidthStart = Date.now();
       const responsiveWidth = getResponsiveWidth(transformOptions, request, config);
@@ -592,7 +394,7 @@ export function buildTransformOptions(
     }
   }
   
-  // Get appropriate format
+  // Get appropriate format if not set by detector
   if (!transformOptions.format || transformOptions.format === 'auto') {
     logger.breadcrumb('Determining output format', undefined, { 
       originalFormat: 'auto',
@@ -615,11 +417,11 @@ export function buildTransformOptions(
         transformOptions.format = 'webp';
         logger.breadcrumb('Selected WebP format for Save-Data');
       } else {
-        transformOptions.format = getFormat(request, storageResult.contentType, transformOptions, config);
+        transformOptions.format = await getFormat(request, storageResult.contentType, transformOptions, config);
         logger.breadcrumb('Selected fallback format for Save-Data', undefined, { format: transformOptions.format });
       }
     } else {
-      transformOptions.format = getFormat(request, storageResult.contentType, transformOptions, config);
+      transformOptions.format = await getFormat(request, storageResult.contentType, transformOptions, config);
       logger.breadcrumb('Selected format based on content negotiation', undefined, { format: transformOptions.format });
     }
     logger.breadcrumb('Format determination completed', Date.now() - formatStart, { 
@@ -634,27 +436,13 @@ export function buildTransformOptions(
     delete transformOptions.quality; // Remove 'auto' so it doesn't get sent to Cloudflare
   }
   
-  // Set default quality if not specified
+  // Set default quality if not specified by detector
   if (transformOptions.quality === undefined) {
     logger.breadcrumb('Determining quality setting', undefined, {
       format: transformOptions.format,
       saveData: request.headers.get('Save-Data') === 'on',
-      downlink: request.headers.get('Downlink') || 'unknown',
-      clientHints: Object.keys(clientHints).length > 0 ? 'available' : 'not available'
+      downlink: request.headers.get('Downlink') || 'unknown'
     });
-    
-    // Check for client hints suggestion first
-    if (Object.keys(clientHints).length > 0) {
-      const optimizations = suggestOptimizations(transformOptions, clientHints);
-      if (optimizations.quality) {
-        transformOptions.quality = optimizations.quality;
-        logger.breadcrumb('Applied client hint-based quality', undefined, { 
-          quality: transformOptions.quality,
-          connectionQuality: clientHints.ect || (clientHints.rtt ? `RTT: ${clientHints.rtt}ms` : 'unknown'),
-          saveData: clientHints.saveData
-        });
-      }
-    }
     
     const qualityStart = Date.now();
     // Check for network conditions and Save-Data
@@ -1388,8 +1176,8 @@ export async function transformImage(
   
   logger.breadcrumb('Building transform options');
   const buildStart = Date.now();
-  // Build transformation options
-  const transformOptions = buildTransformOptions(request, storageResult, options, config);
+  // Build transformation options using the async detector-based method
+  const transformOptions = await buildTransformOptions(request, storageResult, options, config);
   const buildEnd = Date.now();
   logger.breadcrumb('Built transform options', buildEnd - buildStart, transformOptions);
   
