@@ -761,11 +761,14 @@ export function calculatePerformanceBudget(hints: ClientHintsData): PerformanceB
   }
   
   // Further adjust based on device capabilities
-  if (device.class === 'low-end') {
+  const deviceScore = device.score || 0;
+  // Determine class based on score
+  if (deviceScore < 35) {
+    // Low-end device
     budget.quality.target = Math.max(budget.quality.min, budget.quality.target - 10);
     budget.maxWidth = Math.min(budget.maxWidth, 1000);
     budget.maxHeight = Math.min(budget.maxHeight, 1000);
-  } else if (device.class === 'high-end') {
+  } else if (deviceScore >= 65) {
     budget.quality.target = Math.min(budget.quality.max, budget.quality.target + 5);
     // No need to adjust dimensions for high-end devices
   }

@@ -837,7 +837,7 @@ class DefaultFallbackStrategy implements DetectionStrategy {
     
     // Default device - assume mid-range to be safe
     const device: DeviceCapabilities = {
-      class: 'mid-range',
+      score: 50,
       description: 'Unknown device (using defaults)',
       estimated: true
     };
@@ -1227,7 +1227,7 @@ export class ClientDetector {
         browser: `${completeResult.browser.name} ${completeResult.browser.version}`,
         formats: `WebP: ${completeResult.formats.webp}, AVIF: ${completeResult.formats.avif}`,
         networkQuality: completeResult.network.tier,
-        deviceClass: completeResult.device.class
+        deviceScore: completeResult.device.score || 0
       });
     }
     
