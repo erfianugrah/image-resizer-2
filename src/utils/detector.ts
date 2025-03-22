@@ -1246,8 +1246,26 @@ export class ClientDetector {
     const capabilities = await this.detect(request);
     const detectorConfig = getConfig();
     
+    logger.breadcrumb('Starting optimized transformation selection', undefined, {
+      requestUrl: request.url,
+      userAgent: request.headers.get('User-Agent')?.substring(0, 50) || 'unknown',
+      hasAcceptHeader: !!request.headers.get('Accept'),
+      hasSaveData: request.headers.get('Save-Data') === 'on',
+      hasClientHints: !!request.headers.get('Sec-CH-UA'),
+      optionsProvided: Object.keys(options).join(',') || 'none'
+    });
+    
     // Apply client hints-based optimizations using performance budget configuration
     const optimizations = suggestOptimizations(options, capabilities.clientHints);
+    
+    logger.breadcrumb('Initial optimizations from client hints', undefined, {
+      hasFormat: !!optimizations.format,
+      hasQuality: !!optimizations.quality,
+      hasDpr: !!optimizations.dpr,
+      hasWidth: !!optimizations.optimizedWidth,
+      hasHeight: !!optimizations.optimizedHeight,
+      optimizedParams: Object.keys(optimizations).join(',') || 'none'
+    });
     
     // Get capability metrics
     const deviceCapabilities = capabilities.device;
@@ -1257,16 +1275,36 @@ export class ClientDetector {
     // Format selection (if auto format is requested)
     // Cascade from most explicit to least explicit signals
     if (options.format === 'auto' || options.format === undefined) {
+      logger.breadcrumb('Determining optimized format using cascading priority', undefined, {
+        autoFormat: true,
+        acceptHeaderSource: formatSupport.source === 'accept-header',
+        browserSource: formatSupport.source,
+        avifSupport: formatSupport.avif,
+        webpSupport: formatSupport.webp
+      });
+      
       // Check format support using the most reliable method we have
       if (formatSupport.avif && formatSupport.source === 'accept-header') {
         // Accept header is most reliable - client explicitly says it supports AVIF
         optimizations.format = 'avif';
         logger.debug('Format selected based on Accept header', { format: 'avif' });
+        logger.breadcrumb('Format selection decision', undefined, {
+          format: 'avif',
+          decisionSource: 'accept-header',
+          decisionTier: 'explicit',
+          priority: 'highest'
+        });
       } 
       else if (formatSupport.webp && formatSupport.source === 'accept-header') {
         // Accept header indicates WebP support but not AVIF
         optimizations.format = 'webp';
         logger.debug('Format selected based on Accept header', { format: 'webp' });
+        logger.breadcrumb('Format selection decision', undefined, {
+          format: 'webp',
+          decisionSource: 'accept-header',
+          decisionTier: 'explicit',
+          priority: 'high'
+        });
       }
       else if (formatSupport.avif) {
         // Other detection methods indicate AVIF support
@@ -1274,6 +1312,12 @@ export class ClientDetector {
         logger.debug('Format selected based on browser detection', { 
           format: 'avif', 
           source: formatSupport.source
+        });
+        logger.breadcrumb('Format selection decision', undefined, {
+          format: 'avif',
+          decisionSource: formatSupport.source,
+          decisionTier: 'browser-detection',
+          priority: 'medium'
         });
       }
       else if (formatSupport.webp) {
@@ -1283,39 +1327,90 @@ export class ClientDetector {
           format: 'webp', 
           source: formatSupport.source 
         });
+        logger.breadcrumb('Format selection decision', undefined, {
+          format: 'webp',
+          decisionSource: formatSupport.source,
+          decisionTier: 'browser-detection',
+          priority: 'medium-low'
+        });
       }
       else {
         // No modern format support detected, use JPEG
         optimizations.format = 'jpeg';
         logger.debug('Format defaulted to JPEG due to no modern format support');
+        logger.breadcrumb('Format selection decision', undefined, {
+          format: 'jpeg',
+          decisionSource: 'default-fallback',
+          decisionTier: 'fallback',
+          priority: 'lowest'
+        });
       }
     }
     
     // Quality selection (if not specified)
     // Cascade from explicit signals to reasonable defaults
     if (!options.quality && optimizations.quality === undefined) {
+      logger.breadcrumb('Determining optimized quality using cascading priority', undefined, {
+        autoQuality: true,
+        hasSaveData: !!capabilities.clientHints.saveData,
+        networkTier: networkQuality.tier,
+        hasDeviceMemory: deviceCapabilities.memory !== undefined,
+        deviceMemory: deviceCapabilities.memory,
+        processorCores: deviceCapabilities.processors,
+        hasDpr: capabilities.clientHints.dpr !== undefined,
+        dpr: capabilities.clientHints.dpr
+      });
+
       // Start with standard quality from config
       const baseQuality = detectorConfig.performanceBudget?.quality?.medium?.target || 75;
       let targetQuality = baseQuality;
       let qualitySource = 'default';
+      let priorityTier = 'default';
       
       // First priority: Check for Save-Data header (most explicit user preference)
       if (capabilities.clientHints.saveData) {
         // User explicitly wants to save data, use lowest quality
         targetQuality = detectorConfig.performanceBudget?.quality?.low?.min || 60;
         qualitySource = 'save-data';
+        priorityTier = 'explicit-user-preference';
+        
+        logger.breadcrumb('Quality decision - Save-Data detected', undefined, {
+          newQuality: targetQuality,
+          originalQuality: baseQuality,
+          decisionTier: 'explicit-user-preference',
+          priority: 'highest'
+        });
       }
       // Second priority: Check network conditions
       else if (networkQuality.tier === 'slow') {
         // Slow network detected, reduce quality
         targetQuality = Math.floor(baseQuality * 0.85);
         qualitySource = 'network-slow';
+        priorityTier = 'network-condition';
+        
+        logger.breadcrumb('Quality decision - Slow network detected', undefined, {
+          newQuality: targetQuality,
+          originalQuality: baseQuality,
+          adjustmentFactor: 0.85,
+          decisionTier: 'network-condition',
+          priority: 'high'
+        });
       }
       else if (networkQuality.tier === 'fast') {
         // Fast network detected, can use higher quality
         const maxQuality = detectorConfig.performanceBudget?.quality?.high?.max || 90;
         targetQuality = Math.min(Math.floor(baseQuality * 1.1), maxQuality);
         qualitySource = 'network-fast';
+        priorityTier = 'network-condition';
+        
+        logger.breadcrumb('Quality decision - Fast network detected', undefined, {
+          newQuality: targetQuality,
+          originalQuality: baseQuality,
+          adjustmentFactor: 1.1,
+          maxAllowed: maxQuality,
+          decisionTier: 'network-condition', 
+          priority: 'high'
+        });
       }
       // Third priority: Check device capabilities if we have them
       else if (deviceCapabilities.memory !== undefined || deviceCapabilities.processors !== undefined) {
@@ -1324,29 +1419,89 @@ export class ClientDetector {
           // High memory device can handle higher quality
           targetQuality = detectorConfig.performanceBudget?.quality?.high?.target || 85;
           qualitySource = 'device-memory-high';
+          priorityTier = 'device-capability';
+          
+          logger.breadcrumb('Quality decision - High memory device', undefined, {
+            newQuality: targetQuality,
+            originalQuality: baseQuality,
+            deviceMemory: deviceCapabilities.memory,
+            threshold: '≥8GB',
+            decisionTier: 'device-capability',
+            priority: 'medium-high'
+          });
         }
         else if (deviceCapabilities.memory && deviceCapabilities.memory <= 2) {
           // Low memory device needs lower quality
           targetQuality = detectorConfig.performanceBudget?.quality?.low?.target || 70;
           qualitySource = 'device-memory-low';
+          priorityTier = 'device-capability';
+          
+          logger.breadcrumb('Quality decision - Low memory device', undefined, {
+            newQuality: targetQuality,
+            originalQuality: baseQuality,
+            deviceMemory: deviceCapabilities.memory,
+            threshold: '≤2GB',
+            decisionTier: 'device-capability',
+            priority: 'medium-high'
+          });
         }
         else if (deviceCapabilities.processors && deviceCapabilities.processors >= 8) {
           // Many CPU cores indicates a powerful device
           targetQuality = detectorConfig.performanceBudget?.quality?.high?.target || 85;
           qualitySource = 'device-cpu-high';
+          priorityTier = 'device-capability';
+          
+          logger.breadcrumb('Quality decision - High CPU core count', undefined, {
+            newQuality: targetQuality,
+            originalQuality: baseQuality,
+            processorCores: deviceCapabilities.processors,
+            threshold: '≥8 cores',
+            decisionTier: 'device-capability',
+            priority: 'medium'
+          });
         }
         else if (deviceCapabilities.processors && deviceCapabilities.processors <= 2) {
           // Few CPU cores indicates a less powerful device
           targetQuality = detectorConfig.performanceBudget?.quality?.low?.target || 70;
           qualitySource = 'device-cpu-low';
+          priorityTier = 'device-capability';
+          
+          logger.breadcrumb('Quality decision - Low CPU core count', undefined, {
+            newQuality: targetQuality,
+            originalQuality: baseQuality,
+            processorCores: deviceCapabilities.processors,
+            threshold: '≤2 cores',
+            decisionTier: 'device-capability',
+            priority: 'medium'
+          });
         }
+      }
+      else {
+        // No specific signals, using default quality
+        logger.breadcrumb('Quality decision - Using default quality', undefined, {
+          quality: targetQuality,
+          reason: 'no-specific-signals',
+          decisionTier: 'default',
+          priority: 'low'
+        });
       }
       
       // Apply DPR adjustment if available
       if (capabilities.clientHints.dpr && capabilities.clientHints.dpr > 1) {
         // Higher DPR screens need higher quality images
+        const originalQuality = targetQuality;
         targetQuality = Math.min(targetQuality + 5, 95);
         qualitySource += '-dpr-adjusted';
+        
+        logger.breadcrumb('Quality decision - DPR adjustment applied', undefined, {
+          newQuality: targetQuality,
+          previousQuality: originalQuality,
+          dpr: capabilities.clientHints.dpr,
+          adjustment: +5,
+          maxCap: 95,
+          decisionTier: 'enhancement',
+          priority: 'low'
+        });
       }
       
       // Set the final quality value
@@ -1356,8 +1511,50 @@ export class ClientDetector {
         quality: targetQuality,
         source: qualitySource
       });
+      
+      logger.breadcrumb('Final quality decision', undefined, {
+        finalQuality: targetQuality,
+        primarySource: qualitySource,
+        decisionTier: priorityTier,
+        hasDeviceInfo: deviceCapabilities.memory !== undefined || deviceCapabilities.processors !== undefined,
+        deviceScore: deviceCapabilities.score || 0
+      });
     }
     
+    // Record all cascading decision results for debugging
+    const cascadeResults = {
+      formatDecision: {
+        finalFormat: optimizations.format,
+        source: formatSupport.source,
+        avifSupported: formatSupport.avif,
+        webpSupported: formatSupport.webp
+      },
+      qualityDecision: {
+        finalQuality: optimizations.quality,
+        source: 'cascade-system',  // This will be filled if the cascade decision was used
+        networkTier: networkQuality.tier,
+        deviceScore: deviceCapabilities.score
+      },
+      responsiveResults: {
+        width: optimizations.optimizedWidth,
+        height: optimizations.optimizedHeight,
+        dpr: capabilities.clientHints.dpr || 1
+      }
+    };
+    
+    const detectionTime = capabilities.detectionTime || 0;
+    
+    logger.breadcrumb('Completed cascading decisions for optimization', undefined, {
+      cascadeComplete: true,
+      hasCascadedFormat: !!optimizations.format,
+      hasCascadedQuality: !!optimizations.quality,
+      hasCascadedDimensions: !!(optimizations.optimizedWidth || optimizations.optimizedHeight),
+      deviceTypeUsed: deviceCapabilities.mobile ? 'mobile' : 'desktop',
+      deviceScoreUsed: deviceCapabilities.score || 0,
+      networkTierUsed: networkQuality.tier,
+      detectionTime: detectionTime
+    });
+
     // Return the original options enhanced with optimizations
     return {
       ...options,
@@ -1369,6 +1566,7 @@ export class ClientDetector {
         deviceProcessors: capabilities.device.processors,
         networkQuality: capabilities.network.tier,
         detectionTime: capabilities.detectionTime,
+        cascadeResults: cascadeResults,
         source: {
           browser: capabilities.browser.source,
           formats: capabilities.formats.source
