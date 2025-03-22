@@ -251,66 +251,189 @@ export function addClientHintsHeaders(response: Response, request: Request): Res
 }
 
 /**
- * Get connection quality level based on network hints
+ * Network quality tiers based on measured characteristics
+ */
+export interface NetworkQuality {
+  tier: 'slow' | 'medium' | 'fast' | 'unknown';
+  description: string;
+  estimated: boolean;
+  // Actual values when measured, or null when estimated
+  rtt?: number;
+  downlink?: number;
+  effectiveType?: string;
+  saveData?: boolean;
+}
+
+/**
+ * Get detailed connection quality assessment based on network hints
  * 
  * @param hints Client hints data
- * @returns Connection quality: 'slow', 'medium', 'fast', or 'unknown'
+ * @returns Detailed network quality assessment
  */
-export function getConnectionQuality(hints: ClientHintsData): 'slow' | 'medium' | 'fast' | 'unknown' {
+export function getNetworkQuality(hints: ClientHintsData): NetworkQuality {
+  // Default result with unknown tier
+  const result: NetworkQuality = {
+    tier: 'unknown',
+    description: 'No network information available',
+    estimated: true
+  };
+  
+  // Check if we have any network information at all
+  if (Object.keys(hints).filter(key => ['ect', 'rtt', 'downlink', 'saveData'].includes(key)).length === 0) {
+    return result;
+  }
+  
+  // Include actual values when available
+  if (hints.rtt !== undefined) result.rtt = hints.rtt;
+  if (hints.downlink !== undefined) result.downlink = hints.downlink;
+  if (hints.ect) result.effectiveType = hints.ect;
+  if (hints.saveData !== undefined) result.saveData = hints.saveData;
+  
   // If Save-Data is enabled, treat as slow connection
   if (hints.saveData) {
-    return 'slow';
+    result.tier = 'slow';
+    result.description = 'Save-Data mode enabled';
+    result.estimated = false;
+    return result;
   }
   
-  // Check Effective Connection Type hint
+  // Use ECT as the most reliable indicator when available
   if (hints.ect) {
-    if (hints.ect === '4g') return 'fast';
-    if (hints.ect === '3g') return 'medium';
-    if (hints.ect === '2g' || hints.ect === 'slow-2g') return 'slow';
+    result.estimated = false;
+    
+    if (hints.ect === '4g') {
+      result.tier = 'fast';
+      result.description = '4G connection';
+    } else if (hints.ect === '3g') {
+      result.tier = 'medium';
+      result.description = '3G connection';
+    } else if (hints.ect === '2g' || hints.ect === 'slow-2g') {
+      result.tier = 'slow';
+      result.description = hints.ect === 'slow-2g' ? 'Very slow 2G connection' : '2G connection';
+    } else {
+      // Unknown ect value
+      result.tier = 'unknown';
+      result.description = `Unknown connection type: ${hints.ect}`;
+      result.estimated = true;
+    }
+    
+    return result;
   }
   
-  // Check RTT and downlink if available
+  // Check RTT and downlink in combination if both available
   if (hints.rtt !== undefined && hints.downlink !== undefined) {
+    result.estimated = false;
+    
     // Fast: RTT < 100ms and downlink > 5Mbps
-    if (hints.rtt < 100 && hints.downlink > 5) return 'fast';
-    
+    if (hints.rtt < 100 && hints.downlink > 5) {
+      result.tier = 'fast';
+      result.description = `Fast connection (RTT: ${hints.rtt}ms, Downlink: ${hints.downlink}Mbps)`;
+    }
     // Slow: RTT > 500ms or downlink < 1Mbps
-    if (hints.rtt > 500 || hints.downlink < 1) return 'slow';
-    
+    else if (hints.rtt > 500 || hints.downlink < 1) {
+      result.tier = 'slow';
+      result.description = `Slow connection (RTT: ${hints.rtt}ms, Downlink: ${hints.downlink}Mbps)`;
+    }
     // Medium: everything in between
-    return 'medium';
+    else {
+      result.tier = 'medium';
+      result.description = `Medium connection (RTT: ${hints.rtt}ms, Downlink: ${hints.downlink}Mbps)`;
+    }
+    
+    return result;
   }
   
   // If just RTT is available
   if (hints.rtt !== undefined) {
-    if (hints.rtt < 100) return 'fast';
-    if (hints.rtt > 500) return 'slow';
-    return 'medium';
+    result.estimated = false;
+    
+    if (hints.rtt < 100) {
+      result.tier = 'fast';
+      result.description = `Low latency connection (RTT: ${hints.rtt}ms)`;
+    } else if (hints.rtt > 500) {
+      result.tier = 'slow';
+      result.description = `High latency connection (RTT: ${hints.rtt}ms)`;
+    } else {
+      result.tier = 'medium';
+      result.description = `Medium latency connection (RTT: ${hints.rtt}ms)`;
+    }
+    
+    return result;
   }
   
   // If just downlink is available
   if (hints.downlink !== undefined) {
-    if (hints.downlink > 5) return 'fast';
-    if (hints.downlink < 1) return 'slow';
-    return 'medium';
+    result.estimated = false;
+    
+    if (hints.downlink > 5) {
+      result.tier = 'fast';
+      result.description = `High bandwidth connection (${hints.downlink}Mbps)`;
+    } else if (hints.downlink < 1) {
+      result.tier = 'slow';
+      result.description = `Low bandwidth connection (${hints.downlink}Mbps)`;
+    } else {
+      result.tier = 'medium';
+      result.description = `Medium bandwidth connection (${hints.downlink}Mbps)`;
+    }
+    
+    return result;
   }
   
-  return 'unknown';
+  return result;
 }
 
 /**
- * Determine device class based on client hints
+ * Simple helper that returns just the connection quality tier
+ * For backward compatibility with existing code
  * 
  * @param hints Client hints data
- * @returns Device class: 'high-end', 'mid-range', 'low-end', or 'unknown'
+ * @returns Connection quality tier: 'slow', 'medium', 'fast', or 'unknown'
  */
-export function getDeviceClass(hints: ClientHintsData): 'high-end' | 'mid-range' | 'low-end' | 'unknown' {
-  // If we don't have any useful device capability hints, return unknown
+export function getConnectionQuality(hints: ClientHintsData): 'slow' | 'medium' | 'fast' | 'unknown' {
+  return getNetworkQuality(hints).tier;
+}
+
+/**
+ * Device capability assessment based on client hints
+ */
+export interface DeviceCapabilities {
+  class: 'high-end' | 'mid-range' | 'low-end' | 'unknown';
+  description: string;
+  estimated: boolean;
+  // Actual values when measured
+  memory?: number;    // Device memory in GB
+  processors?: number; // Logical processors available
+  mobile?: boolean;    // Whether it's a mobile device
+  platform?: string;   // Platform (OS) name
+  score?: number;      // Computed capability score (0-100)
+}
+
+/**
+ * Get detailed device capabilities assessment based on client hints
+ * 
+ * @param hints Client hints data
+ * @returns Detailed device capabilities assessment
+ */
+export function getDeviceCapabilities(hints: ClientHintsData): DeviceCapabilities {
+  // Default result with unknown class
+  const result: DeviceCapabilities = {
+    class: 'unknown',
+    description: 'No device capability information available',
+    estimated: true
+  };
+  
+  // Check if we have any capability information at all
   if (hints.deviceMemory === undefined && 
       hints.hardwareConcurrency === undefined && 
       hints.uaMobile === undefined) {
-    return 'unknown';
+    return result;
   }
+  
+  // Include actual values when available
+  if (hints.deviceMemory !== undefined) result.memory = hints.deviceMemory;
+  if (hints.hardwareConcurrency !== undefined) result.processors = hints.hardwareConcurrency;
+  if (hints.uaMobile !== undefined) result.mobile = hints.uaMobile;
+  if (hints.uaPlatform) result.platform = hints.uaPlatform;
   
   // Start with assumption of mid-range
   let score = 50;
@@ -333,19 +456,161 @@ export function getDeviceClass(hints: ClientHintsData): 'high-end' | 'mid-range'
     score -= 15; // Mobile devices are typically less powerful
   }
   
-  // Categorize based on score
-  if (score >= 65) return 'high-end';
-  if (score >= 35) return 'mid-range';
-  if (score >= 0) return 'low-end';
+  // Record the calculated score
+  result.score = score;
+  result.estimated = false;
   
-  return 'unknown';
+  // Categorize based on score
+  if (score >= 65) {
+    result.class = 'high-end';
+    result.description = createDeviceDescription('High-end', hints);
+  } else if (score >= 35) {
+    result.class = 'mid-range';
+    result.description = createDeviceDescription('Mid-range', hints);
+  } else if (score >= 0) {
+    result.class = 'low-end';
+    result.description = createDeviceDescription('Low-end', hints);
+  } else {
+    result.class = 'unknown';
+    result.description = 'Unknown device capabilities';
+    result.estimated = true;
+  }
+  
+  return result;
 }
 
+/**
+ * Helper function to create a device description based on available hints
+ */
+function createDeviceDescription(baseClass: string, hints: ClientHintsData): string {
+  const parts: string[] = [baseClass];
+  
+  if (hints.uaMobile === true) {
+    parts.push('mobile');
+  }
+  
+  if (hints.uaPlatform) {
+    parts.push(`${hints.uaPlatform}`);
+  }
+  
+  const specs: string[] = [];
+  
+  if (hints.deviceMemory !== undefined) {
+    specs.push(`${hints.deviceMemory}GB RAM`);
+  }
+  
+  if (hints.hardwareConcurrency !== undefined) {
+    specs.push(`${hints.hardwareConcurrency} cores`);
+  }
+  
+  if (specs.length > 0) {
+    parts.push(`(${specs.join(', ')})`);
+  }
+  
+  return parts.join(' ');
+}
+
+/**
+ * Simple helper that returns just the device class
+ * For backward compatibility with existing code
+ * 
+ * @param hints Client hints data
+ * @returns Device class: 'high-end', 'mid-range', 'low-end', or 'unknown'
+ */
+export function getDeviceClass(hints: ClientHintsData): 'high-end' | 'mid-range' | 'low-end' | 'unknown' {
+  return getDeviceCapabilities(hints).class;
+}
+
+/**
+ * Performance budget assessment for image processing
+ */
+export interface PerformanceBudget {
+  quality: {
+    min: number;
+    max: number;
+    target: number;
+  };
+  maxWidth: number;
+  maxHeight: number;
+  preferredFormat: string;
+  dpr: number;
+}
+
+/**
+ * Extended optimization hints with additional network/device aware parameters
+ */
 export interface OptimizationHints {
   format?: string;
   quality?: number;
   dpr?: number;
   optimizedWidth?: number;
+  optimizedHeight?: number;
+  performanceBudget?: PerformanceBudget;
+  networkQuality?: NetworkQuality;
+  deviceCapabilities?: DeviceCapabilities;
+}
+
+/**
+ * Calculate a performance budget based on network and device capabilities
+ * 
+ * @param hints Client hints data
+ * @returns Performance budget for image optimization
+ */
+export function calculatePerformanceBudget(hints: ClientHintsData): PerformanceBudget {
+  const network = getNetworkQuality(hints);
+  const device = getDeviceCapabilities(hints);
+  
+  // Default performance budget (mid-range)
+  const budget: PerformanceBudget = {
+    quality: {
+      min: 60,
+      max: 85,
+      target: 75
+    },
+    maxWidth: 1500,
+    maxHeight: 1500,
+    preferredFormat: 'auto', // Let the browser detection decide
+    dpr: hints.dpr || 1
+  };
+  
+  // Adjust based on network quality
+  if (network.tier === 'slow') {
+    budget.quality.min = 40;
+    budget.quality.max = 75;
+    budget.quality.target = 60;
+    budget.maxWidth = 1200;
+    budget.maxHeight = 1200;
+    budget.preferredFormat = 'webp'; // Always use WebP for slow connections
+  } else if (network.tier === 'fast') {
+    budget.quality.min = 70;
+    budget.quality.max = 90;
+    budget.quality.target = 80;
+    budget.maxWidth = 1800;
+    budget.maxHeight = 1800;
+  }
+  
+  // Further adjust based on device capabilities
+  if (device.class === 'low-end') {
+    budget.quality.target = Math.max(budget.quality.min, budget.quality.target - 10);
+    budget.maxWidth = Math.min(budget.maxWidth, 1000);
+    budget.maxHeight = Math.min(budget.maxHeight, 1000);
+  } else if (device.class === 'high-end') {
+    budget.quality.target = Math.min(budget.quality.max, budget.quality.target + 5);
+    // No need to adjust dimensions for high-end devices
+  }
+  
+  // Special case: Save-Data
+  if (hints.saveData) {
+    budget.quality.target = budget.quality.min;
+    budget.maxWidth = Math.min(budget.maxWidth, 800);
+    budget.maxHeight = Math.min(budget.maxHeight, 800);
+    budget.preferredFormat = 'webp'; // WebP has best compression/quality ratio
+  }
+  
+  // Cap DPR to prevent excessive scaling
+  budget.dpr = Math.max(1, Math.min(hints.dpr || 1, 3));
+  
+  return budget;
 }
 
 /**
@@ -360,58 +625,58 @@ export function suggestOptimizations(
   options: any,
   hints: ClientHintsData
 ): OptimizationHints {
-  const suggestions: OptimizationHints = {};
+  // Get detailed device and network information
+  const networkQuality = getNetworkQuality(hints);
+  const deviceCapabilities = getDeviceCapabilities(hints);
+  
+  // Calculate performance budget
+  const performanceBudget = calculatePerformanceBudget(hints);
+  
+  // Prepare suggestions object with detailed context
+  const suggestions: OptimizationHints = {
+    networkQuality,
+    deviceCapabilities,
+    performanceBudget
+  };
   
   // Only make suggestions for parameters that aren't explicitly specified
   
   // Apply DPR if provided and not specified in options
   if (hints.dpr !== undefined && options.dpr === undefined) {
-    // Cap DPR between 1 and 3 to prevent excessive scaling
-    suggestions.dpr = Math.max(1, Math.min(hints.dpr, 3));
+    suggestions.dpr = performanceBudget.dpr;
   }
   
-  // Optimize width based on viewport if not specified
+  // Optimize dimensions based on viewport, device and performance budget
   if (hints.viewportWidth !== undefined && options.width === undefined) {
+    // Calculate optimal width based on viewport and DPR
     const viewportBasedWidth = hints.viewportWidth * (hints.dpr || 1);
-    suggestions.optimizedWidth = Math.min(viewportBasedWidth, 1800); // Cap at 1800px
+    
+    // Cap at performance budget maximum
+    const cappedWidth = Math.min(viewportBasedWidth, performanceBudget.maxWidth);
+    
+    // For small viewports, add a small buffer to account for slightly larger screens
+    const finalWidth = hints.viewportWidth < 600 
+      ? Math.min(cappedWidth * 1.2, performanceBudget.maxWidth) // Add 20% buffer for small screens
+      : cappedWidth;
+    
+    suggestions.optimizedWidth = Math.round(finalWidth);
   }
   
-  // Optimize quality based on connection if not specified
+  // Handle height similarly if viewport height is available
+  if (hints.viewportHeight !== undefined && options.height === undefined) {
+    const viewportBasedHeight = hints.viewportHeight * (hints.dpr || 1);
+    suggestions.optimizedHeight = Math.min(viewportBasedHeight, performanceBudget.maxHeight);
+  }
+  
+  // Optimize quality based on the performance budget
   if (options.quality === undefined) {
-    const connectionQuality = getConnectionQuality(hints);
-    const deviceClass = getDeviceClass(hints);
-    
-    // Start with middle-tier quality
-    let quality = 75;
-    
-    // Adjust based on connection
-    if (connectionQuality === 'fast') quality += 10;
-    if (connectionQuality === 'slow') quality -= 15;
-    if (hints.saveData) quality -= 20;
-    
-    // Adjust based on device
-    if (deviceClass === 'high-end') quality += 5;
-    if (deviceClass === 'low-end') quality -= 5;
-    
-    // Ensure quality is within reasonable bounds
-    suggestions.quality = Math.max(45, Math.min(quality, 90));
+    suggestions.quality = performanceBudget.quality.target;
   }
   
   // Suggest format if automatic format is requested
   if ((options.format === 'auto' || options.format === undefined) && 
-      hints.uaBrands !== undefined) {
-    const connectionQuality = getConnectionQuality(hints);
-    const deviceClass = getDeviceClass(hints);
-    
-    // For high-end devices on fast connections, suggest AVIF
-    if (deviceClass === 'high-end' && connectionQuality === 'fast') {
-      suggestions.format = 'avif';
-    }
-    // For low-end devices or slow connections, suggest WebP as a balanced option
-    else if (deviceClass === 'low-end' || connectionQuality === 'slow') {
-      suggestions.format = 'webp';
-    }
-    // Otherwise, format will be determined by browser support detection
+      (performanceBudget.preferredFormat !== 'auto')) {
+    suggestions.format = performanceBudget.preferredFormat;
   }
   
   return suggestions;

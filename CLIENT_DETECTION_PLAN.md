@@ -29,12 +29,12 @@ This document outlines the plan for enhancing client detection in the image-resi
 
 ## Phase 3: Network and Device Awareness
 
-- [ ] Implement network quality detection (Downlink, RTT, ECT)
-- [ ] Add connection-aware quality adjustments
-- [ ] Create adaptive transform pipeline based on network conditions
-- [ ] Implement Save-Data preference handling
-- [ ] Add device memory and hardware concurrency detection
-- [ ] Create performance budget calculations based on device capabilities
+- [x] Implement network quality detection (Downlink, RTT, ECT)
+- [x] Add connection-aware quality adjustments
+- [x] Create adaptive transform pipeline based on network conditions
+- [x] Implement Save-Data preference handling
+- [x] Add device memory and hardware concurrency detection
+- [x] Create performance budget calculations based on device capabilities
 
 ## Phase 4: Advanced Format and Experience Optimization
 

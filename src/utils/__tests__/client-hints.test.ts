@@ -7,7 +7,10 @@ import {
   parseClientHints, 
   browserSupportsClientHints,
   getConnectionQuality,
+  getNetworkQuality,
   getDeviceClass,
+  getDeviceCapabilities,
+  calculatePerformanceBudget,
   suggestOptimizations
 } from '../client-hints';
 
@@ -122,6 +125,34 @@ describe('Client Hints utilities', () => {
     });
   });
   
+  describe('getNetworkQuality', () => {
+    it('should provide detailed assessment for network quality', () => {
+      const result = getNetworkQuality({ rtt: 50, downlink: 10 });
+      expect(result.tier).toBe('fast');
+      expect(result.estimated).toBe(false);
+      expect(result.description).toContain('Fast connection');
+      expect(result.rtt).toBe(50);
+      expect(result.downlink).toBe(10);
+    });
+    
+    it('should prioritize Save-Data header over other metrics', () => {
+      const result = getNetworkQuality({ 
+        rtt: 50, 
+        downlink: 10, 
+        saveData: true 
+      });
+      expect(result.tier).toBe('slow');
+      expect(result.description).toContain('Save-Data');
+    });
+    
+    it('should provide meaningful description for each connection type', () => {
+      expect(getNetworkQuality({ ect: '4g' }).description).toContain('4G');
+      expect(getNetworkQuality({ ect: '3g' }).description).toContain('3G');
+      expect(getNetworkQuality({ ect: '2g' }).description).toContain('2G');
+      expect(getNetworkQuality({ ect: 'slow-2g' }).description).toContain('slow');
+    });
+  });
+  
   describe('getDeviceClass', () => {
     it('should identify high-end devices', () => {
       expect(getDeviceClass({ deviceMemory: 8, hardwareConcurrency: 8 })).toBe('high-end');
@@ -133,6 +164,81 @@ describe('Client Hints utilities', () => {
     
     it('should return unknown for insufficient data', () => {
       expect(getDeviceClass({})).toBe('unknown');
+    });
+  });
+  
+  describe('getDeviceCapabilities', () => {
+    it('should provide detailed device assessment', () => {
+      const result = getDeviceCapabilities({ 
+        deviceMemory: 8, 
+        hardwareConcurrency: 8,
+        uaPlatform: 'Windows'
+      });
+      
+      expect(result.class).toBe('high-end');
+      expect(result.description).toContain('High-end');
+      expect(result.description).toContain('Windows');
+      expect(result.description).toContain('8GB RAM');
+      expect(result.memory).toBe(8);
+      expect(result.processors).toBe(8);
+      expect(result.estimated).toBe(false);
+    });
+    
+    it('should detect mobile devices', () => {
+      const result = getDeviceCapabilities({ 
+        deviceMemory: 4, 
+        uaMobile: true,
+        uaPlatform: 'Android'
+      });
+      
+      expect(result.description).toContain('mobile');
+      expect(result.description).toContain('Android');
+      expect(result.mobile).toBe(true);
+    });
+  });
+  
+  describe('calculatePerformanceBudget', () => {
+    it('should create appropriate budget for fast connections on high-end devices', () => {
+      const hints = { 
+        ect: '4g',
+        deviceMemory: 8, 
+        hardwareConcurrency: 8,
+        dpr: 2
+      };
+      
+      const budget = calculatePerformanceBudget(hints);
+      
+      expect(budget.quality.target).toBeGreaterThan(75); // Higher quality
+      expect(budget.maxWidth).toBeGreaterThanOrEqual(1500); // Higher resolution allowed
+      expect(budget.dpr).toBe(2); // Use actual DPR
+    });
+    
+    it('should create conservative budget for slow connections', () => {
+      const hints = { 
+        ect: 'slow-2g',
+        deviceMemory: 4,
+        dpr: 2
+      };
+      
+      const budget = calculatePerformanceBudget(hints);
+      
+      expect(budget.quality.target).toBeLessThan(70); // Lower quality
+      expect(budget.maxWidth).toBeLessThanOrEqual(1200); // Lower resolution
+      expect(budget.preferredFormat).toBe('webp'); // Force efficient format
+    });
+    
+    it('should create minimal budget when Save-Data is enabled', () => {
+      const hints = { 
+        saveData: true,
+        deviceMemory: 4,
+        dpr: 2
+      };
+      
+      const budget = calculatePerformanceBudget(hints);
+      
+      expect(budget.quality.target).toBe(budget.quality.min); // Minimum quality
+      expect(budget.maxWidth).toBeLessThanOrEqual(800); // Very low resolution
+      expect(budget.preferredFormat).toBe('webp'); // Force efficient format
     });
   });
   
