@@ -4,7 +4,7 @@
  * This file is auto-generated from caniuse-db data. Do not edit directly.
  * To update, run: node scripts/generate-browser-support.js
  * 
- * Generated on: 2025-03-22T06:50:00.480Z
+ * Generated on: 2025-03-22T06:51:24.255Z
  */
 
 /**
