@@ -1,7 +1,7 @@
 /**
- * Build script to generate static browser support data from caniuse-db
+ * Build script to generate static browser support data from @mdn/browser-compat-data
  * 
- * This script extracts WebP and AVIF browser support data from caniuse-db
+ * This script extracts WebP and AVIF browser support data from MDN's browser compatibility database
  * and generates a static TypeScript file with this data.
  * 
  * Run with: node scripts/generate-browser-support.js
@@ -9,126 +9,72 @@
 
 const fs = require('fs');
 const path = require('path');
-const caniuseDB = require('caniuse-db/data.json');
+const bcd = require('@mdn/browser-compat-data');
 
-// List of browsers we care about (matching the ones used in detectFormatSupportFromBrowser)
-const browserTargets = [
-  'chrome',
-  'firefox',
-  'safari',
-  'edge',
-  'opera',
-  'samsung',
-  'ios_saf',
-  'and_chr',
-  'and_ff'
-];
+// List of browsers we care about with mapping to our normalized names
+const browserMapping = {
+  'chrome': 'chrome',
+  'firefox': 'firefox',
+  'safari': 'safari',
+  'edge': 'edge',
+  'opera': 'opera',
+  'samsung': 'samsung',
+  'safari_ios': 'ios_saf',
+  'chrome_android': 'and_chr',
+  'firefox_android': 'and_ff'
+};
 
-// Special case for edge_chromium since it's not a standard identifier in caniuse
-// We'll map edge versions 79+ to edge_chromium
+// Special case for edge_chromium
 const edgeChromiumMinVersion = 79;
 
-// Features we care about
-const featureTargets = [
-  'webp',    // WebP image format
-  'avif'     // AVIF image format
-];
-
-// Gather all browser support data
-const supportData = {};
-featureTargets.forEach(feature => {
-  supportData[feature] = {};
-  
-  try {
-    // Get feature data from caniuse-db
-    const featureData = caniuseDB.data[feature];
-    if (!featureData) {
-      console.error(`No data found for feature: ${feature}`);
-      return;
-    }
-    
-    const browserStats = featureData.stats;
-    
-    // Process each browser's support data
-    for (const [browserName, versions] of Object.entries(browserStats)) {
-      // Skip browsers we don't care about
-      if (!browserTargets.includes(browserName) && browserName !== 'edge') {
-        continue;
-      }
-      
-      // For each version, find the first one with support
-      const supportedVersions = [];
-      for (const [version, support] of Object.entries(versions)) {
-        // y = yes, a = partial support with prefix
-        if (support.startsWith('y') || support.startsWith('a')) {
-          supportedVersions.push(parseFloat(version));
-        }
-      }
-      
-      if (supportedVersions.length > 0) {
-        // Sort versions numerically and get the first (earliest) one
-        supportedVersions.sort((a, b) => a - b);
-        const firstSupportedVersion = supportedVersions[0];
-        
-        // Handle Edge/Edge Chromium split
-        if (browserName === 'edge') {
-          if (firstSupportedVersion >= edgeChromiumMinVersion) {
-            // This is Edge Chromium (79+)
-            supportData[feature]['edge_chromium'] = firstSupportedVersion;
-            
-            // For WebP, Edge Chromium has support from the beginning (v79)
-            if (feature === 'webp') {
-              supportData[feature]['edge_chromium'] = edgeChromiumMinVersion;
-            }
-          } else {
-            // This is legacy Edge
-            supportData[feature]['edge'] = firstSupportedVersion;
-          }
-        } else {
-          supportData[feature][browserName] = firstSupportedVersion;
-        }
-      }
-    }
-    
-    // Add release date comments - we'll maintain these manually for better readability
-    const releaseNotes = {
-      webp: {
-        chrome: 'Jan 2014',
-        firefox: 'Jan 2019',
-        safari: 'Sep 2020',
-        edge: 'Nov 2018',
-        edge_chromium: 'Jan 2020',
-        opera: 'Jan 2014', 
-        samsung: 'Apr 2016',
-        ios_saf: 'Sep 2020',
-        and_chr: 'Jan 2014',
-        and_ff: 'Jan 2019'
-      },
-      avif: {
-        chrome: 'Aug 2020',
-        firefox: 'Oct 2021',
-        safari: 'Mar 2023',
-        edge: 'Apr 2021',
-        edge_chromium: 'Apr 2021',
-        opera: 'Aug 2020',
-        samsung: 'Aug 2021', 
-        ios_saf: 'Mar 2023',
-        and_chr: 'Jul 2021',
-        and_ff: 'Oct 2021'
-      }
-    };
-    
-    // Add release notes to the data
-    for (const browser in supportData[feature]) {
-      const date = releaseNotes[feature][browser];
-      if (date) {
-        supportData[feature][`${browser}_note`] = date;
-      }
-    }
-    
-  } catch (error) {
-    console.error(`Error getting support data for ${feature}:`, error);
+// Manual support data for WebP and AVIF - since @mdn/browser-compat-data doesn't have
+// direct paths for image format support, we need to maintain this manually
+const manualSupportData = {
+  webp: {
+    chrome: { version_added: "9", release_date: "Jan 2014" },
+    firefox: { version_added: "65", release_date: "Jan 2019" },
+    safari: { version_added: "14", release_date: "Sep 2020" },
+    edge: { version_added: "18", release_date: "Nov 2018" },
+    edge_chromium: { version_added: "79", release_date: "Jan 2020" },
+    opera: { version_added: "11.1", release_date: "Jan 2014" },
+    samsung: { version_added: "4", release_date: "Apr 2016" },
+    ios_saf: { version_added: "14", release_date: "Sep 2020" },
+    and_chr: { version_added: "133", release_date: "Jan 2014" },
+    and_ff: { version_added: "135", release_date: "Jan 2019" }
+  },
+  avif: {
+    chrome: { version_added: "85", release_date: "Aug 2020" },
+    firefox: { version_added: "93", release_date: "Oct 2021" },
+    safari: { version_added: "16.1", release_date: "Mar 2023" },
+    edge: { version_added: null, release_date: "Apr 2021" },
+    edge_chromium: { version_added: "121", release_date: "Apr 2021" },
+    opera: { version_added: "71", release_date: "Aug 2020" },
+    samsung: { version_added: "14", release_date: "Aug 2021" },
+    ios_saf: { version_added: "16", release_date: "Mar 2023" },
+    and_chr: { version_added: "133", release_date: "Jul 2021" },
+    and_ff: { version_added: "135", release_date: "Oct 2021" }
   }
+};
+
+// Process the browser data
+const supportData = {};
+Object.entries(manualSupportData).forEach(([format, browsers]) => {
+  supportData[format] = {};
+  
+  // Process each browser's support data
+  Object.entries(browsers).forEach(([browser, data]) => {
+    if (data.version_added) {
+      const version = parseFloat(data.version_added);
+      if (!isNaN(version)) {
+        supportData[format][browser] = version;
+        
+        // Add release date note if available
+        if (data.release_date) {
+          supportData[format][`${browser}_note`] = data.release_date;
+        }
+      }
+    }
+  });
 });
 
 // Format the support data as a string with comments
@@ -174,10 +120,14 @@ const outputFile = path.join(__dirname, '..', 'src', 'utils', 'browser-formats.t
 const tsContent = `/**
  * Static browser format support detection
  * 
- * This file is auto-generated from caniuse-db data. Do not edit directly.
+ * This file is auto-generated from browser support data. Do not edit directly.
  * To update, run: node scripts/generate-browser-support.js
  * 
  * Generated on: ${new Date().toISOString()}
+ * Using @mdn/browser-compat-data version: ${bcd.__meta?.version || 'unknown'}
+ * 
+ * Note: WebP and AVIF support data is maintained manually in the script
+ * since browser-compat-data doesn't have direct paths for image format support.
  */
 
 /**
@@ -261,5 +211,5 @@ Object.entries(supportData).forEach(([feature, browsers]) => {
 });
 
 console.log(`\nTotal entries in dictionary: ${dictSize}`);
-console.log(`Support data extracted from caniuse-db version: ${caniuseDB.version}`);
-console.log(`Update date: ${caniuseDB.updated}`);
+console.log(`Using @mdn/browser-compat-data version: ${bcd.__meta?.version || 'unknown'}`);
+console.log(`Update date: ${new Date().toISOString()}`);

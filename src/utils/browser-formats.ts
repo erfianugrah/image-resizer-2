@@ -1,10 +1,14 @@
 /**
  * Static browser format support detection
  * 
- * This file is auto-generated from caniuse-db data. Do not edit directly.
+ * This file is auto-generated from browser support data. Do not edit directly.
  * To update, run: node scripts/generate-browser-support.js
  * 
- * Generated on: 2025-03-22T06:51:24.255Z
+ * Generated on: 2025-03-22T10:47:42.311Z
+ * Using @mdn/browser-compat-data version: 5.7.5
+ * 
+ * Note: WebP and AVIF support data is maintained manually in the script
+ * since browser-compat-data doesn't have direct paths for image format support.
  */
 
 /**
@@ -18,6 +22,7 @@ export const formatSupport: Record<string, Record<string, number>> = {
     and_ff:          135, // Jan 2019
     chrome:          9, // Jan 2014
     edge:            18, // Nov 2018
+    edge_chromium:   79, // Jan 2020
     firefox:         65, // Jan 2019
     ios_saf:         14, // Sep 2020
     opera:           11.1, // Jan 2014
