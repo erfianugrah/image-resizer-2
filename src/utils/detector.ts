@@ -1423,7 +1423,7 @@ export class ClientDetector {
         let formatSelected = false;
         for (const method of detectionMethods) {
           const result = method.check();
-          if (result) {
+          if (result && result.format) {
             optimizations.format = result.format;
             formatSelected = true;
             

@@ -74,7 +74,7 @@ function loadCascadeConfigFromEnv(env: Env): Partial<DetectorConfig['cascade']> 
   }
   
   // Initialize cascade configuration with formats
-  const formatCascade: Partial<DetectorConfig['cascade']['format']> = {
+  const formatCascade = {
     enabled: getBooleanFromEnv(env, 'DETECTOR_CASCADE_FORMAT_ENABLED', true),
     acceptHeaderPriority: getNumberFromEnv(env, 'DETECTOR_CASCADE_FORMAT_ACCEPT_PRIORITY', 100),
     clientHintsPriority: getNumberFromEnv(env, 'DETECTOR_CASCADE_FORMAT_CLIENT_HINTS_PRIORITY', 80),
@@ -83,7 +83,7 @@ function loadCascadeConfigFromEnv(env: Env): Partial<DetectorConfig['cascade']> 
   };
   
   // Initialize cascade configuration with quality
-  const qualityCascade: Partial<DetectorConfig['cascade']['quality']> = {
+  const qualityCascade = {
     enabled: getBooleanFromEnv(env, 'DETECTOR_CASCADE_QUALITY_ENABLED', true),
     saveDataPriority: getNumberFromEnv(env, 'DETECTOR_CASCADE_QUALITY_SAVEDATA_PRIORITY', 100),
     networkConditionPriority: getNumberFromEnv(env, 'DETECTOR_CASCADE_QUALITY_NETWORK_PRIORITY', 80),
@@ -118,7 +118,7 @@ function loadCascadeConfigFromEnv(env: Env): Partial<DetectorConfig['cascade']> 
  * @param defaultValue The default value if not found
  * @returns The value from environment or default
  */
-function getStringFromEnv(env: Env, key: string, defaultValue: string): string {
+function getStringFromEnv(env: Env, key: keyof Env, defaultValue: string): string {
   const value = env[key];
   if (value === undefined || value === null || value === '') {
     return defaultValue;
