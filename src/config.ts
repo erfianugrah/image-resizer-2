@@ -568,50 +568,10 @@ export const defaultConfig: ImageResizerConfig = {
     }
   },
   
+  // Default derivatives as a fallback
+  // These will be overridden by environment variables from wrangler.jsonc
   derivatives: {
-    // Common transformation templates
-    thumbnail: {
-      width: 320,
-      height: 150,
-      quality: 85,
-      fit: 'scale-down',
-      metadata: 'none',
-      sharpen: 1
-    },
-    
-    avatar: {
-      width: 180,
-      height: 180,
-      quality: 90,
-      fit: 'cover',
-      metadata: 'none',
-      gravity: 'face'
-    },
-    
-    banner: {
-      width: 1600,
-      height: 400,
-      quality: 80,
-      fit: 'cover',
-      metadata: 'none'
-    },
-    
-    product: {
-      width: 800,
-      height: 800,
-      quality: 85,
-      fit: 'contain',
-      background: 'white',
-      metadata: 'none'
-    },
-    
-    header: {
-      width: 1600,
-      height: 73,
-      quality: 80,
-      fit: 'scale-down',
-      metadata: 'copyright'
-    }
+    // Empty derivatives object - will be populated from environment variables
   },
   
   // Path-based template mapping
@@ -1626,7 +1586,8 @@ export function getConfig(env: Env): ImageResizerConfig {
     config.features.enableAkamaiAdvancedFeatures = env.ENABLE_AKAMAI_ADVANCED_FEATURES === 'true';
   }
   
-  // Configure any derivatives from env (JSON object or string)
+  // Configure derivatives from env 
+  // First try to get the DERIVATIVES property directly, which can be a JSON object
   if ('DERIVATIVES' in env) {
     try {
       let customDerivatives;
@@ -1643,11 +1604,8 @@ export function getConfig(env: Env): ImageResizerConfig {
       }
       
       if (customDerivatives) {
-        // Merge with existing derivatives
-        config.derivatives = {
-          ...config.derivatives,
-          ...customDerivatives
-        };
+        // Set the derivatives to the custom derivatives
+        config.derivatives = customDerivatives as Record<string, any>;
         
         console.log('Loaded custom derivatives from environment', {
           derivatives: Object.keys(customDerivatives as Record<string, unknown>),
@@ -1663,6 +1621,9 @@ export function getConfig(env: Env): ImageResizerConfig {
           : 'object'
       });
     }
+  } else {
+    // If no DERIVATIVES object is set, initialize an empty object
+    config.derivatives = {};
   }
   
   // Check for individual derivative definitions (for easier configuration in wrangler.jsonc)

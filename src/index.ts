@@ -220,21 +220,59 @@ export default {
       
       // Check for derivative in path segments
       const derivativeNames = Object.keys(config.derivatives);
-      const pathDerivative = extractDerivative(url.pathname, derivativeNames);
       
-      if (pathDerivative && !optionsFromUrl.derivative) {
-        optionsFromUrl.derivative = pathDerivative;
+      logger.debug('Available derivatives', {
+        derivatives: derivativeNames.join(', '),
+        count: derivativeNames.length,
+        pathname: url.pathname
+      });
+      
+      const derivativeResult = extractDerivative(url.pathname, derivativeNames);
+      
+      // If a derivative was found in the path, use it and modify the image path
+      if (derivativeResult && !optionsFromUrl.derivative) {
+        optionsFromUrl.derivative = derivativeResult.derivative;
+        
+        // Update the image path to the modified one (without the derivative segment)
+        imagePath = derivativeResult.modifiedPath;
+        
+        logger.debug('Found and applied derivative from path', {
+          pathname: url.pathname,
+          derivative: derivativeResult.derivative,
+          originalPath: url.pathname,
+          modifiedImagePath: imagePath
+        });
       }
       
-      // Check for named path templates
-      if (config.pathTemplates) {
+      // Check for named path templates (only if no derivative was found in the path)
+      if (!optionsFromUrl.derivative && config.pathTemplates) {
         const segments = url.pathname.split('/').filter(Boolean);
         for (const segment of segments) {
           const templateName = config.pathTemplates[segment];
-          if (templateName && !optionsFromUrl.derivative) {
+          if (templateName) {
             optionsFromUrl.derivative = templateName;
+            logger.debug('Applied derivative from path template', {
+              segment,
+              templateName
+            });
             break;
           }
+        }
+      }
+      
+      // Log derivative application status
+      if (optionsFromUrl.derivative) {
+        if (config.derivatives[optionsFromUrl.derivative]) {
+          logger.debug('Using derivative for transformation', {
+            derivative: optionsFromUrl.derivative,
+            imagePath,
+            templateProperties: Object.keys(config.derivatives[optionsFromUrl.derivative]).join(',')
+          });
+        } else {
+          logger.warn('Derivative not found in configuration', {
+            derivative: optionsFromUrl.derivative,
+            availableDerivatives: Object.keys(config.derivatives).join(',')
+          });
         }
       }
       
@@ -252,9 +290,23 @@ export default {
       
       // If the storage result is an error, throw a not found error
       if (storageResult.sourceType === 'error') {
+        // Add more detailed debugging information
+        logger.error('Image not found in storage', {
+          originalPath,
+          transformedPath: imagePath,
+          requestUrl: url.toString(),
+          storageConfig: JSON.stringify({
+            priority: config.storage.priority,
+            hasFallback: !!config.storage.fallbackUrl,
+            hasRemote: !!config.storage.remoteUrl,
+            r2Enabled: config.storage.r2?.enabled
+          })
+        });
+        
         throw new NotFoundError('Image not found', { 
           path: imagePath,
-          originalPath
+          originalPath,
+          derivative: optionsFromUrl.derivative || 'none'
         });
       }
       

@@ -261,26 +261,14 @@ function applyDerivativeTemplate(
   
   // Check if the requested derivative exists
   if (!config.derivatives[derivative]) {
-    // Video specific check for a potential fallback
-    if (derivative.startsWith('video-') && config.derivatives['video-medium']) {
-      // Fallback to medium for video derivatives if the specific one is not found
-      logger.warn('Requested video derivative not found, using fallback', {
-        requestedDerivative: derivative,
-        fallbackDerivative: 'video-medium',
-        availableDerivatives: Object.keys(config.derivatives).join(', ')
-      });
-      
-      derivative = 'video-medium';
-    } else {
-      // Log missing derivative for debugging
-      logger.warn('Requested derivative template not found', {
-        derivative,
-        availableDerivatives: Object.keys(config.derivatives).join(', ')
-      });
-      
-      // Return the original options - this will still work but won't apply template
-      return options;
-    }
+    // Log missing derivative for debugging
+    logger.warn('Requested derivative template not found', {
+      derivative,
+      availableDerivatives: Object.keys(config.derivatives).join(', ')
+    });
+    
+    // Return the original options - this will still work but won't apply template
+    return options;
   }
   
   // Get the derivative template
@@ -335,8 +323,21 @@ export async function buildTransformOptions(
   
   // Apply derivative template if specified
   let transformOptions = options;
-  if (options.derivative && config.derivatives[options.derivative]) {
-    transformOptions = applyDerivativeTemplate(options, options.derivative, config);
+  if (options.derivative) {
+    if (config.derivatives[options.derivative]) {
+      logger.debug('Applying derivative template', {
+        derivative: options.derivative,
+        hasTemplate: true,
+        availableKeys: Object.keys(config.derivatives).join(',')
+      });
+      transformOptions = applyDerivativeTemplate(options, options.derivative, config);
+    } else {
+      logger.error('Derivative template not found in config', {
+        requestedDerivative: options.derivative,
+        availableDerivatives: Object.keys(config.derivatives).join(',')
+      });
+      // Continue with the original options, as the derivative wasn't found
+    }
   }
   
   // Handle 'auto' width specifically

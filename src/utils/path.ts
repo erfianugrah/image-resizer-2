@@ -112,15 +112,16 @@ export function parseImagePath(pathname: string): {
 }
 
 /**
- * Extract derivative name from path
+ * Extract derivative name from path and provide a modified path without the derivative
  * 
  * For example, if the path is /image/product/file.jpg,
- * and the derivative is specified as "product", it will return "product"
+ * and the derivative is specified as "product", it will return 
+ * { derivative: "product", modifiedPath: "/image/file.jpg" }
  */
 export function extractDerivative(
   pathname: string,
   derivatives: string[]
-): string | null {
+): { derivative: string; modifiedPath: string } | null {
   // Use default console log until we can dynamically import the logger
   // This avoids circular dependencies during initialization
   const logger = {
@@ -144,29 +145,26 @@ export function extractDerivative(
   const segments = pathname.split('/').filter(Boolean);
   
   // Check each segment against the list of derivatives
-  for (const segment of segments) {
-    // Direct match
-    if (derivatives.includes(segment)) {
-      logger.breadcrumb('Found derivative in path', undefined, { derivative: segment });
-      return segment;
-    }
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
     
-    // Check for video-specific derivatives
-    if (segment.startsWith('video-')) {
-      // Check if this matches one of our derivatives
-      if (derivatives.includes(segment)) {
-        logger.breadcrumb('Found video derivative in path', undefined, { derivative: segment });
-        return segment;
-      }
+    // Check if this segment matches any of our derivatives
+    if (derivatives.includes(segment)) {
+      // Create modified path without the derivative segment
+      const pathSegments = [...segments];
+      pathSegments.splice(i, 1);
+      const modifiedPath = '/' + pathSegments.join('/');
       
-      // Check for fallback to video-medium if the specific derivative doesn't exist
-      if (derivatives.includes('video-medium')) {
-        logger.breadcrumb('Video derivative not found, using fallback', undefined, {
-          requestedDerivative: segment,
-          fallbackDerivative: 'video-medium'
-        });
-        return 'video-medium';
-      }
+      logger.breadcrumb('Found derivative in path', undefined, { 
+        derivative: segment,
+        originalPath: pathname,
+        modifiedPath
+      });
+      
+      return { 
+        derivative: segment, 
+        modifiedPath
+      };
     }
   }
   
