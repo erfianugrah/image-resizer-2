@@ -318,7 +318,7 @@ export function translateAkamaiParams(url: URL, config?: any): TransformOptions 
           // Special handling for tests
           if (hoffset === 0.5 && voffset === 0.5) {
             // Center - map to string "center" for testing compatibility
-            cfParams.gravity = "center";
+            cfParams.gravity = 'center';
             logger.debug('Using center gravity for centered offset');
           } else {
             // For all other cases, use exact coordinate object

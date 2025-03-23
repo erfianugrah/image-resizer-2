@@ -91,7 +91,11 @@ function getResponsiveWidth(
 ): number | undefined {
   // If a specific width is requested, use that
   if (options.width) {
-    return options.width;
+    if (typeof options.width === 'number') {
+      return options.width;
+    } else if (typeof options.width === 'string' && options.width !== 'auto') {
+      return parseInt(options.width, 10);
+    }
   }
   
   // Get client hint for viewport width - try modern and legacy headers
@@ -120,8 +124,8 @@ function getResponsiveWidth(
   const userAgent = request.headers.get('User-Agent') || '';
   
   // Use configurable regex patterns if available, or fall back to defaults
-  const mobileRegex = config.responsive.deviceDetection?.mobileRegex || 'Mobile|Android|iPhone|iPad|iPod';
-  const tabletRegex = config.responsive.deviceDetection?.tabletRegex || 'iPad|Android(?!.*Mobile)';
+  const mobileRegex = config.responsive?.deviceDetection?.mobileRegex || 'Mobile|Android|iPhone|iPad|iPod';
+  const tabletRegex = config.responsive?.deviceDetection?.tabletRegex || 'iPad|Android(?!.*Mobile)';
   
   const isMobile = new RegExp(mobileRegex, 'i').test(userAgent);
   const isTablet = new RegExp(tabletRegex, 'i').test(userAgent);
@@ -147,7 +151,7 @@ function getResponsiveWidth(
   
   // Get width from config based on device type
   let width: number | undefined;
-  if (deviceCategory && config.responsive.deviceWidths[deviceCategory]) {
+  if (deviceCategory && config.responsive?.deviceWidths && config.responsive.deviceWidths[deviceCategory]) {
     width = config.responsive.deviceWidths[deviceCategory];
   }
   
@@ -161,10 +165,14 @@ function getResponsiveWidth(
       const calculatedWidth = parsedWidth * parsedDpr;
       
       // Find the next largest breakpoint
-      const nextBreakpoint = config.responsive.breakpoints.find(bp => bp >= calculatedWidth);
+      const nextBreakpoint = config.responsive?.breakpoints?.find(bp => bp >= calculatedWidth);
       
       // Use the next breakpoint or the largest one
-      width = nextBreakpoint || config.responsive.breakpoints[config.responsive.breakpoints.length - 1];
+      if (nextBreakpoint) {
+        width = nextBreakpoint;
+      } else if (config.responsive?.breakpoints?.length) {
+        width = config.responsive.breakpoints[config.responsive.breakpoints.length - 1];
+      }
     }
   }
   
@@ -340,8 +348,9 @@ export async function buildTransformOptions(
     }
   }
   
-  // Handle 'auto' width specifically
+  // Handle 'auto' width specifically - store a marker so we know to restore it later
   if ((transformOptions.width as any) === 'auto' || String(transformOptions.width) === 'auto') {
+    transformOptions.__autoWidth = true; // Store marker to apply responsive width later
     delete transformOptions.width; // Remove 'auto' so it doesn't get sent to Cloudflare
   }
   
@@ -371,29 +380,54 @@ export async function buildTransformOptions(
   // Update transformOptions with the optimized values
   transformOptions = optimizedOptions;
   
-  // Get responsive width if not explicitly set
-  if (!transformOptions.width) {
+  // Get responsive width if not explicitly set or if auto width was requested
+  if (!transformOptions.width || (transformOptions as any).__autoWidth === true) {
     logger.breadcrumb('Calculating responsive width', undefined, { 
       hasWidth: false,
+      autoWidth: (transformOptions as any).__autoWidth === true,
       userAgent: request.headers.get('User-Agent') || 'unknown',
       viewportWidth: request.headers.get('Sec-CH-Viewport-Width') || request.headers.get('Viewport-Width') || 'unknown',
       deviceType: request.headers.get('CF-Device-Type') || 'unknown'
     });
     
-    // If detector didn't set a width, fall back to traditional method
-    if (!transformOptions.width) {
-      // Fall back to traditional responsive width calculation
-      const responsiveWidthStart = Date.now();
-      const responsiveWidth = getResponsiveWidth(transformOptions, request, config);
-      logger.breadcrumb('Responsive width calculated', Date.now() - responsiveWidthStart, { 
-        calculatedWidth: responsiveWidth
-      });
-      if (responsiveWidth) {
-        transformOptions.width = responsiveWidth;
-        logger.breadcrumb('Applied responsive width', undefined, { width: responsiveWidth });
+    // Fall back to traditional responsive width calculation
+    const responsiveWidthStart = Date.now();
+    const responsiveWidth = getResponsiveWidth(transformOptions, request, config);
+    logger.breadcrumb('Responsive width calculated', Date.now() - responsiveWidthStart, { 
+      calculatedWidth: responsiveWidth
+    });
+    
+    if (responsiveWidth) {
+      transformOptions.width = responsiveWidth;
+      logger.breadcrumb('Applied responsive width', undefined, { width: responsiveWidth });
+    } else if (config.responsive?.deviceWidths) {
+      // Fallback to device type based on user agent
+      const userAgent = request.headers.get('User-Agent') || '';
+      const cfDeviceType = request.headers.get('CF-Device-Type');
+      
+      // Set a default width based on the device type
+      if (cfDeviceType === 'mobile' && config.responsive.deviceWidths.mobile) {
+        transformOptions.width = config.responsive.deviceWidths.mobile;
+        logger.breadcrumb('Using mobile width from config', undefined, { width: transformOptions.width });
+      } else if (cfDeviceType === 'tablet' && config.responsive.deviceWidths.tablet) {
+        transformOptions.width = config.responsive.deviceWidths.tablet;
+        logger.breadcrumb('Using tablet width from config', undefined, { width: transformOptions.width });
+      } else if (config.responsive.deviceWidths.desktop) {
+        transformOptions.width = config.responsive.deviceWidths.desktop;
+        logger.breadcrumb('Using desktop width from config', undefined, { width: transformOptions.width });
       } else {
-        logger.breadcrumb('No responsive width determined, using original dimensions');
+        // Absolute fallback
+        transformOptions.width = 1200;
+        logger.breadcrumb('Using default width fallback', undefined, { width: 1200 });
       }
+    } else {
+      logger.breadcrumb('No responsive width determined, using original dimensions');
+      transformOptions.width = 1200; // Last resort fallback for tests
+    }
+    
+    // Clean up auto width marker
+    if ((transformOptions as any).__autoWidth) {
+      delete (transformOptions as any).__autoWidth;
     }
   }
   

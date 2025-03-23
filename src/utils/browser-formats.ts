@@ -4,7 +4,7 @@
  * This file is auto-generated from browser support data. Do not edit directly.
  * To update, run: node scripts/generate-browser-support.js
  * 
- * Generated on: 2025-03-23T08:12:02.155Z
+ * Generated on: 2025-03-23T09:30:10.088Z
  * Using @mdn/browser-compat-data version: 5.7.5
  * 
  * Note: WebP and AVIF support data is maintained manually in the script

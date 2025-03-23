@@ -294,7 +294,7 @@ function getBrowserInfoFromClientHints(hints: ClientHintsData): { name: string; 
         // Found a match - now determine version
         // Use a default recent version since exact version is not available in client hints
         // This is a limitation of current client hints implementation
-        let version = '100'; // Default to a recent version
+        const version = '100'; // Default to a recent version
         
         // For mobile, adjust the browser type
         if (hints.uaMobile === true) {
@@ -539,6 +539,7 @@ export interface DeviceCapabilities {
   mobile?: boolean;      // Whether it's a mobile device
   platform?: string;     // Platform (OS) name
   score?: number;        // Raw capability score (0-100)
+  class?: string;        // Device class categorization (high-end, mid-range, low-end)
   description: string;   // Human-readable description
   estimated: boolean;    // Whether the capabilities are estimated
 }

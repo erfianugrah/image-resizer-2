@@ -36,7 +36,7 @@ export function parseImagePath(pathname: string): {
   // Use default console log until we can dynamically import the logger
   // This avoids circular dependencies during initialization
   const logger = {
-    breadcrumb: (step: string, duration?: number, data?: Record<string, any>) => {
+    breadcrumb: (step: string, duration?: number, data?: Record<string, unknown>) => {
       console.log(`[INFO] 🔶 BREADCRUMB: ${step}`, data || '');
     }
   };
@@ -125,7 +125,7 @@ export function extractDerivative(
   // Use default console log until we can dynamically import the logger
   // This avoids circular dependencies during initialization
   const logger = {
-    breadcrumb: (step: string, duration?: number, data?: Record<string, any>) => {
+    breadcrumb: (step: string, duration?: number, data?: Record<string, unknown>) => {
       console.log(`[INFO] 🔶 BREADCRUMB: ${step}`, data || '');
     }
   };
@@ -184,11 +184,11 @@ export function extractDerivative(
  */
 export function parseQueryOptions(
   searchParams: URLSearchParams
-): Record<string, any> {
+): Record<string, unknown> {
   // Use default console log until we can dynamically import the logger
   // This avoids circular dependencies during initialization
   const logger = {
-    breadcrumb: (step: string, duration?: number, data?: Record<string, any>) => {
+    breadcrumb: (step: string, duration?: number, data?: Record<string, unknown>) => {
       console.log(`[INFO] 🔶 BREADCRUMB: ${step}`, data || '');
     }
   };
@@ -197,7 +197,7 @@ export function parseQueryOptions(
     paramCount: Array.from(searchParams.keys()).length
   });
   
-  const options: Record<string, any> = {};
+  const options: Record<string, unknown> = {};
   
   // Define parameter categories for systematic processing
   
@@ -230,7 +230,7 @@ export function parseQueryOptions(
     if (searchParams.has(param)) {
       const paramValue = searchParams.get(param) || '';
       if (paramValue.toLowerCase() === 'auto') {
-        options[param] = 'auto' as any;
+        options[param] = 'auto';
         if (param === 'width') {
           logger.breadcrumb(`Setting ${param} to auto`);
         }
@@ -327,9 +327,10 @@ export function parseQueryOptions(
       const drawValue = searchParams.get('draw') || '';
       // Attempt to parse as JSON
       const drawData = JSON.parse(drawValue);
-      options.draw = Array.isArray(drawData) ? drawData : [drawData];
+      const drawArray = Array.isArray(drawData) ? drawData : [drawData];
+      options.draw = drawArray;
       logger.breadcrumb('Parsed draw parameter', undefined, { 
-        drawItems: options.draw.length
+        drawItems: drawArray.length
       });
     } catch (e) {
       logger.breadcrumb('Failed to parse draw parameter as JSON');
@@ -364,7 +365,7 @@ export function applyPathTransforms(
   // Use default console log until we can dynamically import the logger
   // This avoids circular dependencies during initialization
   const logger = {
-    breadcrumb: (step: string, duration?: number, data?: Record<string, any>) => {
+    breadcrumb: (step: string, duration?: number, data?: Record<string, unknown>) => {
       console.log(`[INFO] 🔶 BREADCRUMB: ${step}`, data || '');
     }
   };
