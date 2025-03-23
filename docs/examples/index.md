@@ -14,11 +14,15 @@ Below are examples using a sample image through our image resizer:
 
 ### Original Image (Automatically Resized)
 
+![Original Image](https://images.erfi.dev/Granna_1.JPG)
+
 ```
 https://images.erfi.dev/Granna_1.JPG
 ```
 
 ### With Width Parameter
+
+![Width 400px](https://images.erfi.dev/Granna_1.JPG?width=400)
 
 ```
 https://images.erfi.dev/Granna_1.JPG?width=400
@@ -26,11 +30,15 @@ https://images.erfi.dev/Granna_1.JPG?width=400
 
 ### Using WebP Format
 
+![WebP Format](https://images.erfi.dev/Granna_1.JPG?format=webp&width=600)
+
 ```
 https://images.erfi.dev/Granna_1.JPG?format=webp&width=600
 ```
 
 ### Using a Derivative (Thumbnail)
+
+![Thumbnail Derivative](https://images.erfi.dev/thumbnail/Granna_1.JPG)
 
 ```
 https://images.erfi.dev/thumbnail/Granna_1.JPG
@@ -38,11 +46,15 @@ https://images.erfi.dev/thumbnail/Granna_1.JPG
 
 ### Quality and Format Control
 
+![Quality 50](https://images.erfi.dev/Granna_1.JPG?quality=50&width=500)
+
 ```
 https://images.erfi.dev/Granna_1.JPG?quality=50&width=500
 ```
 
 ### Image Cropping with Central Focus
+
+![Cropped Image](https://images.erfi.dev/Granna_1.JPG?width=400&height=300&fit=crop&gravity=center)
 
 ```
 https://images.erfi.dev/Granna_1.JPG?width=400&height=300&fit=crop&gravity=center
@@ -50,17 +62,23 @@ https://images.erfi.dev/Granna_1.JPG?width=400&height=300&fit=crop&gravity=cente
 
 ### Path Parameters (Alternative Syntax)
 
+![Path Parameters](https://images.erfi.dev/_width=300/_format=webp/Granna_1.JPG)
+
 ```
 https://images.erfi.dev/_width=300/_format=webp/Granna_1.JPG
 ```
 
 ### Image Effects (Brightness, Contrast, Saturation)
 
+![Image Effects](https://images.erfi.dev/Granna_1.JPG?width=400&brightness=10&contrast=15&saturation=-5)
+
 ```
 https://images.erfi.dev/Granna_1.JPG?width=400&brightness=10&contrast=15&saturation=-5
 ```
 
 ### Advanced Gravity with Focus Point
+
+![Focus Point](https://images.erfi.dev/Granna_1.JPG?width=400&height=400&fit=crop&gravity=auto)
 
 ```
 https://images.erfi.dev/Granna_1.JPG?width=400&height=400&fit=crop&gravity=auto

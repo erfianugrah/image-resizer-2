@@ -79,15 +79,23 @@ The Image Resizer translates Akamai Image Manager parameters to Cloudflare Image
 Here are some examples of Akamai compatibility in action:
 
 #### Basic Akamai Parameters
-`https://images.example.com/image.jpg?im.resize=width:400,height:300,mode:fit&im.quality=80`
+![Basic Parameters](https://images.erfi.dev/Granna_1.JPG?im.resize=width:400,height:300,mode:fit&im.quality=80)
+
+`https://images.erfi.dev/Granna_1.JPG?im.resize=width:400,height:300,mode:fit&im.quality=80`
 
 #### Advanced Features - Blur
-`https://images.example.com/image.jpg?im.blur=20&im.resize=width:400`
+![Blur Effect](https://images.erfi.dev/Granna_1.JPG?im.blur=20&im.resize=width:400)
+
+`https://images.erfi.dev/Granna_1.JPG?im.blur=20&im.resize=width:400`
 
 #### Advanced Features - Mirror
-`https://images.example.com/image.jpg?im.mirror=horizontal&im.resize=width:400`
+![Mirror Effect](https://images.erfi.dev/Granna_1.JPG?im.mirror=horizontal&im.resize=width:400)
+
+`https://images.erfi.dev/Granna_1.JPG?im.mirror=horizontal&im.resize=width:400`
 
 #### Advanced Features - Conditional Transformations
-`https://images.example.com/image.jpg?im.if-dimension=width>800,im.resize=width:400`
+![Conditional Transform](https://images.erfi.dev/Granna_1.JPG?im.if-dimension=width>800,im.resize=width:400&debug=true)
+
+`https://images.erfi.dev/Granna_1.JPG?im.if-dimension=width>800,im.resize=width:400`
 
 For more details on Akamai compatibility, explore the individual topics in this section.

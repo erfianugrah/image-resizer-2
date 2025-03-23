@@ -316,6 +316,8 @@ https://example.com/debug-report
 
 ### Basic Resizing
 
+![Basic Resizing Example](https://images.erfi.dev/Granna_1.JPG?im.resize=width:800,height:600,mode:fit&im.quality=85)
+
 **Akamai URL:**
 ```
 https://images.erfi.dev/Granna_1.JPG?im.resize=width:800,height:600,mode:fit&im.quality=85
@@ -327,6 +329,8 @@ https://images.erfi.dev/Granna_1.JPG?width=800&height=600&fit=contain&quality=85
 ```
 
 ### Aspect Ratio Transformation
+
+![Aspect Ratio Example](https://images.erfi.dev/Granna_1.JPG?im.aspectCrop=width:16,height:9,hoffset:0.5,voffset:0.3)
 
 **Akamai URL:**
 ```
@@ -340,17 +344,21 @@ https://images.erfi.dev/Granna_1.JPG?width=800&height=450&fit=crop&gravity=north
 
 ### Watermark with Positioning
 
+![Watermark Example](https://images.erfi.dev/Granna_1.JPG?im.text=Watermark,placement:southeast,size:24,opacity:80)
+
 **Akamai URL:**
 ```
-https://images.erfi.dev/Granna_1.JPG?im.composite=url:https://example.com/logo.png,placement:southeast,opacity:80
+https://images.erfi.dev/Granna_1.JPG?im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:southeast,opacity:80
 ```
 
 **Translated to Cloudflare:**
 ```
-https://images.erfi.dev/Granna_1.JPG?draw=url:https://example.com/logo.png,right:5,bottom:5,opacity:0.8
+https://images.erfi.dev/Granna_1.JPG?draw=[{"url":"https://cdn.erfianugrah.com/ea_favicon.png","bottom":5,"right":5,"opacity":0.8}]
 ```
 
 ### Blur Effect
+
+![Blur Effect Example](https://images.erfi.dev/Granna_1.JPG?im.blur=20)
 
 **Akamai URL:**
 ```
@@ -363,6 +371,8 @@ https://images.erfi.dev/Granna_1.JPG?blur=50
 ```
 
 ### Complex Multi-Parameter Transformation
+
+![Complex Transformation](https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.quality=80&im.format=webp&im.blur=10&im.grayscale=true)
 
 **Akamai URL:**
 ```
@@ -423,6 +433,8 @@ npm test -- -t "composite parameters"
 
 To verify that the Akamai compatibility layer is working correctly in your environment, you can use the following test image:
 
+![Test Image](https://images.erfi.dev/Granna_1.JPG?width=400)
+
 ```
 https://images.erfi.dev/Granna_1.JPG
 ```
@@ -430,26 +442,41 @@ https://images.erfi.dev/Granna_1.JPG
 Here are recommended test cases to validate different aspects of the compatibility module:
 
 1. **Basic Functionality**: Verify resize and quality parameters
+
+   ![Basic Functionality](https://images.erfi.dev/Granna_1.JPG?im.resize=width:800,height:600&im.quality=85)
+   
    ```
    https://images.erfi.dev/Granna_1.JPG?im.resize=width:800,height:600&im.quality=85&debug=true
    ```
 
 2. **Advanced Functionality**: Test aspectCrop with positioning
+
+   ![Advanced Functionality](https://images.erfi.dev/Granna_1.JPG?im.aspectCrop=width:16,height:9,hoffset:0.5,voffset:0.2)
+   
    ```
    https://images.erfi.dev/Granna_1.JPG?im.aspectCrop=width:16,height:9,hoffset:0.5,voffset:0.2&debug=true
    ```
 
 3. **Watermarking**: Test composite functionality
+
+   ![Watermarking](https://images.erfi.dev/Granna_1.JPG?im.text=Watermark,placement:southeast,size:18)
+   
    ```
-   https://images.erfi.dev/Granna_1.JPG?im.composite=url:https://example.com/logo.png,placement:southeast&debug=true
+   https://images.erfi.dev/Granna_1.JPG?im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:southeast&debug=true
    ```
 
 4. **Visual Effects**: Test blur and other effects
+
+   ![Visual Effects](https://images.erfi.dev/Granna_1.JPG?im.blur=15&im.grayscale=true)
+   
    ```
    https://images.erfi.dev/Granna_1.JPG?im.blur=15&im.grayscale=true&debug=true
    ```
 
 5. **Conditional Transformations**: Test dimension-based conditions
+
+   ![Conditional Transformations](https://images.erfi.dev/Granna_1.JPG?im.resize=width:300)
+   
    ```
    https://images.erfi.dev/Granna_1.JPG?im.if-dimension=width>500,im.resize=width:300&debug=true
    ```

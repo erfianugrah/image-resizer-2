@@ -25,98 +25,42 @@ This document outlines a comprehensive plan for refactoring the entire image-res
    - Factory pattern for parameter creation
    - Repository pattern for caching and storage
 
-## 2. Component Refactoring Plan
+## 2. Future Improvements
 
-### Phase 1: Core Domain Model
+### Core Domain Model Improvements
+- Create `TransformationRequest` and `TransformationResult` domain entities
+- Define value objects for each transformation type (Resize, Crop, Watermark, etc.)
+- Implement validation rules as domain services
+- Design immutable state transitions for transformation pipeline
+- Develop unified parameter interfaces
+- Create parameter factories for different input formats
+- Implement strong typing for all parameters
+- Add validation and normalization as part of domain logic
 
-1. **Image Transformation Domain**
-   - Create `TransformationRequest` and `TransformationResult` domain entities
-   - Define value objects for each transformation type (Resize, Crop, Watermark, etc.)
-   - Implement validation rules as domain services
-   - Design immutable state transitions for transformation pipeline
+### Service Layer Improvements
+- Design `ImageTransformationService` as core orchestrator
+- Implement specialized services:
+  - `ResizeService`
+  - `WatermarkService`
+  - `ImageEffectsService`
+  - `FormatConversionService`
+- Create service interfaces with clear contracts
+- Refactor Akamai compatibility into dedicated service
+- Design extensible adapter system for multiple vendor formats
+- Implement parameter translation pipelines
+- Create abstraction for feature flags
 
-2. **Parameter Management**
-   - Develop unified parameter interfaces
-   - Create parameter factories for different input formats
-   - Implement strong typing for all parameters
-   - Add validation and normalization as part of domain logic
+### Infrastructure Improvements
+- Develop intelligent caching strategy with domain-aware invalidation
+- Implement metrics collection for transformation performance
+- Create optimized transformation paths for common operations
+- Design resource management for large batch operations
+- Implement structured logging throughout the codebase
+- Create transaction context for request tracing
+- Add performance profiling with detailed metrics
+- Design comprehensive error handling strategy
 
-### Phase 2: Service Layer
-
-3. **Transformation Services**
-   - Design `ImageTransformationService` as core orchestrator
-   - Implement specialized services:
-     - `ResizeService`
-     - `WatermarkService`
-     - `ImageEffectsService`
-     - `FormatConversionService`
-   - Create service interfaces with clear contracts
-
-4. **Compatibility Layer**
-   - Refactor Akamai compatibility into dedicated service
-   - Design extensible adapter system for multiple vendor formats
-   - Implement parameter translation pipelines
-   - Create abstraction for feature flags
-
-### Phase 3: Infrastructure Components
-
-5. **Caching & Performance**
-   - Develop intelligent caching strategy with domain-aware invalidation
-   - Implement metrics collection for transformation performance
-   - Create optimized transformation paths for common operations
-   - Design resource management for large batch operations
-
-6. **Logging & Observability**
-   - Implement structured logging throughout the codebase
-   - Create transaction context for request tracing
-   - Add performance profiling with detailed metrics
-   - Design comprehensive error handling strategy
-
-## 3. Implementation Roadmap
-
-### Phase 4: Foundations (4-6 weeks)
-
-7. **Design & Planning**
-   - Document core domain model with UML diagrams
-   - Create service interface specifications
-   - Define data flow architecture
-   - Establish coding standards and patterns
-
-8. **Core Infrastructure**
-   - Implement dependency injection container
-   - Create logging and telemetry framework
-   - Set up configuration management
-   - Design error handling system
-
-### Phase 5: Domain Implementation (6-8 weeks)
-
-9. **Domain Model Implementation**
-   - Implement core domain entities and value objects
-   - Create domain services for business rules
-   - Develop specification pattern for validations
-   - Build factory methods for domain object creation
-
-10. **Service Layer Implementation**
-    - Implement service interfaces
-    - Create concrete service implementations
-    - Build composite services for orchestration
-    - Implement cross-cutting concerns (logging, error handling)
-
-### Phase 6: Adapter & Integration (6-8 weeks)
-
-11. **Adapter Implementation**
-    - Refactor request/response adapters
-    - Implement compatibility layers
-    - Create parameter translation services
-    - Build request normalization pipeline
-
-12. **Testing & Integration**
-    - Develop comprehensive test suite
-    - Create integration test harness
-    - Implement performance benchmarking
-    - Build end-to-end test scenarios
-
-## 4. Specific Component Designs
+## 3. Component Designs
 
 ### Image Transformation Pipeline
 
@@ -239,7 +183,7 @@ class Container {
 }
 ```
 
-## 5. Akamai Compatibility Layer Refactoring
+## 4. Akamai Compatibility Layer Refactoring
 
 The current Akamai compatibility layer will be completely redesigned as follows:
 
@@ -295,7 +239,7 @@ class AkamaiCompositeAdapter implements ParameterAdapter<AkamaiCompositeParamete
 }
 ```
 
-## 6. Testing Strategy
+## 5. Testing Strategy
 
 ### Unit Testing
 
@@ -318,33 +262,7 @@ class AkamaiCompositeAdapter implements ParameterAdapter<AkamaiCompositeParamete
 - Test cache hit/miss scenarios
 - Evaluate concurrent request handling
 
-## 7. Migration Strategy
-
-### Phased Approach
-
-1. **Analysis & Design Phase** (4 weeks)
-   - Complete domain modeling
-   - Design service interfaces
-   - Create architectural documentation
-   - Establish testing framework
-
-2. **Core Implementation Phase** (8 weeks)
-   - Build domain model implementation
-   - Implement core services
-   - Create basic pipeline functionality
-   - Build adapter foundations
-
-3. **Integration Phase** (6 weeks)
-   - Connect components together
-   - Implement compatibility adapters
-   - Build request/response mapping
-   - Create end-to-end flows
-
-4. **Optimization Phase** (4 weeks)
-   - Implement caching strategy
-   - Optimize performance bottlenecks
-   - Add metrics and monitoring
-   - Complete documentation
+## 6. Implementation Considerations
 
 ### Risk Mitigation
 
@@ -354,9 +272,7 @@ class AkamaiCompositeAdapter implements ParameterAdapter<AkamaiCompositeParamete
 - Establish metrics baseline for performance comparison
 - Develop rollback strategy for critical failures
 
-## 8. Detailed Component Breakdown
-
-Each core component will be refactored as follows:
+## 7. Component Implementations
 
 ### URL & Request Processing
 
@@ -386,7 +302,7 @@ Each core component will be refactored as follows:
 - Create error response handling
 - Build debugging information formatter
 
-## 9. Key Interfaces
+## 8. Key Interfaces
 
 ```typescript
 // Key interfaces for the refactored system
@@ -422,4 +338,4 @@ interface CacheService {
 }
 ```
 
-This document will serve as the blueprint for the full codebase refactoring effort. Each phase will be tracked and updated as implementation progresses.
+This document will serve as the blueprint for the full codebase refactoring effort.
