@@ -36,6 +36,10 @@ This service enhances your Cloudflare Workers setup with advanced image handling
 - **Breadcrumb Tracing**: End-to-end request tracing with performance metrics for diagnostics
 - **Interceptor Pattern**: Special handling for large images to prevent timeouts
 - **Akamai Compatibility**: Support for Akamai Image Manager URL parameters for seamless migration, including advanced features like blur, watermarking, mirror/flip, and conditional transformations
+- **Service-Oriented Architecture**: Modular design with clear interfaces and dependency management
+- **Client Detection**: Advanced browser and device capability detection with performance optimization
+- **Interactive Debug Reports**: Enhanced HTML debug reports with visualizations and performance metrics
+- **Centralized Configuration**: Unified configuration service with environment-specific settings and feature flags
 
 ## Live Demo Examples
 
@@ -143,12 +147,17 @@ Demo URL: [https://images.erfi.dev/Granna_1.JPG?im.if-dimension=width>800,im.res
 
 ## Architecture
 
-This project implements a simplified architecture compared to the original image-resizer:
+This project implements a service-oriented architecture (SOA) for better modularity and maintainability:
 
-- **No Router Pattern**: Direct function calls instead of a complex strategy/router pattern
-- **No Dependency Injection**: Simple imports instead of a complex DI system
-- **No Command Pattern**: Direct function calls instead of a command pattern
-- **Simplified Config**: One unified configuration with sensible defaults and environment overrides
+- **Service Interfaces**: Clear contracts for all services with TypeScript interfaces
+- **Service Container**: Central registry of all service instances
+- **Command Pattern**: Encapsulated business logic in command objects
+- **Configuration Service**: Centralized configuration management
+- **Client Detection Service**: Browser and device capability detection
+- **Cache Service**: Advanced caching strategies with cache tags
+- **Debug Service**: Enhanced debugging tools and visualizations
+- **Transformation Service**: Image transformation handling
+- **Storage Service**: Multi-source storage management
 - **Interceptor Pattern**: Special handling for large images that automatically detects Cloudflare's image-resizing subrequests
 
 ## Project Structure
@@ -163,11 +172,27 @@ This project implements a simplified architecture compared to the original image
 │   ├── cache.ts               # Caching utilities
 │   ├── debug.ts               # Debug headers
 │   ├── types.ts               # TypeScript type definitions
+│   ├── services/              # Service-oriented architecture components
+│   │   ├── interfaces.ts      # Service interfaces
+│   │   ├── cacheService.ts    # Cache service implementation
+│   │   ├── clientDetectionService.ts # Client detection service
+│   │   ├── configurationService.ts # Configuration service
+│   │   ├── debugService.ts    # Debug service implementation
+│   │   ├── debugVisualization.ts # Debug visualization utilities
+│   │   ├── serviceContainer.ts # Service container factory
+│   │   ├── storageService.ts  # Storage service implementation
+│   │   └── transformationService.ts # Transformation service
+│   ├── domain/                # Domain layer
+│   │   └── commands/          # Command pattern implementations
+│   │       ├── command.ts     # Command interface
+│   │       └── transformImageCommand.ts # Transform image command
 │   └── utils/                 # Utility functions
 │       ├── path.ts            # Path handling utilities
 │       ├── errors.ts          # Error handling utilities
 │       ├── auth.ts            # Authentication utilities
+│       ├── detector.ts        # Client detection utilities
 │       ├── logging.ts         # Centralized logging system
+│       ├── wrangler-config.ts # Configuration loading from environment
 │       └── akamai-compatibility.ts # Akamai parameter translation
 ├── test/                      # Tests
 ├── docs/                      # Documentation

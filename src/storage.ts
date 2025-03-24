@@ -26,6 +26,9 @@ export function setLogger(configuredLogger: Logger): void {
 
 /**
  * Result of a storage operation
+ * Note: in services/interfaces.ts there's a more strict version of this
+ * interface that doesn't allow null values for contentType and size.
+ * The DefaultStorageService does the conversion.
  */
 export interface StorageResult {
   response: Response;

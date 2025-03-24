@@ -6,7 +6,7 @@
  */
 
 import { ImageResizerConfig } from './config';
-import { TransformOptions } from './transform';
+import { TransformOptions } from './services/interfaces';
 
 /**
  * Apply caching headers to a response based on status

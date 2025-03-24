@@ -1197,7 +1197,18 @@ export async function transformImage(
       sourceType: storageResult.sourceType,
       storageOrder: config.storage.priority.join(',')
     });
-    return storageResult.response;
+    
+    // Add metadata about the request being a subrequest, useful for caching decisions
+    // Create a new object with the metadata to avoid modifying the original
+    const resultWithMetadata = {
+      ...storageResult,
+      metadata: {
+        ...((storageResult as any).metadata || {}),
+        isSubrequest: 'true'
+      }
+    } as StorageResult;
+    
+    return resultWithMetadata.response;
   }
   
   // Log info about large images that might cause timeouts
@@ -1404,6 +1415,33 @@ export async function transformImage(
       headers: transformed.headers,
       status: transformed.status,
       statusText: transformed.statusText,
+    });
+    
+    // Add metadata headers for cache optimization
+    const headers = new Headers(response.headers);
+    
+    // Store image dimensions in headers for cache tagging if available
+    if (transformOptions.width) {
+      headers.set('X-Image-Width', String(transformOptions.width));
+    }
+    if (transformOptions.height) {
+      headers.set('X-Image-Height', String(transformOptions.height));
+    }
+    if (transformOptions.format && transformOptions.format !== 'auto') {
+      headers.set('X-Image-Format', transformOptions.format);
+    }
+    if (transformOptions.quality) {
+      headers.set('X-Image-Quality', String(transformOptions.quality));
+    }
+    if (transformOptions.derivative) {
+      headers.set('X-Image-Derivative', transformOptions.derivative);
+    }
+    
+    // Create a new response with the added headers
+    response = new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers
     });
     
     // Add cache control headers based on configuration

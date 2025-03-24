@@ -8,6 +8,11 @@ vi.mock('../src/utils/logging', () => {
   return import('./mocks/logging');
 });
 
+// Mock detector utility for client detection tests
+vi.mock('../src/utils/detector', () => {
+  return import('./mocks/detector');
+});
+
 // Mock aws4fetch if needed (used in auth.ts)
 vi.mock('aws4fetch', () => {
   return {
@@ -27,3 +32,10 @@ vi.mock('aws4fetch', () => {
     }
   };
 });
+
+// Ensure Object.defineProperty works in the test environment
+// This is used in some services for lazy-loading dependencies
+Object.defineProperty = Object.defineProperty || function(obj, prop, descriptor) {
+  obj[prop] = descriptor.value;
+  return obj;
+};

@@ -7,7 +7,7 @@
 
 import { ImageResizerConfig } from './config';
 import { StorageResult } from './storage';
-import { TransformOptions } from './transform';
+import { TransformOptions } from './services/interfaces';
 import { generateCacheTags } from './cache';
 import { createLogger, Logger, defaultLogger } from './utils/logging';
 

@@ -6,7 +6,7 @@
  * a smoother migration and compatibility with existing Akamai implementations.
  */
 
-import type { TransformOptions } from '../transform';
+import type { TransformOptions } from '../services/interfaces';
 import { defaultLogger, Logger } from './logging';
 
 // Use default logger until a configured one is provided
