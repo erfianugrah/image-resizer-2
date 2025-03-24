@@ -32,12 +32,13 @@ As part of our ongoing refactoring to a service-oriented architecture, we need t
 
 ## Removal Plan
 
-### Phase 1: Move Shared Interfaces
+### Phase 1: Move Shared Interfaces ✅
 
-1. **Move `PerformanceMetrics` interface to services/interfaces.ts**
-   - Copy the interface definition from debug.ts to services/interfaces.ts
-   - Update all import statements across the codebase
-   - This will remove a major dependency on debug.ts
+1. **Move `PerformanceMetrics` interface to services/interfaces.ts** ✅
+   - ✅ Copied the interface definition from debug.ts to services/interfaces.ts
+   - ✅ Updated all import statements across the codebase to use the new location
+   - ✅ Added re-export from debug.ts for backward compatibility
+   - ✅ This has removed a major dependency on debug.ts
 
 ### Phase 2: Update Remaining Utility Usage in Application Code
 
@@ -49,9 +50,9 @@ As part of our ongoing refactoring to a service-oriented architecture, we need t
    - Replace direct import of `setDebugLogger` from debug.ts with DebugService
    - This will remove a dependency on debug.ts
 
-3. **Update transform.ts if needed**
-   - For the transition period, update transform.ts to use CacheService
-   - This will remove a dependency on cache.ts
+3. **Update transform.ts if needed** ✅
+   - ✅ Updated transform.ts to use DefaultCacheService instead of direct import from cache.ts
+   - ✅ This has removed a dependency on cache.ts
 
 ### Phase 3: Update Test Files
 
