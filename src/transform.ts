@@ -7,8 +7,8 @@
 
 import { ImageResizerConfig } from './config';
 import { StorageResult } from './storage';
-import { applyCloudflareCache } from './cache';
 import { createLogger, Logger, defaultLogger } from './utils/logging';
+import { DefaultCacheService } from './services/cacheService';
 
 // Use default logger until a configured one is provided
 let logger: Logger = defaultLogger;
@@ -1252,14 +1252,13 @@ export async function transformImage(
     
     logger.breadcrumb('Applying cache settings');
     const cacheStart = Date.now();
-    // Apply cache settings including cache tags
-    // Pass response headers to extract metadata for cache tags
-    const fetchOptionsWithCache = applyCloudflareCache(
+    // Apply cache settings including cache tags using CacheService
+    // Create a temporary cache service instance
+    const cacheService = new DefaultCacheService(logger);
+    const fetchOptionsWithCache = cacheService.applyCloudflareCache(
       fetchOptions,
-      config,
-      storageResult.path,
-      transformOptions,
-      storageResult.response.headers
+      storageResult.path || '',
+      transformOptions
     );
     const cacheEnd = Date.now();
     logger.breadcrumb('Applied cache settings', cacheEnd - cacheStart);
