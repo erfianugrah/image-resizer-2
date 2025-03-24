@@ -4,9 +4,8 @@
  * Encapsulates the business logic for transforming an image
  */
 
-import { ServiceContainer, StorageResult, ClientInfo, TransformOptions } from '../../services/interfaces';
+import { ServiceContainer, StorageResult, ClientInfo, TransformOptions, PerformanceMetrics } from '../../services/interfaces';
 import { Command } from './command';
-import { PerformanceMetrics } from '../../debug';
 
 /**
  * Command to transform an image based on the provided options

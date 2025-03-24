@@ -5,7 +5,7 @@
  * with a service-oriented architecture inspired by video-resizer.
  */
 
-import { PerformanceMetrics } from './debug';
+import { PerformanceMetrics } from './services/interfaces';
 import { AppError, TransformError, createErrorResponse } from './utils/errors';
 import { isAkamaiFormat } from './utils/akamai-compatibility';
 import { setLogger as setAkamaiLogger } from './utils/akamai-compatibility';

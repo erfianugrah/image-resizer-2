@@ -6,8 +6,7 @@
  */
 
 import { ImageResizerConfig } from '../config';
-import { StorageResult, ClientInfo, TransformOptions } from './interfaces';
-import { PerformanceMetrics } from '../debug';
+import { StorageResult, ClientInfo, TransformOptions, PerformanceMetrics } from './interfaces';
 
 /**
  * Interface for visualization data passed to HTML report generation

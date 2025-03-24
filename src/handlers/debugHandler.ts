@@ -5,8 +5,7 @@
  */
 
 import { ImageResizerConfig } from '../config';
-import { PerformanceMetrics } from '../debug';
-import { ServiceContainer, StorageResult } from '../services/interfaces';
+import { PerformanceMetrics, ServiceContainer, StorageResult } from '../services/interfaces';
 import { Logger } from '../utils/logging';
 
 /**

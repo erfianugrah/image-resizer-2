@@ -23,20 +23,9 @@ export function setLogger(configuredLogger: Logger): void {
   logger = configuredLogger;
 }
 
-/**
- * Performance timing points
- */
-export interface PerformanceMetrics {
-  start: number;
-  storageStart?: number;
-  storageEnd?: number;
-  transformStart?: number;
-  transformEnd?: number;
-  detectionStart?: number;
-  detectionEnd?: number;
-  end?: number;
-  detectionSource?: string;
-}
+// Re-export PerformanceMetrics from interfaces for backward compatibility
+import { PerformanceMetrics } from './services/interfaces';
+export { PerformanceMetrics };
 
 /**
  * Check if debug is enabled for the current request

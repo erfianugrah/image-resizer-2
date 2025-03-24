@@ -8,7 +8,7 @@ import { ServiceContainer, TransformOptions } from '../services/interfaces';
 import { parseImagePath, parseQueryOptions, extractDerivative, applyPathTransforms } from '../utils/path';
 import { ValidationError } from '../utils/errors';
 import { TransformImageCommand } from '../domain/commands';
-import { PerformanceMetrics } from '../debug';
+import { PerformanceMetrics } from '../services/interfaces';
 
 /**
  * Process an image transformation request

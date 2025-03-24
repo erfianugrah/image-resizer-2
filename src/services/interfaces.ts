@@ -7,7 +7,21 @@
 
 import { ImageResizerConfig } from '../config';
 import { Logger } from '../utils/logging';
-import { PerformanceMetrics } from '../debug';
+
+/**
+ * Performance timing points for tracking request processing
+ */
+export interface PerformanceMetrics {
+  start: number;
+  storageStart?: number;
+  storageEnd?: number;
+  transformStart?: number;
+  transformEnd?: number;
+  detectionStart?: number;
+  detectionEnd?: number;
+  end?: number;
+  detectionSource?: string;
+}
 /**
  * Image transformation options for Cloudflare Image Resizing service
  */
