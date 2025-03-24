@@ -7,7 +7,6 @@
 
 import { ImageResizerConfig } from '../config';
 import { Logger } from '../utils/logging';
-import { applyCloudflareCache } from '../cache';
 import { isFormatSupported } from '../utils/browser-formats';
 import { addClientHintsHeaders } from '../utils/client-hints';
 import { 
@@ -16,6 +15,7 @@ import {
   StorageResult,
   ClientDetectionService,
   ConfigurationService,
+  CacheService,
   TransformOptions
 } from './interfaces';
 import { 
@@ -28,15 +28,18 @@ export class DefaultImageTransformationService implements ImageTransformationSer
   private logger: Logger;
   private clientDetectionService?: ClientDetectionService;
   private configService?: ConfigurationService;
+  private cacheService?: CacheService;
 
   constructor(
     logger: Logger, 
     clientDetectionService?: ClientDetectionService,
-    configService?: ConfigurationService
+    configService?: ConfigurationService,
+    cacheService?: CacheService
   ) {
     this.logger = logger;
     this.clientDetectionService = clientDetectionService;
     this.configService = configService;
+    this.cacheService = cacheService;
   }
   
   /**
@@ -59,6 +62,17 @@ export class DefaultImageTransformationService implements ImageTransformationSer
   setConfigurationService(service: ConfigurationService): void {
     this.configService = service;
     this.logger.debug('Configuration service set');
+  }
+  
+  /**
+   * Set the cache service
+   * This allows the service to be injected after construction
+   * 
+   * @param service The cache service to use
+   */
+  setCacheService(service: CacheService): void {
+    this.cacheService = service;
+    this.logger.debug('Cache service set');
   }
 
   /**
@@ -226,15 +240,29 @@ export class DefaultImageTransformationService implements ImageTransformationSer
       this.logger.breadcrumb('Applying cache settings');
       const cacheStart = Date.now();
       
-      // Apply cache settings including cache tags
-      // Pass response headers to extract metadata for cache tags
-      const fetchOptionsWithCache = applyCloudflareCache(
-        fetchOptions,
-        config,
-        storageResult.path || '',
-        transformOptions,
-        storageResult.response.headers
-      );
+      // Apply cache settings including cache tags using CacheService
+      let fetchOptionsWithCache: RequestInit;
+      
+      if (this.cacheService) {
+        // Use the CacheService if available
+        this.logger.debug('Using CacheService for applying Cloudflare cache settings');
+        fetchOptionsWithCache = this.cacheService.applyCloudflareCache(
+          fetchOptions,
+          storageResult.path || '',
+          transformOptions
+        );
+      } else {
+        // Fallback to direct application if no service is available
+        this.logger.warn('No CacheService available, using minimal Cloudflare cache settings');
+        fetchOptionsWithCache = {
+          ...fetchOptions,
+          cf: {
+            ...fetchOptions.cf,
+            cacheEverything: true,
+            cacheTtl: config.cache.ttl.ok
+          }
+        };
+      }
       
       const cacheEnd = Date.now();
       this.logger.breadcrumb('Applied cache settings', cacheEnd - cacheStart);

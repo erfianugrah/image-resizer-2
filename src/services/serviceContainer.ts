@@ -63,14 +63,17 @@ export function createServiceContainer(env: Env): ServiceContainer {
 
   // Create service instances
   const storageService: StorageService = new DefaultStorageService(storageLogger, configurationService);
-  const transformationService: ImageTransformationService = new DefaultImageTransformationService(
-    transformationLogger, 
-    undefined, // Will set client detection service later
-    configurationService
-  );
   const cacheService: CacheService = new DefaultCacheService(cacheLogger, configurationService);
   const debugService: DebugService = new DefaultDebugService(debugLogger);
   const clientDetectionService: ClientDetectionService = new DefaultClientDetectionService(clientDetectionLogger);
+  
+  // Create transformation service with proper dependencies
+  const transformationService: ImageTransformationService = new DefaultImageTransformationService(
+    transformationLogger, 
+    undefined, // Will set client detection service later
+    configurationService,
+    cacheService
+  );
   
   // Configure the client detection service with the current config
   clientDetectionService.configure(config);

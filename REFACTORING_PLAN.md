@@ -54,6 +54,7 @@ We're targeting a clean architecture with:
 - **Next Steps**:
   - ✅ Complete DefaultDebugService implementation to remove dependency on debug.ts
   - ✅ Complete DefaultCacheService implementation to remove dependency on cache.ts
+  - ✅ Update DefaultImageTransformationService to use CacheService instead of cache.ts utilities
   - Update remaining imports from transform.ts to use TransformationService
   - Eventually remove transform.ts once all dependencies have been migrated
 

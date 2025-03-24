@@ -15,6 +15,7 @@ We have successfully:
    - `cache.ts`
    - `utils/akamai-compatibility.ts`
 4. Updated the `REFACTORING_PLAN.md` to reflect our progress
+5. **[NEW]** Modified `DefaultImageTransformationService` to use `CacheService` for cache operations instead of directly using utility functions
 
 ## Detailed Changes
 
@@ -58,35 +59,38 @@ We've removed direct dependencies on `transform.ts` from:
 
 Previously, these files imported `TransformOptions` directly from `transform.ts`, creating a dependency on the utility module. Now they import from `services/interfaces.ts`, aligning with our DDD approach.
 
-### 4. Remaining Dependencies
+### 4. Service Dependencies Updated
+
+We've updated the `transformationService.ts` to use proper service dependencies:
+
+- Added `CacheService` as an optional constructor parameter
+- Added a `setCacheService` method for dependency injection
+- Modified `applyCloudflareCache` usage to use the injected `CacheService` instead of the utility function
+- Added graceful fallback when `CacheService` is not available
+
+### 5. Remaining Dependencies
 
 Several files still reference functionality from `transform.ts`:
 
-- `services/cacheService.ts`: Uses utility functions from `cache.ts`
-- Test files: Many test files still use the old utility functions
+- Tests files: Many test files still use the old utility functions
 
 ## Next Steps
 
 To complete the refactoring, we should:
 
-1. **DebugService Refactoring**:
-   - Create a `DefaultDebugService` class implementing the `DebugService` interface
-   - Move functionality from `debug.ts` into this service
-   - Update imports in dependent files
+1. **Update Service Container**:
+   - Ensure the ServiceContainer properly injects CacheService into TransformationService
+   - Validate that all services have proper dependency relationships
 
-2. **CacheService Refactoring**:
-   - Complete migration of cache utility functions into `DefaultCacheService`
-   - Ensure all cache-related functionality is accessed through the service interface
-
-3. **Remove transform.ts**:
+2. **Remove transform.ts**:
    - Once all dependencies have been migrated to services, remove the `transform.ts` file
    - Ensure all imports are updated to use the appropriate services
 
-4. **Update Tests**:
+3. **Update Tests**:
    - Update test files to use the new service interfaces instead of direct utility functions
    - Consider adding specific tests for new service methods
 
-5. **Update Documentation**:
+4. **Update Documentation**:
    - Update developer documentation to reflect the new architecture
    - Add guidance for how to use the service interfaces
 

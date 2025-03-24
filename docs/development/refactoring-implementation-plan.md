@@ -43,17 +43,19 @@ We have successfully:
 - ✅ Added comprehensive error handling for all methods
 - ✅ Removed dependencies on utilities from `cache.ts`
 
-### 3. Clean up transform.ts
+### 3. ⚠️ Clean up transform.ts (IN PROGRESS)
 
 #### Analysis
 - Many files import `buildTransformOptions` and `transformImage` from `transform.ts`
 - `DefaultImageTransformationService` has implemented this functionality
 - Need to update imports across the codebase
 
-#### Implementation Tasks
-- Update references to utility functions in `transform.ts`
-- Eventually remove `transform.ts` when all functionality has been migrated
-- Update documentation to reflect the new architecture
+#### Implementation Progress
+- ✅ Updated `DefaultImageTransformationService` to use `CacheService` instead of direct utility functions
+- ✅ Injected `CacheService` into `TransformationService` in the service container
+- ⚠️ Remaining Task: Update other files that import from transform.ts
+- ⚠️ Remaining Task: Eventually remove `transform.ts` when all functionality has been migrated
+- ⚠️ Remaining Task: Update documentation to reflect the new architecture
 
 ### 4. Update Test Files
 
@@ -78,10 +80,12 @@ We have successfully:
 - ✅ Implemented all functionality directly in service without using utility functions from cache.ts
 - ✅ Added comprehensive error handling and resilience patterns
 
-### Phase 3: TransformService Cleanup (1-2 days)
-- Update remaining imports from transform.ts
-- Remove redundant functionality
-- Prepare for eventual removal of transform.ts
+### Phase 3: TransformService Cleanup (1-2 days) - IN PROGRESS
+- ✅ Updated `DefaultImageTransformationService` to use `CacheService` instead of direct utility functions  
+- ✅ Injected `CacheService` into `TransformationService` in the service container
+- ⚠️ Update remaining imports from transform.ts
+- ⚠️ Remove redundant functionality
+- ⚠️ Prepare for eventual removal of transform.ts
 
 ### Phase 4: Test Updates and Documentation (2-3 days)
 - Update test files to use services
