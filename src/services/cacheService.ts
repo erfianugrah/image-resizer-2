@@ -5,13 +5,6 @@
  * and performance optimizations.
  */
 
-import { 
-  applyCacheHeaders as applyCacheHeadersUtil, 
-  cacheWithCacheApi as cacheWithCacheApiUtil, 
-  shouldBypassCache as shouldBypassCacheUtil,
-  applyCloudflareCache as applyCloudflareSettings,
-  generateCacheTags as generateCacheTagsUtil
-} from '../cache';
 import { Logger } from '../utils/logging';
 import { CacheService, ConfigurationService, StorageResult, TransformOptions } from './interfaces';
 import { ImageResizerConfig } from '../config';
@@ -243,19 +236,16 @@ export class DefaultCacheService implements CacheService {
         });
       }
 
-      // First apply base cache headers using the utility function
-      let result = applyCacheHeadersUtil(response, config);
-      
       // If caching is disabled, return the response as is
       if (!config.cache.cacheability) {
-        return result;
+        return response;
       }
       
       // Create a new response that we can modify
-      const newResponse = new Response(result.body, {
-        status: result.status,
-        statusText: result.statusText,
-        headers: new Headers(result.headers)
+      const newResponse = new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: new Headers(response.headers)
       });
       
       // Calculate appropriate TTL based on our advanced logic
@@ -597,7 +587,41 @@ export class DefaultCacheService implements CacheService {
         const responseClone = response.clone();
         
         try {
-          const cachedResponse = await cacheWithCacheApiUtil(request, responseClone, config, ctx);
+          // Apply cache headers
+          const cacheStart = Date.now();
+          const cachedResponse = this.applyCacheHeaders(responseClone);
+          const cacheEnd = Date.now();
+          
+          this.logger.breadcrumb('Applied cache headers', cacheEnd - cacheStart, {
+            status: cachedResponse.status,
+            cacheControl: cachedResponse.headers.get('Cache-Control')
+          });
+          
+          // Only cache successful responses
+          if (cachedResponse.status >= 200 && cachedResponse.status < 300) {
+            // Clone response to avoid consuming the body
+            const clonedResponse = cachedResponse.clone();
+            
+            this.logger.breadcrumb('Storing successful response in Cache API', undefined, {
+              status: cachedResponse.status,
+              url: request.url
+            });
+            
+            // Use waitUntil to cache the response without blocking
+            ctx.waitUntil(
+              caches.default.put(request, clonedResponse).then(() => {
+                this.logger.breadcrumb('Successfully stored in Cache API');
+              }).catch(error => {
+                this.logger.breadcrumb('Failed to store in Cache API', undefined, {
+                  error: error instanceof Error ? error.message : String(error)
+                });
+              })
+            );
+          } else {
+            this.logger.breadcrumb('Not caching non-success response', undefined, {
+              status: cachedResponse.status
+            });
+          }
           
           // Check if response has cache tags and add them as header
           if (config.cache.cacheTags?.enabled) {
@@ -620,8 +644,8 @@ export class DefaultCacheService implements CacheService {
               const tags = this.generateCacheTags(request, {
                 response: new Response(''), // Dummy response
                 sourceType: 'remote',
-                contentType: responseClone.headers.get('Content-Type') || 'application/octet-stream',
-                size: parseInt(responseClone.headers.get('Content-Length') || '0', 10) || 0,
+                contentType: cachedResponse.headers.get('Content-Type') || 'application/octet-stream',
+                size: parseInt(cachedResponse.headers.get('Content-Length') || '0', 10) || 0,
                 path
               }, options);
               
@@ -650,6 +674,8 @@ export class DefaultCacheService implements CacheService {
                   return cachedResponse;
                 }
               }
+              
+              return cachedResponse;
             } catch (tagsError) {
               // If there's an error generating tags, log it but continue
               this.logger.warn('Error generating cache tags', {
@@ -657,6 +683,7 @@ export class DefaultCacheService implements CacheService {
                 url: request.url
               });
               // Don't throw here, as this is non-critical - just return the cached response
+              return cachedResponse;
             }
           }
           
@@ -919,19 +946,11 @@ export class DefaultCacheService implements CacheService {
         return true;
       }
       
-      // 8. Fallback to standard logic from utility function
+      this.logger.debug('No cache bypass conditions detected', {
+        url: request.url
+      });
       
-      // Check standard cache bypass conditions from utility
-      const shouldBypass = shouldBypassCacheUtil(request, config);
-      
-      if (shouldBypass) {
-        this.logger.debug('Standard cache bypass detected from utility', {
-          url: request.url,
-          reason: 'Request contains standard cache bypass conditions'
-        });
-      }
-      
-      return shouldBypass;
+      return false;
     } catch (error: unknown) {
       // If it's already a CacheServiceError, re-throw it
       if (isCacheServiceError(error)) {
@@ -1013,30 +1032,204 @@ export class DefaultCacheService implements CacheService {
         hasOptions: options && Object.keys(options).length > 0
       });
       
-      // Use the existing utility function for comprehensive tag generation with error handling
-      let utilTags: string[] = [];
+      // Generate cache tags directly rather than using utility function
+      const startTime = Date.now();
+      const tags: string[] = [];
+      const prefix = config.cache.cacheTags?.prefix || '';
+      
+      // Path-based tags generation
       try {
-        // This includes path-based tags, metadata handling, and normalization
-        utilTags = generateCacheTagsUtil(
-          imagePath,
-          options,
-          config,
-          storageResult.response.headers
-        );
-      } catch (utilError) {
-        this.logger.warn('Error in cache tag utility function', {
-          error: utilError instanceof Error ? utilError.message : String(utilError),
+        // Add base tag for the image path (normalized to avoid special chars)
+        const leadingSlashPattern = config.cache.cacheTags?.pathNormalization?.leadingSlashPattern || '^\/+';
+        const invalidCharsPattern = config.cache.cacheTags?.pathNormalization?.invalidCharsPattern || '[^a-zA-Z0-9-_/.]';
+        const replacementChar = config.cache.cacheTags?.pathNormalization?.replacementChar || '-';
+        
+        const normalizedPath = imagePath
+          .replace(new RegExp(leadingSlashPattern), '') // Remove leading slashes
+          .replace(new RegExp(invalidCharsPattern, 'g'), replacementChar) // Replace special chars
+          .split('/')
+          .filter(Boolean);
+        
+        // Add a tag for the full path
+        // First join the path segments, then replace dots with dashes for consistency
+        tags.push(`${prefix}path-${normalizedPath.join('-').replace(/\./g, '-')}`);
+        
+        // Add tags for each path segment
+        normalizedPath.forEach((segment, index) => {
+          // Only add segment tags if there are multiple segments
+          if (normalizedPath.length > 1) {
+            // Also replace dots with dashes for segments for consistency
+            tags.push(`${prefix}segment-${index}-${segment.replace(/\./g, '-')}`);
+          }
+        });
+      } catch (pathError) {
+        this.logger.warn('Error processing path for cache tags', {
+          error: pathError instanceof Error ? pathError.message : String(pathError),
           imagePath
         });
-        // Continue with an empty array rather than failing completely
-        utilTags = [];
+        // Continue without path tags rather than failing completely
       }
       
-      // Create a copy of the utility tags array to avoid modifying the original
-      const tags = [...utilTags];
+      // Add a tag for the derivative if configured
+      if (config.cache.cacheTags?.includeDerivative && options.derivative) {
+        tags.push(`${prefix}derivative-${options.derivative}`);
+      }
       
-      // Add service-specific tags
-      const prefix = config.cache.cacheTags?.prefix || '';
+      // Add a tag for image format if configured
+      if (config.cache.cacheTags?.includeFormat && options.format) {
+        tags.push(`${prefix}format-${options.format}`);
+      }
+      
+      // Add tags for dimensions if configured
+      if (config.cache.cacheTags?.includeImageDimensions) {
+        if (options.width) {
+          tags.push(`${prefix}width-${options.width}`);
+        }
+        
+        if (options.height) {
+          tags.push(`${prefix}height-${options.height}`);
+        }
+        
+        // Add combined dimensions tag if both width and height are specified
+        if (options.width && options.height) {
+          tags.push(`${prefix}dimensions-${options.width}x${options.height}`);
+        }
+      }
+      
+      // Add a tag for quality if configured
+      if (config.cache.cacheTags?.includeQuality && options.quality) {
+        tags.push(`${prefix}quality-${options.quality}`);
+      }
+      
+      // Add custom tags from configuration if available
+      if (config.cache.cacheTags?.customTags && Array.isArray(config.cache.cacheTags.customTags)) {
+        this.logger.breadcrumb('Adding custom tags from configuration', undefined, {
+          tagCount: config.cache.cacheTags.customTags.length
+        });
+        
+        const invalidCharsPattern = config.cache.cacheTags?.pathNormalization?.invalidCharsPattern || '[^a-zA-Z0-9-_/.]';
+        const replacementChar = config.cache.cacheTags?.pathNormalization?.replacementChar || '-';
+        
+        config.cache.cacheTags.customTags.forEach((tag: string) => {
+          // Normalize tag to ensure it's safe for cache tags
+          const safeTag = tag.replace(new RegExp(invalidCharsPattern, 'g'), replacementChar);
+          tags.push(`${prefix}${safeTag}`);
+        });
+      }
+      
+      // Add path-based tags if configured
+      if (config.cache.cacheTags?.pathBasedTags) {
+        this.logger.breadcrumb('Processing path-based tags', undefined, {
+          pathBasedTagsCount: Object.keys(config.cache.cacheTags.pathBasedTags).length
+        });
+        
+        const pathBasedTags = config.cache.cacheTags.pathBasedTags as Record<string, string[]>;
+        const invalidCharsPattern = config.cache.cacheTags?.pathNormalization?.invalidCharsPattern || '[^a-zA-Z0-9-_/.]';
+        const replacementChar = config.cache.cacheTags?.pathNormalization?.replacementChar || '-';
+        
+        Object.entries(pathBasedTags).forEach(([pattern, patternTags]) => {
+          if (imagePath.includes(pattern)) {
+            patternTags.forEach((tag: string) => {
+              // Normalize tag to ensure it's safe for cache tags
+              const safeTag = tag.replace(new RegExp(invalidCharsPattern, 'g'), replacementChar);
+              tags.push(`${prefix}${safeTag}`);
+            });
+          }
+        });
+      }
+      
+      // Parse metadata headers if enabled and headers are provided
+      if (storageResult.response?.headers && 
+          config.cache.cacheTags?.parseMetadataHeaders?.enabled) {
+        
+        const metadataConfig = config.cache.cacheTags.parseMetadataHeaders;
+        const headerPrefixes = metadataConfig.headerPrefixes || ['x-meta-'];
+        const excludeHeaders = metadataConfig.excludeHeaders || ['credentials', 'token', 'key'];
+        const invalidCharsPattern = config.cache.cacheTags?.pathNormalization?.invalidCharsPattern || '[^a-zA-Z0-9-_/.]';
+        const replacementChar = config.cache.cacheTags?.pathNormalization?.replacementChar || '-';
+        
+        // Process headers to extract metadata as tags
+        storageResult.response.headers.forEach((value, key) => {
+          // Check if this header contains metadata based on its prefix
+          const headerKey = key.toLowerCase();
+          const isMetadataHeader = headerPrefixes.some((prefix: string) => headerKey.startsWith(prefix));
+          
+          if (isMetadataHeader) {
+            // Extract the metadata name by removing the prefix
+            let metaName = headerKey;
+            for (const prefix of headerPrefixes) {
+              if (headerKey.startsWith(prefix)) {
+                metaName = headerKey.substring(prefix.length);
+                break;
+              }
+            }
+            
+            // Skip sensitive metadata
+            const isSensitive = excludeHeaders.some((excluded: string) => 
+              metaName.includes(excluded.toLowerCase())
+            );
+            
+            if (!isSensitive) {
+              // Normalize value to ensure it's safe for cache tags
+              const safeValue = value.replace(new RegExp(invalidCharsPattern, 'g'), replacementChar);
+              tags.push(`${prefix}meta-${metaName}-${safeValue}`);
+            }
+          }
+        });
+        
+        // Include content-type as a tag if configured
+        if (metadataConfig.includeContentType) {
+          const contentType = storageResult.response.headers.get('content-type');
+          
+          if (contentType) {
+            // Extract main type and subtype
+            const [mainType, fullSubType] = contentType.split('/');
+            const subType = fullSubType?.split(';')[0]; // Remove parameters
+            
+            if (mainType) {
+              tags.push(`${prefix}type-${mainType}`);
+            }
+            
+            if (subType) {
+              tags.push(`${prefix}subtype-${subType}`);
+            }
+          }
+        }
+        
+        // Include cache-control directives as tags if configured
+        if (metadataConfig.includeCacheControl) {
+          const cacheControl = storageResult.response.headers.get('cache-control');
+          
+          if (cacheControl) {
+            // Extract useful cache control directives as tags
+            if (cacheControl.includes('immutable')) tags.push(`${prefix}cc-immutable`);
+            if (cacheControl.includes('public')) tags.push(`${prefix}cc-public`);
+            if (cacheControl.includes('private')) tags.push(`${prefix}cc-private`);
+            if (cacheControl.includes('no-store')) tags.push(`${prefix}cc-no-store`);
+            if (cacheControl.includes('no-cache')) tags.push(`${prefix}cc-no-cache`);
+            if (cacheControl.includes('must-revalidate')) tags.push(`${prefix}cc-must-revalidate`);
+            
+            // Extract max-age if present
+            const maxAgeMatch = cacheControl.match(/max-age=(\d+)/);
+            if (maxAgeMatch && maxAgeMatch[1]) {
+              const maxAge = parseInt(maxAgeMatch[1], 10);
+              
+              // Group max-age into ranges to avoid too many unique tags
+              if (maxAge <= 60) {
+                tags.push(`${prefix}cc-max-age-1min`);
+              } else if (maxAge <= 3600) {
+                tags.push(`${prefix}cc-max-age-1hr`);
+              } else if (maxAge <= 86400) {
+                tags.push(`${prefix}cc-max-age-1day`);
+              } else if (maxAge <= 604800) {
+                tags.push(`${prefix}cc-max-age-1week`);
+              } else {
+                tags.push(`${prefix}cc-max-age-long`);
+              }
+            }
+          }
+        }
+      }
       
       // Add source type category tag for easier purging
       if (storageResult.sourceType) {
@@ -1158,9 +1351,12 @@ export class DefaultCacheService implements CacheService {
         }
       }
       
+      const endTime = Date.now();
+      
       // Log the resulting tags
       this.logger.debug('Generated cache tags', { 
         tagCount: tags.length,
+        generationTime: endTime - startTime,
         sampleTags: tags.slice(0, 5).join(', ') + (tags.length > 5 ? '...' : '')
       });
       
@@ -1240,6 +1436,9 @@ export class DefaultCacheService implements CacheService {
         return requestInit;
       }
       
+      // Start tracking time for performance
+      const startTime = Date.now();
+      
       this.logger.debug('Applying Cloudflare cache settings', {
         imagePath,
         hasOptions: options && Object.keys(options).length > 0,
@@ -1247,25 +1446,154 @@ export class DefaultCacheService implements CacheService {
         cacheEverything: config.cache.cacheEverything
       });
       
-      // Apply CF cache settings using the utility function with error handling
-      try {
-        return applyCloudflareSettings(
-          requestInit,
-          config,
-          imagePath,
-          options
-        );
-      } catch (cfError) {
-        throw new CacheServiceError(`Failed to apply Cloudflare cache settings: ${cfError instanceof Error ? cfError.message : String(cfError)}`, {
-          code: 'CF_CACHE_SETTINGS_ERROR',
-          status: 500,
-          details: {
-            originalError: cfError instanceof Error ? cfError.message : String(cfError),
-            imagePath,
-            cacheMethod: config.cache.method
+      // Generate cache tags if enabled and we have options
+      const cacheTagsEnabled = config.cache.cacheTags?.enabled === true;
+      this.logger.breadcrumb('Checking cache tag generation requirements', undefined, {
+        cacheTagsEnabled,
+        hasImagePath: !!imagePath,
+        hasOptions: !!options
+      });
+      
+      let cacheTags: string[] = [];
+      
+      if (cacheTagsEnabled && imagePath && options) {
+        try {
+          // Create a dummy Request to pass to the generateCacheTags method
+          const dummyRequest = new Request(`https://example.com${imagePath}`);
+          
+          // Create a minimal storage result
+          const dummyStorageResult: StorageResult = {
+            response: new Response(),
+            sourceType: 'remote',
+            contentType: null,
+            size: 0,
+            path: imagePath
+          };
+          
+          // Generate tags
+          cacheTags = this.generateCacheTags(dummyRequest, dummyStorageResult, options);
+          
+          if (cacheTags.length > 0) {
+            this.logger.debug('Generated cache tags for Cloudflare fetch', {
+              tagCount: cacheTags.length,
+              sampleTags: cacheTags.slice(0, 3).join(', ') + (cacheTags.length > 3 ? '...' : '')
+            });
           }
-        });
+        } catch (tagError) {
+          this.logger.warn('Error generating cache tags for Cloudflare fetch', {
+            error: tagError instanceof Error ? tagError.message : String(tagError),
+            fallback: 'Continuing without cache tags'
+          });
+          // Continue without tags rather than failing
+          cacheTags = [];
+        }
       }
+      
+      // Create a new request init with CF cache settings
+      const result = {
+        ...requestInit,
+        cf: {
+          ...requestInit.cf,
+          // Use cacheEverything from config if available, default to true
+          cacheEverything: config.cache.cacheEverything !== undefined 
+            ? config.cache.cacheEverything 
+            : true
+        }
+      };
+      
+      /**
+       * IMPORTANT NOTE ON CLOUDFLARE CACHE CONFIGURATION:
+       * 
+       * Cloudflare's cache has two mutually exclusive modes:
+       * 
+       * 1. SIMPLE MODE (cacheTtl): One TTL for all responses regardless of status code
+       *    - Used when config.cache.useTtlByStatus = false
+       *    - Only config.cache.ttl.ok is used for Cloudflare's edge cache
+       *    - Other TTL values (clientError, serverError) are only used for Cache-Control headers
+       * 
+       * 2. STATUS-BASED MODE (cacheTtlByStatus): Different TTLs for different status code ranges
+       *    - Used when config.cache.useTtlByStatus = true
+       *    - Uses config.cache.cacheTtlByStatus which maps status code ranges to TTL values
+       *    - When this is true, config.cache.ttl.ok is IGNORED for Cloudflare's edge cache
+       * 
+       * You MUST choose one approach or the other - they CANNOT be combined!
+       */
+      if (config.cache.useTtlByStatus && 
+          config.cache.cacheTtlByStatus && 
+          Object.keys(config.cache.cacheTtlByStatus).length > 0) {
+        // STATUS-BASED CACHING: Different TTLs for different status codes
+        this.logger.breadcrumb('Using cacheTtlByStatus for granular cache control', undefined, {
+          statusRanges: Object.keys(config.cache.cacheTtlByStatus).join(',')
+        });
+        
+        // Add detailed debug info for better visibility
+        this.logger.debug('Status-based cache TTLs', {
+          mode: 'cacheTtlByStatus',
+          mappings: Object.entries(config.cache.cacheTtlByStatus)
+            .map(([range, ttl]) => `${range}: ${ttl}s`)
+            .join(', ')
+        });
+        
+        result.cf = {
+          ...result.cf,
+          cacheTtlByStatus: config.cache.cacheTtlByStatus
+        };
+        
+        // Add debug header to make the cache mode clear
+        if (config.debug?.enabled) {
+          // Add debug properties to result.cf
+          const cf = result.cf as Record<string, any>;
+          cf.cacheMode = 'status-based';
+          cf.statusRanges = Object.keys(config.cache.cacheTtlByStatus).join(',');
+        }
+      } else {
+        // SIMPLE CACHING: One TTL for all responses
+        this.logger.breadcrumb('Using simple cacheTtl', undefined, {
+          ttl: config.cache.ttl.ok
+        });
+        
+        this.logger.debug('Simple cache TTL', {
+          mode: 'cacheTtl',
+          ttl: `${config.cache.ttl.ok}s`,
+          note: 'All status codes will use this TTL in Cloudflare cache'
+        });
+        
+        result.cf = {
+          ...result.cf,
+          cacheTtl: config.cache.ttl.ok
+        };
+        
+        // Add debug header to make the cache mode clear
+        if (config.debug?.enabled) {
+          // Add debug properties to result.cf
+          const cf = result.cf as Record<string, any>;
+          cf.cacheMode = 'simple';
+          cf.simpleTtl = config.cache.ttl.ok;
+        }
+      }
+      
+      // Add cache tags if available
+      if (cacheTags.length > 0) {
+        this.logger.debug('Adding cache tags to Cloudflare request', {
+          tagCount: cacheTags.length,
+          firstFewTags: cacheTags.slice(0, 5).join(', ') + (cacheTags.length > 5 ? '...' : '')
+        });
+        
+        result.cf = {
+          ...result.cf,
+          cacheTags
+        };
+      }
+      
+      const endTime = Date.now();
+      this.logger.breadcrumb('Applied Cloudflare cache settings', endTime - startTime, {
+        cacheEverything: result.cf.cacheEverything,
+        hasCacheTtl: !!result.cf.cacheTtl,
+        hasCacheTtlByStatus: !!result.cf.cacheTtlByStatus,
+        tagCount: cacheTags.length
+      });
+      
+      return result;
     } catch (error: unknown) {
       // If it's already a CacheServiceError, re-throw it
       if (isCacheServiceError(error)) {
