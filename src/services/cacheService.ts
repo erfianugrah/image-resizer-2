@@ -302,6 +302,15 @@ export class DefaultCacheService implements CacheService {
       // Apply the constructed Cache-Control header
       newResponse.headers.set('Cache-Control', cacheControl);
       
+      // Add Cloudflare-specific headers for duplicate processing prevention
+      if (config.cache.method === 'cf') {
+        // Add marker to prevent duplicate processing
+        newResponse.headers.set('x-img-resizer-processed', 'true');
+        
+        // Add worker identifier to help with debugging
+        newResponse.headers.set('cf-worker', 'image-resizer');
+      }
+      
       // Add Vary headers for proper cache differentiation
       this.addVaryHeaders(newResponse, options);
       

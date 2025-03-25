@@ -54,10 +54,30 @@ export class TransformImageCommand implements Command<Response> {
     const { logger, storageService, transformationService, cacheService, debugService, configurationService } = this.services;
     const config = configurationService.getConfig();
     
+    // Check for duplicated processing attempt
+    const via = this.request.headers.get('via') || '';
+    const cfWorker = this.request.headers.get('cf-worker') || '';
+    const alreadyProcessed = this.request.headers.get('x-img-resizer-processed') || '';
+    
+    // Generate a unique request ID for tracking and diagnostics
+    const requestId = Math.random().toString(36).substring(2, 10);
+    
+    // Check if this is a possible duplicate
+    const possibleDuplicate = via.includes('image-resizing') || 
+                            via.includes('image-resizing-proxy') || 
+                            cfWorker.includes('image-resizer') || 
+                            alreadyProcessed === 'true';
+    
+    // Log detailed request information for debugging
     logger.breadcrumb('Starting image transformation command', undefined, {
       url: this.url.toString(),
       imagePath: this.imagePath,
-      options: Object.keys(this.options).join(',')
+      options: Object.keys(this.options).join(','),
+      requestId: requestId,
+      via: via,
+      cfWorker: cfWorker,
+      alreadyProcessed: alreadyProcessed,
+      possibleDuplicate: possibleDuplicate
     });
 
     try {

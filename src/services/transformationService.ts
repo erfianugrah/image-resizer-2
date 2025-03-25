@@ -165,17 +165,29 @@ export class DefaultImageTransformationService implements ImageTransformationSer
       return storageResult.response;
     }
     
-    // Check if this is an image-resizing subrequest - if so, we shouldn't transform
+    // Enhanced subrequest detection - check multiple signals
     const via = request.headers.get('via') || '';
-    if (via.includes('image-resizing')) {
-      this.logger.debug('Detected image-resizing subrequest, skipping transformation', {
+    const cfWorker = request.headers.get('cf-worker') || '';
+    const alreadyProcessed = request.headers.get('x-img-resizer-processed') || '';
+    
+    // Check for any indication that this request has already been processed
+    // This includes the via header with image-resizing or image-resizing-proxy
+    // as well as our custom headers
+    if (via.includes('image-resizing') || 
+        via.includes('image-resizing-proxy') || 
+        cfWorker.includes('image-resizer') || 
+        alreadyProcessed === 'true') {
+      
+      this.logger.debug('Detected already processed request, skipping transformation', {
         path: storageResult.path,
         via,
-        sourceType: storageResult.sourceType
+        cfWorker,
+        alreadyProcessed,
+        sourceType: storageResult.sourceType,
+        viaHeader: !!via && via.includes('image-resizing-proxy')
       });
       
       // Add metadata about the request being a subrequest, useful for caching decisions
-      // Create a new object with the metadata to avoid modifying the original
       const resultWithMetadata = {
         ...storageResult,
         metadata: {

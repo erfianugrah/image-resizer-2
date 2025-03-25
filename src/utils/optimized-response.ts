@@ -94,6 +94,12 @@ export function addResponseHeaders(
     }
   }
   
+  // Add processing marker to prevent duplicate processing
+  newHeaders.set('x-img-resizer-processed', 'true');
+  
+  // Add worker identification to help with debugging
+  newHeaders.set('cf-worker', 'image-resizer');
+  
   // Create a new response with the combined headers
   return new Response(response.body, {
     status: response.status,
@@ -120,6 +126,12 @@ export function batchUpdateHeaders(
   for (const update of updates) {
     update(headers);
   }
+  
+  // Add processing marker to prevent duplicate processing
+  headers.set('x-img-resizer-processed', 'true');
+  
+  // Add worker identification to help with debugging
+  headers.set('cf-worker', 'image-resizer');
   
   // Create a single new Response with the updated headers
   return new Response(response.body, {
@@ -180,6 +192,12 @@ export function mergeResponseUpdates(
   if (options.cacheControl) {
     headers.set('Cache-Control', options.cacheControl);
   }
+  
+  // Add processing marker to prevent duplicate processing
+  headers.set('x-img-resizer-processed', 'true');
+  
+  // Add worker identification to help with debugging
+  headers.set('cf-worker', 'image-resizer');
   
   // Create a single new Response with all updates applied at once
   return new Response(response.body, {
