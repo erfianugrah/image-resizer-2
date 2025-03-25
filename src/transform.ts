@@ -78,6 +78,7 @@ export interface TransformOptions {
   'origin-auth'?: 'share-publicly';
   _conditions?: any[]; // For conditional transformations (internal use)
   _customEffects?: any[]; // For custom effects (internal use)
+  _needsImageInfo?: boolean; // Flag to explicitly request image dimensions (internal use)
   [key: string]: any;
 }
 
@@ -1168,6 +1169,149 @@ export async function buildTransformOptions(
   return result;
 }
 
+// Import the dimension cache
+import { dimensionCache, ImageDimensions, setLogger as setDimCacheLogger } from './utils/dimension-cache';
+
+// Export the setLogger function for the dimension cache
+export function setDimensionCacheLogger(configuredLogger: Logger): void {
+  setDimCacheLogger(configuredLogger);
+}
+
+/**
+ * Determine if a transformation needs image dimensions
+ * 
+ * @param options The transformation options
+ * @returns True if the transformation needs image dimensions
+ */
+function needsImageDimensions(options: TransformOptions): boolean {
+  // Check if the _needsImageInfo flag is explicitly set
+  if (options._needsImageInfo === true) {
+    return true;
+  }
+  
+  // Check for specific operations that benefit from dimension information
+  
+  // Crop operations need dimensions for better results
+  if (options.fit === 'crop' || options.fit === 'cover') {
+    return true;
+  }
+  
+  // Auto gravity needs dimensions for focal point detection
+  if (options.gravity === 'auto') {
+    return true;
+  }
+  
+  // Check for custom focal points (object gravity or coordinates)
+  if (options.gravity && typeof options.gravity === 'object') {
+    return true;
+  }
+  
+  // Check for aspect crop operations
+  if (options.fit === 'crop' && (options.width && options.height)) {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Fetch image dimensions using format:json
+ * 
+ * @param request The original request
+ * @param path The image path
+ * @returns The image dimensions or null if the fetch failed
+ */
+async function fetchImageDimensions(request: Request, path: string): Promise<ImageDimensions | null> {
+  // Check if dimensions are already in the cache
+  const cachedDimensions = dimensionCache.get(path);
+  if (cachedDimensions) {
+    logger.debug('Using cached image dimensions', {
+      path,
+      width: cachedDimensions.width,
+      height: cachedDimensions.height,
+      aspectRatio: cachedDimensions.aspectRatio.toFixed(3)
+    });
+    return cachedDimensions;
+  }
+  
+  logger.debug('Fetching image dimensions using format:json', {
+    path,
+    url: request.url
+  });
+  
+  try {
+    // Make a request with format:json to get image dimensions
+    const jsonFetchOptions: RequestInit & { cf?: any } = {
+      method: 'GET',
+      cf: {
+        image: {
+          format: 'json'
+        }
+      }
+    };
+    
+    const jsonResponse = await fetch(request.url, jsonFetchOptions as RequestInit);
+    
+    if (!jsonResponse.ok) {
+      logger.warn('Failed to fetch image dimensions with format:json', {
+        path,
+        status: jsonResponse.status,
+        statusText: jsonResponse.statusText
+      });
+      return null;
+    }
+    
+    const jsonData = await jsonResponse.json() as { 
+      metadata?: { 
+        width?: number; 
+        height?: number; 
+        format?: string;
+      } 
+    };
+    
+    if (!jsonData || !jsonData.metadata || !jsonData.metadata.width || !jsonData.metadata.height) {
+      logger.warn('Invalid or incomplete JSON data from format:json', {
+        path,
+        jsonData: JSON.stringify(jsonData)
+      });
+      return null;
+    }
+    
+    const width = jsonData.metadata.width;
+    const height = jsonData.metadata.height;
+    const aspectRatio = width / height;
+    const format = jsonData.metadata.format;
+    
+    logger.debug('Successfully fetched image dimensions', {
+      path,
+      width,
+      height,
+      aspectRatio: aspectRatio.toFixed(3),
+      format
+    });
+    
+    // Create the dimensions object
+    const dimensions: ImageDimensions = {
+      width,
+      height,
+      aspectRatio,
+      format,
+      lastFetched: Date.now()
+    };
+    
+    // Cache the dimensions
+    dimensionCache.set(path, dimensions);
+    
+    return dimensions;
+  } catch (error) {
+    logger.error('Error fetching image dimensions', {
+      error: error instanceof Error ? error.message : String(error),
+      path
+    });
+    return null;
+  }
+}
+
 /**
  * Transform an image using Cloudflare Image Resizing
  * 
@@ -1210,6 +1354,90 @@ export async function transformImage(
   
   // Clone the original response to avoid consuming the body
   const originalResponse = storageResult.response.clone();
+  
+  // Check if explicit format:json was requested
+  if (options.format === 'json') {
+    logger.debug('Handling explicit format:json request');
+    
+    try {
+      // Make a request with format:json
+      const jsonFetchOptions: RequestInit & { cf?: any } = {
+        method: 'GET',
+        cf: {
+          image: {
+            format: 'json'
+          }
+        }
+      };
+      
+      // Apply cache settings for the JSON request
+      const jsonOptionsWithCache = applyCloudflareCache(
+        jsonFetchOptions,
+        config,
+        storageResult.path || '',
+        { format: 'json' },
+        storageResult.response.headers
+      );
+      
+      const jsonResponse = await fetch(request.url, jsonOptionsWithCache as RequestInit);
+      
+      if (!jsonResponse.ok) {
+        logger.error('Error getting format:json response', {
+          status: jsonResponse.status,
+          statusText: jsonResponse.statusText
+        });
+        return new Response(JSON.stringify({ error: "Failed to get image information" }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      // Return the JSON response directly
+      return jsonResponse;
+    } catch (error) {
+      logger.error('Exception getting format:json response', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return new Response(JSON.stringify({ error: "Exception getting image information" }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  }
+  
+  // Check if we need dimensions for this transformation
+  const requiresDimensions = needsImageDimensions(options);
+  
+  // Pre-fetch dimensions if needed and not already available
+  if (requiresDimensions && !storageResult.width && !storageResult.height && storageResult.path) {
+    logger.breadcrumb('Pre-fetching image dimensions for advanced transformation', undefined, {
+      path: storageResult.path,
+      transformType: options.fit || 'default'
+    });
+    
+    const dimensionFetchStart = Date.now();
+    const dimensions = await fetchImageDimensions(request, storageResult.path);
+    const dimensionFetchEnd = Date.now();
+    
+    if (dimensions) {
+      // Update the storage result with dimension information
+      storageResult.width = dimensions.width;
+      storageResult.height = dimensions.height;
+      storageResult.aspectRatio = dimensions.aspectRatio;
+      storageResult.originalFormat = dimensions.format;
+      
+      logger.breadcrumb('Added dimension information to storage result', dimensionFetchEnd - dimensionFetchStart, {
+        width: dimensions.width,
+        height: dimensions.height,
+        aspectRatio: dimensions.aspectRatio.toFixed(3),
+        format: dimensions.format
+      });
+    } else {
+      logger.warn('Failed to fetch image dimensions, proceeding without them', {
+        path: storageResult.path
+      });
+    }
+  }
   
   logger.breadcrumb('Building transform options');
   const buildStart = Date.now();

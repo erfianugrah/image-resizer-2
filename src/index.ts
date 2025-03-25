@@ -7,7 +7,7 @@
 
 import { getConfig } from './config';
 import { fetchImage } from './storage';
-import { transformImage, TransformOptions, setLogger as setTransformLogger } from './transform';
+import { transformImage, TransformOptions, setLogger as setTransformLogger, setDimensionCacheLogger } from './transform';
 import { applyCacheHeaders, cacheWithCacheApi, shouldBypassCache } from './cache';
 import { addDebugHeaders, createDebugHtmlReport, isDebugEnabled, PerformanceMetrics, setLogger as setDebugLogger } from './debug';
 import { parseImagePath, parseQueryOptions, extractDerivative, applyPathTransforms } from './utils/path';
@@ -33,6 +33,7 @@ export default {
     const storageLogger = createLogger(config, 'Storage');
     const transformLogger = createLogger(config, 'Transform');
     const debugLogger = createLogger(config, 'Debug');
+    const dimensionCacheLogger = createLogger(config, 'DimensionCache');
     
     // Log initialization with configured logger
     mainLogger.info(`Worker initialized with logging level ${config.logging?.level}`);
@@ -42,6 +43,7 @@ export default {
     setStorageLogger(storageLogger);
     setTransformLogger(transformLogger);
     setDebugLogger(debugLogger);
+    setDimensionCacheLogger(dimensionCacheLogger);
     
     // Initialize detector with configuration if available
     if (config.detector) {

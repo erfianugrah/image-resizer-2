@@ -223,7 +223,7 @@ export function parseQueryOptions(
   const stringOrBooleanParams = ['flip'];
   
   // Parameters that are boolean only
-  const booleanParams = ['anim', 'strip', 'flop'];
+  const booleanParams = ['anim', 'strip', 'flop', '_needsImageInfo'];
   
   // Process 'auto' or numeric parameters
   autoOrNumericParams.forEach(param => {

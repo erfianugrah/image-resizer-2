@@ -37,6 +37,8 @@ export interface StorageResult {
   path?: string; // The path to the image being accessed
   width?: number; // The width of the image if available
   height?: number; // The height of the image if available
+  aspectRatio?: number; // The aspect ratio (width/height) of the image if available
+  originalFormat?: string; // The original format of the image if available
 }
 
 /**
