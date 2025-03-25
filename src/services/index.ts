@@ -13,3 +13,5 @@ export * from './loggingService';
 export * from './serviceContainer';
 export * from './optimizedClientDetectionService';
 export * from './clientDetectionFactory';
+export * from './dependencyInjectionContainer';
+export * from './containerFactory';

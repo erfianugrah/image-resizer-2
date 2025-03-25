@@ -57,13 +57,24 @@ export function createOptimizedPinoLogger(
   const pinoLogger = createPinoInstance(config, context);
   
   // Extract configuration values (safely)
-  const loggingConfig = config.logging || {};
-  const debugConfig = config.debug || {};
+  const loggingConfig = config.logging || {
+    level: 'INFO',
+    includeTimestamp: true,
+    enableStructuredLogs: false,
+    enableBreadcrumbs: true
+  };
+  const debugConfig = config.debug || {
+    enabled: false,
+    headers: [],
+    allowedEnvironments: [],
+    verbose: false,
+    includePerformance: true
+  };
   
   const configuredLevel = loggingConfig.level || 'INFO';
   const minLevel = LOG_LEVEL_MAP[configuredLevel] || LogLevel.INFO;
   const enableBreadcrumbs = loggingConfig.enableBreadcrumbs !== false;
-  const enablePerformanceTracking = debugConfig.performanceTracking !== false;
+  const enablePerformanceTracking = debugConfig.includePerformance !== false;
   
   /**
    * Checks if a specific log level is enabled

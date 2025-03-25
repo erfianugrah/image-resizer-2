@@ -13,8 +13,7 @@ import { setLogger as setAkamaiLogger } from "./utils/akamai-compatibility";
 // Transform logger is now handled through TransformationService
 // Debug logger is now handled through DebugService
 import { setConfig as setDetectorConfig } from "./utils/detector";
-import { createServiceContainer } from "./services";
-import { createLazyServiceContainer } from "./services/lazyServiceContainer";
+import { createContainer } from "./services/containerFactory";
 import { createRequestPerformanceMonitor, initializePerformanceBaseline } from "./utils/performance-integrations";
 import {
   addAkamaiCompatibilityHeader,
@@ -41,20 +40,13 @@ export default {
       start: Date.now(),
     };
 
-    // Choose service container implementation based on configuration
-    // Default to eager initialization until config is available
-    let services = createServiceContainer(env);
+    // Create service container using the factory
+    // This will automatically select the appropriate container type
+    const services = createContainer(env);
     const { logger, configurationService, loggingService } = services;
     
     // Get configuration via the configuration service
     const config = configurationService.getConfig();
-    
-    // Check if lazy initialization is enabled
-    if (config.performance?.lazyServiceInitialization) {
-      // Replace with lazy container if enabled
-      services = createLazyServiceContainer(env);
-      logger.info('Using lazy service initialization');
-    }
     
     // Initialize performance monitoring
     const performanceBaseline = initializePerformanceBaseline(config, logger);

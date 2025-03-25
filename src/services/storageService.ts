@@ -7,8 +7,12 @@
 
 import { ImageResizerConfig } from '../config';
 import { Logger } from '../utils/logging';
-import { authenticateRequest } from '../utils/auth';
-import { StorageResult, StorageService, ConfigurationService } from './interfaces';
+import { 
+  StorageResult, 
+  StorageService, 
+  ConfigurationService, 
+  AuthService 
+} from './interfaces';
 import { 
   StorageServiceError, 
   StorageNotFoundError, 
@@ -40,6 +44,7 @@ export class DefaultStorageService implements StorageService {
   // Private properties
   private logger: Logger;
   private configService: ConfigurationService;
+  private authService?: AuthService;
   
   // Circuit breaker states for different storage operations
   private r2CircuitBreaker: CircuitBreakerState;
@@ -49,9 +54,14 @@ export class DefaultStorageService implements StorageService {
   // Track recent failures for adaptive behavior
   private recentFailures: {timestamp: number, errorCode: string, source: string}[] = [];
 
-  constructor(logger: Logger, configService: ConfigurationService) {
+  constructor(
+    logger: Logger, 
+    configService: ConfigurationService,
+    authService?: AuthService
+  ) {
     this.logger = logger;
     this.configService = configService;
+    this.authService = authService;
     
     // Initialize circuit breaker states
     this.r2CircuitBreaker = createCircuitBreakerState();

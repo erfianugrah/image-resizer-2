@@ -5,6 +5,7 @@
 import { Env } from '../types';
 import { createLogger } from '../utils/logger-factory';
 import { 
+  AuthService,
   CacheService, 
   DebugService, 
   ImageTransformationService, 
@@ -22,6 +23,7 @@ import { DefaultClientDetectionService } from './clientDetectionService';
 import { DefaultConfigurationService } from './configurationService';
 import { DefaultLoggingService } from './loggingService';
 import { createClientDetectionService } from './clientDetectionFactory';
+import { createAuthService } from './authServiceFactory';
 
 /**
  * Create a service container with all required services
@@ -65,9 +67,13 @@ export function createServiceContainer(env: Env): ServiceContainer {
   const cacheLogger = loggingService.getLogger('CacheService');
   const debugLogger = loggingService.getLogger('DebugService');
   const clientDetectionLogger = loggingService.getLogger('ClientDetectionService');
+  const authLogger = loggingService.getLogger('AuthService');
+
+  // Create the auth service
+  const authService: AuthService = createAuthService(config, authLogger);
 
   // Create service instances
-  const storageService: StorageService = new DefaultStorageService(storageLogger, configurationService);
+  const storageService: StorageService = new DefaultStorageService(storageLogger, configurationService, authService);
   const cacheService: CacheService = new DefaultCacheService(cacheLogger, configurationService);
   const debugService: DebugService = new DefaultDebugService(debugLogger);
   
@@ -89,8 +95,8 @@ export function createServiceContainer(env: Env): ServiceContainer {
   transformationService.setClientDetectionService(clientDetectionService);
 
   mainLogger.info('Service container initialized with all services', {
-    serviceCount: 7,
-    services: 'configuration, logging, storage, transformation, cache, debug, clientDetection',
+    serviceCount: 8,
+    services: 'configuration, logging, storage, transformation, cache, debug, clientDetection, auth',
     environment: config.environment
   });
 
@@ -103,6 +109,7 @@ export function createServiceContainer(env: Env): ServiceContainer {
     clientDetectionService,
     configurationService,
     loggingService,
+    authService,
     logger: mainLogger
   };
 }

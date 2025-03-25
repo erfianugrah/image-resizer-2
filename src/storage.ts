@@ -7,8 +7,8 @@
 
 import { ImageResizerConfig } from './config';
 import { StorageError } from './utils/errors';
-import { authenticateRequest } from './utils/auth';
 import { createLogger, Logger, defaultLogger } from './utils/logging';
+// We'll use the AuthService instead of direct function calls
 
 // Use default logger until a configured one is provided
 let logger: Logger = defaultLogger;

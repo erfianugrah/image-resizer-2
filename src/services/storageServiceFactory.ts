@@ -5,7 +5,7 @@
  */
 
 import { ImageResizerConfig } from '../config';
-import { StorageService, ConfigurationService } from './interfaces';
+import { StorageService, ConfigurationService, AuthService } from './interfaces';
 import { DefaultStorageService } from './storageService';
 import { OptimizedStorageService } from './optimizedStorageService';
 import { Logger } from '../utils/logging';
@@ -22,7 +22,8 @@ import { OptimizedLogger } from '../utils/optimized-logging';
 export function createStorageService(
   config: ImageResizerConfig,
   logger: Logger | OptimizedLogger,
-  configService: ConfigurationService
+  configService: ConfigurationService,
+  authService?: AuthService
 ): StorageService {
   // Check if we should use the optimized implementation
   const useOptimized = config.performance?.parallelStorageOperations === true;
@@ -32,7 +33,7 @@ export function createStorageService(
   
   if (useOptimized) {
     // Create and configure optimized service
-    const service = new OptimizedStorageService(logger, configService);
+    const service = new OptimizedStorageService(logger, configService, authService);
     
     if (isOptimizedLogger && (logger as OptimizedLogger).isLevelEnabled('INFO')) {
       logger.info('Using optimized storage service with parallel operations');
@@ -43,7 +44,7 @@ export function createStorageService(
     return service;
   } else {
     // Create and configure default service
-    const service = new DefaultStorageService(logger, configService);
+    const service = new DefaultStorageService(logger, configService, authService);
     
     if (isOptimizedLogger && (logger as OptimizedLogger).isLevelEnabled('INFO')) {
       logger.info('Using default storage service with sequential operations');

@@ -4,11 +4,20 @@
 
 // Environment variables
 export interface Env {
+  // System configuration
   ENVIRONMENT?: string;
   DEBUG?: string;
+  
+  // Feature flags
+  USE_DI_SYSTEM?: string;
+  ENABLE_LAZY_LOADING?: string;
+  
+  // Storage configuration
   REMOTE_URL?: string;
   FALLBACK_URL?: string;
   STORAGE_PRIORITY?: string;
+  
+  // Akamai compatibility
   ENABLE_AKAMAI_COMPATIBILITY?: string;
   ENABLE_AKAMAI_ADVANCED_FEATURES?: string;
   LOGGING_LEVEL?: string;

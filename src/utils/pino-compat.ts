@@ -24,7 +24,12 @@ export function createCompatiblePinoLogger(
   const pinoLogger = createPinoInstance(config, context);
   
   // Extract and normalize logging configuration
-  const loggingConfig = config.logging || {};
+  const loggingConfig = config.logging || {
+    level: 'INFO',
+    includeTimestamp: true,
+    enableStructuredLogs: false,
+    enableBreadcrumbs: true
+  };
   
   // Determine if breadcrumbs are enabled (default to true)
   const enableBreadcrumbs = loggingConfig.enableBreadcrumbs !== false;

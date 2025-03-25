@@ -9,7 +9,7 @@ import { Env } from '../types';
 import { ImageResizerConfig } from '../config';
 import { Logger } from '../utils/logging';
 import { OptimizedLogger } from '../utils/optimized-logging';
-import { StorageResult, StorageService, ConfigurationService } from './interfaces';
+import { StorageResult, StorageService, ConfigurationService, AuthService } from './interfaces';
 import { 
   StorageServiceError, 
   StorageNotFoundError, 
@@ -36,16 +36,23 @@ export class OptimizedStorageService implements StorageService {
   private performanceBaseline: PerformanceBaseline;
   protected logger: Logger | OptimizedLogger;
   private configService: ConfigurationService;
+  private authService?: AuthService;
   
   /**
    * Create a new OptimizedStorageService
    * 
    * @param logger Logger instance
    * @param configService Configuration service
+   * @param authService Optional auth service for authentication
    */
-  constructor(logger: Logger | OptimizedLogger, configService: ConfigurationService) {
+  constructor(
+    logger: Logger | OptimizedLogger, 
+    configService: ConfigurationService,
+    authService?: AuthService
+  ) {
     this.logger = logger;
     this.configService = configService;
+    this.authService = authService;
     this.isOptimizedLogger = !!(logger as OptimizedLogger).isLevelEnabled;
     this.performanceBaseline = PerformanceBaseline.getInstance(logger);
   }

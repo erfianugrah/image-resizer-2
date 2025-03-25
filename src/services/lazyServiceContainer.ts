@@ -8,6 +8,7 @@
 import { Env } from '../types';
 import { createLogger } from '../utils/logging';
 import { 
+  AuthService,
   CacheService, 
   DebugService, 
   ImageTransformationService, 
@@ -15,7 +16,8 @@ import {
   StorageService,
   ClientDetectionService,
   ConfigurationService,
-  LoggingService
+  LoggingService,
+  PathService
 } from './interfaces';
 import { DefaultCacheService } from './cacheService';
 import { DefaultDebugService } from './debugService';
@@ -24,9 +26,11 @@ import { DefaultStorageService } from './storageService';
 import { DefaultClientDetectionService } from './clientDetectionService';
 import { DefaultConfigurationService } from './configurationService';
 import { DefaultLoggingService } from './loggingService';
-import { createClientDetectionService } from './clientDetectionFactory';
+import { createDetectorService } from './detectorServiceFactory';
 import { createStorageService } from './storageServiceFactory';
 import { createCacheService } from './cacheServiceFactory';
+import { createAuthService } from './authServiceFactory';
+import { createPathService } from './pathService';
 
 /**
  * Create a lazy-loading service container with proxy-based initialization
@@ -44,6 +48,56 @@ export function createLazyServiceContainer(env: Env): ServiceContainer {
   
   // Create service factories for lazy initialization
   const serviceFactories: Record<keyof ServiceContainer, () => any> = {
+    // Detector service initialization - defined first to help TypeScript inference
+    detectorService: () => {
+      // Ensure prerequisite services 
+      if (!realServices.configurationService) {
+        realServices.configurationService = serviceFactories.configurationService();
+      }
+      if (!realServices.loggingService) {
+        realServices.loggingService = serviceFactories.loggingService();
+      }
+      
+      const detectorLogger = realServices.loggingService!.getLogger('DetectorService');
+      const config = realServices.configurationService!.getConfig();
+      
+      // Create detector service
+      return createDetectorService(config, detectorLogger);
+    },
+    
+    // Path service initialization 
+    pathService: () => {
+      // Ensure prerequisite services
+      if (!realServices.configurationService) {
+        realServices.configurationService = serviceFactories.configurationService();
+      }
+      if (!realServices.loggingService) {
+        realServices.loggingService = serviceFactories.loggingService();
+      }
+      
+      const pathLogger = realServices.loggingService!.getLogger('PathService');
+      const config = realServices.configurationService!.getConfig();
+      
+      // Create path service
+      return createPathService(pathLogger, config);
+    },
+    
+    // Auth service initialization
+    authService: () => {
+      // Ensure prerequisite services
+      if (!realServices.configurationService) {
+        realServices.configurationService = serviceFactories.configurationService();
+      }
+      if (!realServices.loggingService) {
+        realServices.loggingService = serviceFactories.loggingService();
+      }
+      
+      const authLogger = realServices.loggingService!.getLogger('AuthService');
+      const config = realServices.configurationService!.getConfig();
+      
+      return createAuthService(config, authLogger);
+    },
+    
     // Configuration service must be initialized first
     configurationService: () => {
       if (!isConfigInitialized) {
@@ -110,8 +164,13 @@ export function createLazyServiceContainer(env: Env): ServiceContainer {
       const storageLogger = realServices.loggingService!.getLogger('StorageService');
       const config = realServices.configurationService!.getConfig();
       
+      // Get auth service if available, otherwise initialize it
+      if (!realServices.authService) {
+        realServices.authService = serviceFactories.authService();
+      }
+      
       // Use factory to create appropriate storage service based on configuration
-      return createStorageService(config, storageLogger, realServices.configurationService!);
+      return createStorageService(config, storageLogger, realServices.configurationService!, realServices.authService);
     },
     
     // Transformation service initialization with dependencies
@@ -186,8 +245,26 @@ export function createLazyServiceContainer(env: Env): ServiceContainer {
       const clientDetectionLogger = realServices.loggingService!.getLogger('ClientDetectionService');
       const config = realServices.configurationService!.getConfig();
       
-      // Use the factory to create appropriate client detection service
-      const clientDetection = createClientDetectionService(config, clientDetectionLogger);
+      // Try to use the legacy factory first if available
+      try {
+        // Try to create using the old factory
+        const clientDetectionFactory = require('./clientDetectionFactory');
+        if (clientDetectionFactory && clientDetectionFactory.createClientDetectionService) {
+          const legacyService = clientDetectionFactory.createClientDetectionService(config, clientDetectionLogger);
+          
+          // Connect to transformation service if already initialized
+          if (realServices.transformationService) {
+            realServices.transformationService.setClientDetectionService(legacyService);
+          }
+          
+          return legacyService;
+        }
+      } catch (e) {
+        clientDetectionLogger.debug('Legacy client detection factory not available, using detector service');
+      }
+      
+      // Use the new factory to create appropriate detector service
+      const clientDetection = createDetectorService(config, clientDetectionLogger);
       
       // Connect to transformation service if already initialized
       if (realServices.transformationService) {
@@ -195,7 +272,8 @@ export function createLazyServiceContainer(env: Env): ServiceContainer {
       }
       
       return clientDetection;
-    }
+    },
+    
   };
   
   // Create proxy to intercept service access and perform lazy initialization

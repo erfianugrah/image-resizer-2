@@ -516,6 +516,64 @@ export interface LoggingService {
 }
 
 /**
+ * Path service for handling path operations
+ */
+export interface PathService {
+  /**
+   * Normalize a path
+   * 
+   * @param path The path to normalize
+   * @returns Normalized path
+   */
+  normalizePath(path: string): string;
+  
+  /**
+   * Parse image path and options from URL path
+   * 
+   * @param pathname URL pathname
+   * @returns Object with image path and options
+   */
+  parseImagePath(pathname: string): {
+    imagePath: string;
+    options: Record<string, string>;
+  };
+  
+  /**
+   * Extract derivative name from path
+   * 
+   * @param pathname URL pathname
+   * @param derivatives List of available derivatives
+   * @returns Object with derivative name and modified path, or null if no derivative found
+   */
+  extractDerivative(
+    pathname: string,
+    derivatives: string[]
+  ): { derivative: string; modifiedPath: string } | null;
+  
+  /**
+   * Parse query parameters for image options
+   * 
+   * @param searchParams URL search parameters
+   * @returns Object with parsed and normalized transformation options
+   */
+  parseQueryOptions(
+    searchParams: URLSearchParams
+  ): Record<string, unknown>;
+  
+  /**
+   * Apply transformations to an image path
+   * 
+   * @param imagePath The image path to transform
+   * @param config Application configuration
+   * @returns Transformed path
+   */
+  applyTransformations(
+    imagePath: string,
+    config?: any
+  ): string;
+}
+
+/**
  * Service container to provide access to all services
  */
 export interface ServiceContainer {
@@ -526,5 +584,152 @@ export interface ServiceContainer {
   clientDetectionService: ClientDetectionService;
   configurationService: ConfigurationService;
   loggingService: LoggingService;
+  authService: AuthService;
   logger: Logger;
+  
+  // Added new services
+  detectorService?: ClientDetectionService;
+  pathService?: PathService;
+}
+
+/**
+ * Dependency Injection container with registration and resolution capabilities
+ */
+/**
+ * Authentication service for handling protected resources
+ */
+export interface AuthService {
+  /**
+   * Set the logger for the auth service
+   * 
+   * @param configuredLogger The logger to use
+   */
+  setLogger(configuredLogger: Logger): void;
+
+  /**
+   * Find origin configuration for a given path
+   * 
+   * @param path URL path to check
+   * @param config Image resizer configuration
+   * @param env Environment variables
+   * @returns Origin context with environment or null if no match
+   */
+  findOriginForPath(
+    path: string, 
+    config: ImageResizerConfig, 
+    env: Record<string, unknown>
+  ): OriginContext | null;
+
+  /**
+   * Get quick result for when auth is disabled
+   * 
+   * @param url URL to authenticate
+   * @returns Authentication result with success status
+   */
+  getNoAuthResult(url: string): AuthResult;
+
+  /**
+   * Authenticate a request to a protected origin
+   * 
+   * @param url URL to authenticate
+   * @param config Authentication configuration
+   * @param env Environment variables
+   * @returns Authentication result with success status, URL and headers
+   */
+  authenticateRequest(
+    url: string, 
+    config: ImageResizerConfig,
+    env: Record<string, unknown>
+  ): Promise<AuthResult>;
+}
+
+/**
+ * Authentication result data
+ */
+export interface AuthResult {
+  success: boolean;
+  url: string;
+  headers?: Record<string, string>;
+  error?: string;
+}
+
+/**
+ * Origin context for authentication
+ */
+export interface OriginContext {
+  originId: string;
+  origin: OriginConfig;
+  env: Record<string, unknown>;
+}
+
+/**
+ * Origin configuration for authentication
+ */
+export interface OriginConfig {
+  domain: string;
+  type: 'bearer' | 'header' | 'query' | 'aws-s3' | 'basic';
+  tokenSecret?: string;
+  tokenHeaderName?: string;
+  tokenParam?: string;
+  tokenExpiration?: number;
+  region?: string;
+  service?: string;
+  accessKeyEnvVar?: string;
+  secretKeyEnvVar?: string;
+  accessKeyVar?: string;
+  secretKeyVar?: string;
+  headers?: Record<string, string>;
+  signedUrlExpiration?: number;
+  hashAlgorithm?: string;
+}
+
+export interface DIContainer {
+  /**
+   * Register a service implementation for a given interface
+   * 
+   * @param serviceType The service type identifier
+   * @param implementation The concrete implementation
+   * @param singleton Whether this service should be treated as a singleton (default: true)
+   */
+  register<T>(serviceType: string, implementation: T, singleton?: boolean): void;
+  
+  /**
+   * Register a factory function for creating a service implementation
+   * 
+   * @param serviceType The service type identifier
+   * @param factory Factory function that will create the implementation
+   * @param singleton Whether this service should be treated as a singleton (default: true)
+   */
+  registerFactory<T>(serviceType: string, factory: () => T, singleton?: boolean): void;
+  
+  /**
+   * Get an instance of a registered service by its type
+   * 
+   * @param serviceType The service type identifier
+   * @returns An instance of the requested service
+   * @throws Error if the service is not registered
+   */
+  resolve<T>(serviceType: string): T;
+  
+  /**
+   * Check if a service type is registered
+   * 
+   * @param serviceType The service type identifier
+   * @returns True if the service is registered
+   */
+  isRegistered(serviceType: string): boolean;
+  
+  /**
+   * Create the standard service container interface from the DI container
+   * 
+   * @returns A ServiceContainer instance with all standard services
+   */
+  createServiceContainer(): ServiceContainer;
+  
+  /**
+   * Create a child container that inherits registrations from the parent
+   * 
+   * @returns A new DIContainer instance
+   */
+  createChildContainer(): DIContainer;
 }
