@@ -7,8 +7,14 @@
 
 import { ImageResizerConfig } from '../config';
 import { Logger } from '../utils/logging';
+import { OptimizedLogger } from '../utils/optimized-logging';
 import { isFormatSupported } from '../utils/browser-formats';
 import { addClientHintsHeaders } from '../utils/client-hints';
+import { 
+  mergeResponseUpdates,
+  batchUpdateHeaders,
+  addResponseHeaders
+} from '../utils/optimized-response';
 import { 
   ClientInfo, 
   ImageTransformationService, 
@@ -25,11 +31,13 @@ import {
 } from '../errors/transformationErrors';
 
 export class DefaultImageTransformationService implements ImageTransformationService {
-  private logger: Logger;
+  private logger: Logger | OptimizedLogger;
   private clientDetectionService?: ClientDetectionService;
   private configService?: ConfigurationService;
   private cacheService?: CacheService;
-
+  private isOptimizedLogger: boolean;
+  private performanceTracking: boolean;
+  
   constructor(
     logger: Logger, 
     clientDetectionService?: ClientDetectionService,
@@ -40,6 +48,12 @@ export class DefaultImageTransformationService implements ImageTransformationSer
     this.clientDetectionService = clientDetectionService;
     this.configService = configService;
     this.cacheService = cacheService;
+    
+    // Check if we have an optimized logger
+    this.isOptimizedLogger = !!(logger as OptimizedLogger).isLevelEnabled;
+    
+    // Determine if performance tracking is enabled
+    this.performanceTracking = configService?.getConfig().debug?.performanceTracking !== false;
   }
   
   /**
@@ -50,7 +64,42 @@ export class DefaultImageTransformationService implements ImageTransformationSer
    */
   setClientDetectionService(service: ClientDetectionService): void {
     this.clientDetectionService = service;
-    this.logger.debug('Client detection service set');
+    
+    // Only log if debug level is enabled
+    if (this.isOptimizedLogger) {
+      if ((this.logger as OptimizedLogger).isLevelEnabled('DEBUG')) {
+        this.logger.debug('Client detection service set');
+      }
+    } else {
+      this.logger.debug('Client detection service set');
+    }
+  }
+  
+  /**
+   * Performance-optimized breadcrumb logging
+   * Uses the optimized logger if available, or falls back to standard breadcrumb
+   * 
+   * @param step The breadcrumb step name
+   * @param startTime Optional start time for duration calculation
+   * @param data Optional additional data
+   * @returns Current timestamp for chaining
+   */
+  private trackedBreadcrumb(step: string, startTime?: number, data?: any): number {
+    const now = Date.now();
+    
+    if (this.isOptimizedLogger && this.performanceTracking) {
+      // Use optimized logger's tracked breadcrumb
+      return (this.logger as OptimizedLogger).trackedBreadcrumb(step, startTime, data);
+    } else if (startTime !== undefined) {
+      // Standard logger with duration calculation
+      const duration = now - startTime;
+      this.logger.breadcrumb(step, duration, data);
+    } else {
+      // Standard logger without duration
+      this.logger.breadcrumb(step, undefined, data);
+    }
+    
+    return now;
   }
 
   /**
@@ -61,7 +110,7 @@ export class DefaultImageTransformationService implements ImageTransformationSer
    */
   setConfigurationService(service: ConfigurationService): void {
     this.configService = service;
-    this.logger.debug('Configuration service set');
+    this.debugLog('Configuration service set');
   }
   
   /**
@@ -72,7 +121,24 @@ export class DefaultImageTransformationService implements ImageTransformationSer
    */
   setCacheService(service: CacheService): void {
     this.cacheService = service;
-    this.logger.debug('Cache service set');
+    this.debugLog('Cache service set');
+  }
+  
+  /**
+   * Performance-optimized debug logging
+   * Only logs if debug level is enabled
+   * 
+   * @param message The message to log
+   * @param data Optional additional data
+   */
+  private debugLog(message: string, data?: any): void {
+    if (this.isOptimizedLogger) {
+      if ((this.logger as OptimizedLogger).isLevelEnabled('DEBUG')) {
+        this.logger.debug(message, data);
+      }
+    } else {
+      this.logger.debug(message, data);
+    }
   }
 
   /**
@@ -207,14 +273,13 @@ export class DefaultImageTransformationService implements ImageTransformationSer
     const originalResponse = storageResult.response.clone();
     
     // Build transformation options
-    this.logger.breadcrumb('Building transform options');
-    const buildStart = Date.now();
+    const buildStart = this.trackedBreadcrumb('Building transform options');
     
     // Build transformation options using validation and processing
     const transformOptions = await this.buildTransformOptions(request, storageResult, effectiveOptions, config);
     
-    const buildEnd = Date.now();
-    this.logger.breadcrumb('Built transform options', buildEnd - buildStart, transformOptions);
+    // Use optimized tracking for the completion breadcrumb
+    this.trackedBreadcrumb('Built transform options', buildStart, transformOptions);
     
     // Check if a derivative was requested but not found
     if (options.derivative && !config.derivatives[options.derivative]) {
@@ -235,17 +300,16 @@ export class DefaultImageTransformationService implements ImageTransformationSer
       };
       
       // Log transform options for debugging
-      this.logger.debug('Transform options', transformOptions);
+      this.debugLog('Transform options', transformOptions);
       
-      this.logger.breadcrumb('Applying cache settings');
-      const cacheStart = Date.now();
+      const cacheStart = this.trackedBreadcrumb('Applying cache settings');
       
       // Apply cache settings including cache tags using CacheService
       let fetchOptionsWithCache: RequestInit;
       
       if (this.cacheService) {
         // Use the CacheService if available
-        this.logger.debug('Using CacheService for applying Cloudflare cache settings');
+        this.debugLog('Using CacheService for applying Cloudflare cache settings');
         fetchOptionsWithCache = this.cacheService.applyCloudflareCache(
           fetchOptions,
           storageResult.path || '',
@@ -264,8 +328,7 @@ export class DefaultImageTransformationService implements ImageTransformationSer
         };
       }
       
-      const cacheEnd = Date.now();
-      this.logger.breadcrumb('Applied cache settings', cacheEnd - cacheStart);
+      this.trackedBreadcrumb('Applied cache settings', cacheStart);
       
       // Add a timeout to prevent long-running transformations (worker timeout is 30s)
       const timeoutPromise = new Promise<Response>((_, reject) => {
@@ -381,52 +444,50 @@ export class DefaultImageTransformationService implements ImageTransformationSer
         return originalResponse;
       }
       
-      // Create a new response with appropriate headers
-      this.logger.breadcrumb('Creating final response');
-      let response = new Response(transformed.body, {
-        headers: transformed.headers,
+      // Create the final response with all headers in a single operation
+      this.trackedBreadcrumb('Creating final response');
+      
+      // Prepare all the header updates in a batch
+      const headerUpdates = (headers: Headers) => {
+        // Add metadata headers for cache optimization
+        if (transformOptions.width) {
+          headers.set('X-Image-Width', String(transformOptions.width));
+        }
+        if (transformOptions.height) {
+          headers.set('X-Image-Height', String(transformOptions.height));
+        }
+        if (transformOptions.format && transformOptions.format !== 'auto') {
+          headers.set('X-Image-Format', transformOptions.format);
+        }
+        if (transformOptions.quality) {
+          headers.set('X-Image-Quality', String(transformOptions.quality));
+        }
+        if (transformOptions.derivative) {
+          headers.set('X-Image-Derivative', transformOptions.derivative);
+        }
+        
+        // Add cache control headers if enabled
+        if (config.cache.cacheability) {
+          headers.set('Cache-Control', `public, max-age=${config.cache.ttl.ok}`);
+          this.debugLog('Added cache control headers', {
+            cacheControl: `public, max-age=${config.cache.ttl.ok}`
+          });
+        }
+      };
+      
+      // Create a single response with all headers combined
+      let response = mergeResponseUpdates(transformed, {
+        headers: transformed.headers, // Keep original headers
         status: transformed.status,
-        statusText: transformed.statusText,
+        statusText: transformed.statusText
       });
       
-      // Add metadata headers for cache optimization
-      const headers = new Headers(response.headers);
+      // Apply metadata headers in a batch
+      response = batchUpdateHeaders(response, [headerUpdates]);
       
-      // Store image dimensions in headers for cache tagging if available
-      if (transformOptions.width) {
-        headers.set('X-Image-Width', String(transformOptions.width));
-      }
-      if (transformOptions.height) {
-        headers.set('X-Image-Height', String(transformOptions.height));
-      }
-      if (transformOptions.format && transformOptions.format !== 'auto') {
-        headers.set('X-Image-Format', transformOptions.format);
-      }
-      if (transformOptions.quality) {
-        headers.set('X-Image-Quality', String(transformOptions.quality));
-      }
-      if (transformOptions.derivative) {
-        headers.set('X-Image-Derivative', transformOptions.derivative);
-      }
-      
-      // Create a new response with the added headers
-      response = new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers
-      });
-      
-      // Add cache control headers based on configuration
-      if (config.cache.cacheability) {
-        response.headers.set('Cache-Control', `public, max-age=${config.cache.ttl.ok}`);
-        this.logger.breadcrumb('Added cache control headers', undefined, {
-          cacheControl: `public, max-age=${config.cache.ttl.ok}`
-        });
-      }
-      
-      // Add client hints headers to response
+      // Add client hints headers - this already returns a new response
       response = addClientHintsHeaders(response, request);
-      this.logger.breadcrumb('Added client hints headers to response', undefined, {
+      this.trackedBreadcrumb('Added client hints headers to response', undefined, {
         userAgent: request.headers.get('User-Agent')?.substring(0, 50) || 'unknown'
       });
       
@@ -440,7 +501,7 @@ export class DefaultImageTransformationService implements ImageTransformationSer
         stack: stack
       });
       
-      this.logger.breadcrumb('Transformation error occurred', undefined, {
+      this.trackedBreadcrumb('Transformation error occurred', undefined, {
         error: errorMsg,
         fallback: 'original image'
       });
@@ -554,7 +615,7 @@ export class DefaultImageTransformationService implements ImageTransformationSer
     options: TransformOptions,
     config: ImageResizerConfig
   ): Promise<TransformOptions> {
-    this.logger.breadcrumb('buildTransformOptions started', undefined, {
+    this.trackedBreadcrumb('buildTransformOptions started', undefined, {
       imageSize: storageResult.size,
       contentType: storageResult.contentType,
       optionsProvided: Object.keys(options).join(',') || 'none'
@@ -885,7 +946,7 @@ export class DefaultImageTransformationService implements ImageTransformationSer
     }
     
     // Let Cloudflare Image Resizing handle validation and provide warning headers
-    this.logger.breadcrumb('buildTransformOptions completed', undefined, {
+    this.trackedBreadcrumb('buildTransformOptions completed', undefined, {
       finalOptionsCount: Object.keys(result).length,
       hasWidth: !!result.width,
       hasHeight: !!result.height,
@@ -976,8 +1037,20 @@ export class DefaultImageTransformationService implements ImageTransformationSer
       
       // User agent based detection as fallback
       const userAgent = request.headers.get('User-Agent') || '';
-      if (isFormatSupported('webp', userAgent)) {
-        return 'webp';
+      // Extract browser and version from user agent string - simple detection
+      const match = userAgent.match(/(Chrome|Firefox|Safari|Edge|Opera)\/(\d+\.\d+)/i);
+      if (match && match.length >= 3) {
+        const browser = match[1].toLowerCase();
+        const version = match[2];
+        if (isFormatSupported('webp', browser, version)) {
+          return 'webp';
+        }
+      } else {
+        // Can't parse UA string accurately, use some heuristics instead
+        if (userAgent.includes('Chrome/') || userAgent.includes('Firefox/')) {
+          // Modern Chrome and Firefox support WebP
+          return 'webp';
+        }
       }
       
       // Default to JPEG as the safest option

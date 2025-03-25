@@ -231,7 +231,7 @@
    * Smart Placement for optimal performance
    */
 	"placement": {
-		"mode": "smart"
+		"mode": "off"
 	},
 	/**
    * R2 Binding for image storage
@@ -671,7 +671,7 @@
 				"DETECTOR_CASCADE_QUALITY_DPR_FACTOR": "5",
 				/* Core Settings */
 				"DETECTOR_HASH_ALGORITHM": "fnv1a", // More efficient in production
-				"DETECTOR_LOG_LEVEL": "debug", // Minimal logging in production
+				"DETECTOR_LOG_LEVEL": "info", // Minimal logging in production
 				"CACHE_TAGS_ENABLED": "true",
 				"CACHE_TAGS_PREFIX": "img-prod-",
 				"CACHE_TAGS_CUSTOM": "prod,site1",

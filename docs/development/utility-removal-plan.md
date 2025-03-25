@@ -42,44 +42,54 @@ As part of our ongoing refactoring to a service-oriented architecture, we need t
 
 ### Phase 2: Update Remaining Utility Usage in Application Code
 
-1. **Update debug.ts to use CacheService**
-   - Replace direct import of `generateCacheTags` from cache.ts with CacheService
-   - This will remove a dependency on cache.ts
+1. **Update debug.ts to use CacheService** ✅
+   - ✅ Replaced direct import of `generateCacheTags` from cache.ts with CacheService
+   - ✅ Created a CacheService instance in debug.ts
+   - ✅ Updated setLogger method to also update the CacheService's logger
+   - ✅ This has removed a dependency on cache.ts
 
-2. **Update index.ts to use DebugService**
-   - Replace direct import of `setDebugLogger` from debug.ts with DebugService
-   - This will remove a dependency on debug.ts
+2. **Update index.ts to use DebugService** ✅
+   - ✅ Removed direct import of `setDebugLogger` from debug.ts
+   - ✅ Updated to use services.debugService.setLogger() instead
+   - ✅ This has removed a dependency on debug.ts
 
 3. **Update transform.ts if needed** ✅
    - ✅ Updated transform.ts to use DefaultCacheService instead of direct import from cache.ts
    - ✅ This has removed a dependency on cache.ts
 
-### Phase 3: Update Test Files
+### Phase 3: Update Test Files ⚠️ IN PROGRESS
 
-1. **Identify tests using utility functions**
-   - Find all test files importing from transform.ts, cache.ts, or debug.ts
-   - Prioritize based on complexity and importance
+1. **Identify tests using utility functions** ✅
+   - ✅ Located test files importing from transform.ts, cache.ts, or debug.ts
+   - ✅ Identified priority areas for updates (cache-tags.spec.ts, debugService.spec.ts, cache-strategy.spec.ts, integration-derivatives.spec.ts)
 
-2. **Update tests to use service implementations**
-   - Replace direct utility function calls with service method calls
-   - Create appropriate test fixtures and mocks for services
+2. **Update tests to use service implementations** ✅ COMPLETED
+   - ✅ Updated cache-tags.spec.ts to import TransformOptions from services/interfaces.ts instead of transform.ts
+   - ✅ Updated debugService.spec.ts to import all interfaces from services/interfaces.ts
+   - ✅ Updated cache-strategy.spec.ts to import TransformOptions from services/interfaces.ts
+   - ✅ Updated integration-derivatives.spec.ts to use DefaultImageTransformationService
+   - ✅ Updated clientDetectionService.spec.ts to import TransformOptions from services/interfaces.ts
+   - ✅ Updated detector-integration.spec.ts to use DefaultImageTransformationService instead of transform.ts
+   - ✅ Updated responsive.spec.ts to use DefaultImageTransformationService instead of transform.ts
+   - ✅ Updated client-hints.spec.ts to use DefaultImageTransformationService instead of transform.ts
+   - ✅ Updated cacheService.spec.ts to use mock functions directly instead of importing from cache.ts
 
-### Phase 4: Final Removal
+### Phase 4: Final Removal ✅ COMPLETED
 
-1. **Remove transform.ts**
-   - Verify no imports remain
-   - Remove the file
-   - Update documentation
+1. **Remove transform.ts** ✅
+   - ✅ Verified no imports remain
+   - ✅ Removed the file
+   - ✅ Updated documentation
 
-2. **Remove cache.ts**
-   - Verify no imports remain
-   - Remove the file
-   - Update documentation
+2. **Remove cache.ts** ✅
+   - ✅ Verified no imports remain
+   - ✅ Removed the file
+   - ✅ Updated documentation
 
-3. **Remove debug.ts**
-   - Verify no imports remain
-   - Remove the file
-   - Update documentation
+3. **Remove debug.ts** ✅
+   - ✅ Verified no imports remain
+   - ✅ Removed the file
+   - ✅ Updated documentation
 
 ## Implementation Notes
 

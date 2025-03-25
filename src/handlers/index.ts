@@ -7,3 +7,4 @@
 export * from './debugHandler';
 export * from './akamaiCompatibilityHandler';
 export * from './imageHandler';
+export * from './performanceHandler';

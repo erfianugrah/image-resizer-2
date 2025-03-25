@@ -24,22 +24,23 @@ This service enhances your Cloudflare Workers setup with advanced image handling
 ## Features
 
 - **Image Transformation**: Leverages Cloudflare's Image Resizing service via the `cf.image` object
-- **Multiple Storage Options**: Supports R2, remote URLs, and fallbacks with a priority system
+- **Multiple Storage Options**: Supports R2, remote URLs, and fallbacks with a priority system and parallel fetching
 - **Responsive Images**: Automatically adjusts sizes based on client hints and device detection
-- **Caching**: Implements both Cloudflare and Cache API caching strategies with flexible cache tag support
+- **Caching**: Implements tiered caching strategies with intelligent TTL calculations and cache tag support
 - **Debug Headers**: Provides detailed debugging information in response headers
 - **Derivatives**: Template-based transformations for common use cases
 - **Path Templates**: Maps URL path segments to derivative templates
 - **Path Transformations**: Normalizes directory structures for flexible storage
 - **Authenticated Origins**: Access images from origins that require authentication (bearer tokens, custom headers, signed URLs, or AWS/GCS signatures)
-- **Comprehensive Logging**: Advanced logging system with configurable levels and structured output
+- **Comprehensive Logging**: Advanced logging system with configurable levels and conditional logging
 - **Breadcrumb Tracing**: End-to-end request tracing with performance metrics for diagnostics
 - **Interceptor Pattern**: Special handling for large images to prevent timeouts
 - **Akamai Compatibility**: Support for Akamai Image Manager URL parameters for seamless migration, including advanced features like blur, watermarking, mirror/flip, and conditional transformations
-- **Service-Oriented Architecture**: Modular design with clear interfaces and dependency management
-- **Client Detection**: Advanced browser and device capability detection with performance optimization
+- **Service-Oriented Architecture**: Modular design with lazy service initialization and clear interfaces
+- **Client Detection**: Advanced browser and device capability detection with request-scoped caching
 - **Interactive Debug Reports**: Enhanced HTML debug reports with visualizations and performance metrics
 - **Centralized Configuration**: Unified configuration service with environment-specific settings and feature flags
+- **Performance Optimization**: Comprehensive optimizations for reduced cold start time and improved response times
 
 ## Live Demo Examples
 
@@ -150,15 +151,16 @@ Demo URL: [https://images.erfi.dev/Granna_1.JPG?im.if-dimension=width>800,im.res
 This project implements a service-oriented architecture (SOA) for better modularity and maintainability:
 
 - **Service Interfaces**: Clear contracts for all services with TypeScript interfaces
-- **Service Container**: Central registry of all service instances
+- **Service Container**: Central registry of all service instances with lazy loading
 - **Command Pattern**: Encapsulated business logic in command objects
 - **Configuration Service**: Centralized configuration management
-- **Client Detection Service**: Browser and device capability detection
-- **Cache Service**: Advanced caching strategies with cache tags
+- **Client Detection Service**: Browser and device capability detection with request-scoped caching
+- **Cache Service**: Advanced caching strategies with tiered caching and intelligent TTL calculations
 - **Debug Service**: Enhanced debugging tools and visualizations
 - **Transformation Service**: Image transformation handling
-- **Storage Service**: Multi-source storage management
+- **Storage Service**: Multi-source storage management with parallel fetching
 - **Interceptor Pattern**: Special handling for large images that automatically detects Cloudflare's image-resizing subrequests
+- **Performance Optimization**: Comprehensive performance improvements across all components
 
 ## Project Structure
 
@@ -481,11 +483,12 @@ For complete authentication documentation, see [Authentication](docs/storage/aut
 - [Architecture](docs/core/architecture.md) - System architecture and design
 - [Setup Guide](docs/core/setup.md) - Installation and configuration
 - [Transformation Guide](docs/core/transformation.md) - Image transformation options
+- [Performance Optimization](docs/PERFORMANCE_OPTIMIZATION.md) - Performance improvement strategies
 
 ### Feature Documentation
 - [Client Detection](docs/client-detection/index.md) - Browser and device detection framework
-- [Caching System](docs/caching/index.md) - Cache management and tagging
-- [Storage Options](docs/storage/index.md) - Image storage configuration
+- [Caching System](docs/caching/index.md) - Cache management and tiered caching
+- [Storage Options](docs/storage/index.md) - Image storage configuration and parallel fetching
 - [Authentication](docs/storage/authentication.md) - Secure access to origins
 
 ### Integrations
@@ -498,6 +501,7 @@ For complete authentication documentation, see [Authentication](docs/storage/aut
 - [Diagnosing Timeouts](docs/debugging/diagnosing-timeouts.md) - Solving timeout issues
 - [Breadcrumb Tracing](docs/debugging/breadcrumbs.md) - Request flow tracking
 - [Debug Headers](docs/debugging/debug-headers.md) - Using debug headers and reports
+- [Performance Validation](docs/PERFORMANCE_VALIDATION_GUIDE.md) - Performance testing and validation
 
 ## License
 

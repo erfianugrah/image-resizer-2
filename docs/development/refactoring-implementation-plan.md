@@ -43,19 +43,23 @@ We have successfully:
 - ✅ Added comprehensive error handling for all methods
 - ✅ Removed dependencies on utilities from `cache.ts`
 
-### 3. ⚠️ Clean up transform.ts (IN PROGRESS)
+### 3. ⚠️ Clean up utility files (IN PROGRESS)
 
 #### Analysis
-- Many files import `buildTransformOptions` and `transformImage` from `transform.ts`
-- `DefaultImageTransformationService` has implemented this functionality
+- Many files import functions from `transform.ts` and `debug.ts`
+- `DefaultImageTransformationService` and `DefaultDebugService` have implemented this functionality
 - Need to update imports across the codebase
 
 #### Implementation Progress
 - ✅ Updated `DefaultImageTransformationService` to use `CacheService` instead of direct utility functions
 - ✅ Injected `CacheService` into `TransformationService` in the service container
 - ✅ Verified that core application code now uses services instead of utility functions
-- ⚠️ Remaining Task: Update test files that still import from transform.ts
-- ⚠️ Remaining Task: Eventually remove `transform.ts` when all functionality has been migrated
+- ✅ Moved `PerformanceMetrics` interface from debug.ts to services/interfaces.ts
+- ✅ Updated all import statements to use the interface from its new location
+- ✅ Updated index.ts to use `DebugService.setLogger` instead of `setDebugLogger` from debug.ts
+- ⚠️ Remaining Task: Update test files that still import from utility files
+- ⚠️ Remaining Task: Update debug.ts to use CacheService instead of importing directly from cache.ts
+- ⚠️ Remaining Task: Eventually remove utility files when all dependencies have been migrated
 - ✅ Updated documentation to reflect the new architecture and progress
 
 ### 4. Update Test Files
@@ -81,13 +85,17 @@ We have successfully:
 - ✅ Implemented all functionality directly in service without using utility functions from cache.ts
 - ✅ Added comprehensive error handling and resilience patterns
 
-### Phase 3: TransformService Cleanup (1-2 days) - MOSTLY COMPLETE
+### Phase 3: Utility File Cleanup (1-2 days) - MOSTLY COMPLETE
 - ✅ Updated `DefaultImageTransformationService` to use `CacheService` instead of direct utility functions  
 - ✅ Injected `CacheService` into `TransformationService` in the service container
 - ✅ Verified that core application code now uses services properly
+- ✅ Moved `PerformanceMetrics` interface from debug.ts to services/interfaces.ts
+- ✅ Updated all import statements to use the interface from its new location
+- ✅ Updated index.ts to use `DebugService.setLogger` instead of direct import from debug.ts
+- ✅ Updated debug.ts to use CacheService instead of importing directly from cache.ts
 - ✅ Updated documentation to reflect current status
-- ⚠️ Remaining Task: Update test files that still import from transform.ts
-- ⚠️ Remaining Task: Eventually remove transform.ts when all test dependencies have been migrated
+- ⚠️ Remaining Task: Update test files that still import from utility files
+- ⚠️ Remaining Task: Eventually remove utility files when all dependencies have been migrated
 
 ### Phase 4: Test Updates and Documentation (2-3 days)
 - Update test files to use services

@@ -39,6 +39,20 @@ interface CacheTagsConfig {
 }
 
 /**
+ * Cache tier configuration for tiered caching strategy
+ */
+interface CacheTierConfig {
+  name: string;
+  ttlMultiplier: number;
+  priority: number;
+  contentTypes?: string[];
+  pathPatterns?: string[];
+  minSize?: number;
+  maxSize?: number;
+  frequentlyAccessed?: boolean;
+}
+
+/**
  * Configuration for the Client Detector framework
  */
 export interface DetectorConfig {
@@ -190,6 +204,7 @@ export interface ImageResizerConfig {
       clientViewport?: string;
       deviceType?: string;
     };
+    performanceTracking?: boolean; // Enable performance tracking
   };
   
   // Logging settings
@@ -199,6 +214,20 @@ export interface ImageResizerConfig {
     enableStructuredLogs: boolean;
     enableBreadcrumbs?: boolean; // Enable breadcrumbs for e2e tracing
     enableCacheMetrics?: boolean; // Enable cache hit/miss metrics
+  };
+  
+  // Performance optimization settings
+  performance?: {
+    optimizedLogging?: boolean; // Enable optimized logging
+    lazyServiceInitialization?: boolean; // Enable lazy service initialization
+    parallelStorageOperations?: boolean; // Enable parallel storage operations
+    responseOptimization?: boolean; // Enable response optimization
+    optimizedClientDetection?: boolean; // Enable optimized client detection with request caching
+    optimizedCaching?: boolean; // Enable optimized caching with tiered strategies
+    baselineEnabled?: boolean; // Enable performance baseline tracking
+    maxBaselineSamples?: number; // Maximum samples to store per operation
+    reportingEnabled?: boolean; // Enable performance reporting
+    timeoutMs?: number; // Timeout for parallel operations
   };
   
   // Cache settings
@@ -282,6 +311,11 @@ export interface ImageResizerConfig {
     
     // Enhanced cache metrics
     enableCacheMetrics?: boolean;  // Enable cache metrics collection
+    
+    // Cache tier strategy for optimized caching
+    tiers?: CacheTierConfig[];
+    bypassThreshold?: number; // Score threshold for cache bypass decisions (0-100)
+    maxAccessPatterns?: number; // Maximum number of access patterns to track
     
     // Retry settings for retryable cache operations
     retry?: {
@@ -420,6 +454,19 @@ export const defaultConfig: ImageResizerConfig = {
   features: {
     enableAkamaiCompatibility: false,
     enableAkamaiAdvancedFeatures: false
+  },
+  
+  // Default performance settings
+  performance: {
+    optimizedLogging: true,
+    lazyServiceInitialization: false,
+    parallelStorageOperations: false,
+    responseOptimization: true,
+    optimizedClientDetection: true,
+    baselineEnabled: true,
+    maxBaselineSamples: 100,
+    reportingEnabled: true,
+    timeoutMs: 5000
   },
   
   // Default detector configuration

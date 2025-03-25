@@ -21,6 +21,7 @@ import { DefaultStorageService } from './storageService';
 import { DefaultClientDetectionService } from './clientDetectionService';
 import { DefaultConfigurationService } from './configurationService';
 import { DefaultLoggingService } from './loggingService';
+import { createClientDetectionService } from './clientDetectionFactory';
 
 /**
  * Create a service container with all required services
@@ -40,11 +41,15 @@ export function createServiceContainer(env: Env): ServiceContainer {
     storage: {},
     features: {},
     version: '1.0.0',
-    logging: { level: 'INFO' }
+    logging: { level: 'INFO' },
+    performance: { 
+      optimizedLogging: true,
+      optimizedClientDetection: true
+    }
   } as any;
   
-  // Create a temporary logger for bootstrapping
-  const configLogger = createLogger(bootstrapConfig, 'ConfigurationService');
+  // Create a temporary logger for bootstrapping, using optimized logging
+  const configLogger = createLogger(bootstrapConfig, 'ConfigurationService', true);
   
   // Initialize the configuration service
   const configurationService: ConfigurationService = new DefaultConfigurationService(configLogger, env);
@@ -65,7 +70,12 @@ export function createServiceContainer(env: Env): ServiceContainer {
   const storageService: StorageService = new DefaultStorageService(storageLogger, configurationService);
   const cacheService: CacheService = new DefaultCacheService(cacheLogger, configurationService);
   const debugService: DebugService = new DefaultDebugService(debugLogger);
-  const clientDetectionService: ClientDetectionService = new DefaultClientDetectionService(clientDetectionLogger);
+  
+  // Create client detection service using factory (creates optimized version based on config)
+  const clientDetectionService: ClientDetectionService = createClientDetectionService(
+    config, 
+    clientDetectionLogger
+  );
   
   // Create transformation service with proper dependencies
   const transformationService: ImageTransformationService = new DefaultImageTransformationService(
@@ -74,9 +84,6 @@ export function createServiceContainer(env: Env): ServiceContainer {
     configurationService,
     cacheService
   );
-  
-  // Configure the client detection service with the current config
-  clientDetectionService.configure(config);
   
   // Connect the client detection service to the transformation service
   transformationService.setClientDetectionService(clientDetectionService);

@@ -6,7 +6,8 @@
  */
 
 import { ImageResizerConfig } from '../config';
-import { Logger, LogLevel, LogData } from '../utils/logging';
+import { Logger, LogLevel, LogData, createLogger } from '../utils/logging';
+import { OptimizedLogger } from '../utils/optimized-logging';
 import { LoggingService } from './interfaces';
 
 // Mapping from string log levels to enum values
@@ -22,8 +23,9 @@ const LOG_LEVEL_MAP: Record<string, LogLevel> = {
  */
 export class DefaultLoggingService implements LoggingService {
   private config: ImageResizerConfig;
-  private loggers: Map<string, Logger> = new Map();
+  private loggers: Map<string, Logger | OptimizedLogger> = new Map();
   private defaultLogLevel: string = 'INFO';
+  private useOptimizedLoggers: boolean = false;
   
   /**
    * Create a new DefaultLoggingService
@@ -33,6 +35,8 @@ export class DefaultLoggingService implements LoggingService {
   constructor(config: ImageResizerConfig) {
     this.config = config;
     this.defaultLogLevel = config.logging?.level || 'INFO';
+    // Enable optimized logging by default if performance optimization is enabled
+    this.useOptimizedLoggers = config.performance?.optimizedLogging !== false;
   }
   
   /**
@@ -43,6 +47,7 @@ export class DefaultLoggingService implements LoggingService {
   configure(config: ImageResizerConfig): void {
     this.config = config;
     this.defaultLogLevel = config.logging?.level || 'INFO';
+    this.useOptimizedLoggers = config.performance?.optimizedLogging !== false;
     
     // Clear existing loggers so they will be recreated with new settings
     this.loggers.clear();
@@ -86,160 +91,15 @@ export class DefaultLoggingService implements LoggingService {
    * @param context The context for the logger
    * @returns A configured logger instance
    */
-  getLogger(context: string): Logger {
+  getLogger(context: string): Logger | OptimizedLogger {
     // Check if we already have a logger for this context
     if (this.loggers.has(context)) {
       return this.loggers.get(context)!;
     }
     
-    // Create a new logger for this context
-    const logger = this.createLoggerInstance(context);
+    // Create a new logger for this context using the factory function
+    const logger = createLogger(this.config, context, this.useOptimizedLoggers);
     this.loggers.set(context, logger);
     return logger;
-  }
-  
-  /**
-   * Create a new logger instance
-   * 
-   * @param context The context for the logger
-   * @returns A new Logger instance
-   */
-  private createLoggerInstance(context: string): Logger {
-    // Get configured log level, defaulting to INFO
-    const configuredLevel = this.config.logging?.level || 'INFO';
-    const minLevel = LOG_LEVEL_MAP[configuredLevel] || LogLevel.INFO;
-    
-    // Include timestamp in logs if configured
-    const includeTimestamp = this.config.logging?.includeTimestamp !== false;
-    
-    // Enable structured logs if configured
-    const useStructuredLogs = this.config.logging?.enableStructuredLogs === true;
-    
-    // Enable breadcrumbs if configured
-    const enableBreadcrumbs = this.config.logging?.enableBreadcrumbs !== false;
-    
-    // Return a logger object with methods for each log level
-    return {
-      debug(message: string, data?: LogData): void {
-        if (minLevel <= LogLevel.DEBUG) {
-          DefaultLoggingService.logMessage(LogLevel.DEBUG, message, data, context, includeTimestamp, useStructuredLogs);
-        }
-      },
-      
-      info(message: string, data?: LogData): void {
-        if (minLevel <= LogLevel.INFO) {
-          DefaultLoggingService.logMessage(LogLevel.INFO, message, data, context, includeTimestamp, useStructuredLogs);
-        }
-      },
-      
-      warn(message: string, data?: LogData): void {
-        if (minLevel <= LogLevel.WARN) {
-          DefaultLoggingService.logMessage(LogLevel.WARN, message, data, context, includeTimestamp, useStructuredLogs);
-        }
-      },
-      
-      error(message: string, data?: LogData): void {
-        if (minLevel <= LogLevel.ERROR) {
-          DefaultLoggingService.logMessage(LogLevel.ERROR, message, data, context, includeTimestamp, useStructuredLogs);
-        }
-      },
-      
-      breadcrumb(step: string, duration?: number, data?: LogData): void {
-        // Only log breadcrumbs if enabled in config
-        if (enableBreadcrumbs && minLevel <= LogLevel.INFO) {
-          const breadcrumbData = {
-            ...data,
-            ...(duration !== undefined ? { durationMs: duration } : {})
-          };
-          
-          DefaultLoggingService.logMessage(
-            LogLevel.INFO, 
-            `BREADCRUMB: ${step}`, 
-            breadcrumbData, 
-            context, 
-            includeTimestamp, 
-            useStructuredLogs,
-            true // mark as breadcrumb
-          );
-        }
-      }
-    };
-  }
-  
-  /**
-   * Static helper method to format and log messages
-   */
-  private static logMessage(
-    level: LogLevel,
-    message: string,
-    data?: LogData,
-    context?: string,
-    includeTimestamp = true,
-    useStructuredLogs = false,
-    isBreadcrumb = false
-  ): void {
-    // Get level name for display
-    const levelName = LogLevel[level];
-    
-    if (useStructuredLogs) {
-      // Create structured log object with known properties
-      const logObj: Record<string, string | number | boolean | null | LogData | undefined> = {
-        level: levelName,
-        message
-      };
-      
-      // Add timestamp if configured
-      if (includeTimestamp) {
-        logObj.timestamp = new Date().toISOString();
-      }
-      
-      // Add context if provided
-      if (context) {
-        logObj.context = context;
-      }
-      
-      // Mark as breadcrumb if it is one
-      if (isBreadcrumb) {
-        logObj.type = 'breadcrumb';
-      }
-      
-      // Add additional data if provided
-      if (data) {
-        // Avoid overwriting existing properties
-        logObj.data = data;
-      }
-      
-      // Log as JSON
-      console.log(JSON.stringify(logObj));
-    } else {
-      // Create formatted log message
-      let logMsg = `[${levelName}]`;
-      
-      // Add timestamp if configured
-      if (includeTimestamp) {
-        logMsg = `${new Date().toISOString()} ${logMsg}`;
-      }
-      
-      // Add context if provided
-      if (context) {
-        logMsg = `${logMsg} [${context}]`;
-      }
-      
-      // Add breadcrumb marker for easier visual identification
-      if (isBreadcrumb) {
-        logMsg = `${logMsg} 🔶`;
-      }
-      
-      // Add message
-      logMsg = `${logMsg} ${message}`;
-      
-      // Log the message
-      console.log(logMsg);
-      
-      // Log additional data on a separate line if provided
-      if (data) {
-        console.log('Additional data:', data);
-      }
-    }
   }
 }

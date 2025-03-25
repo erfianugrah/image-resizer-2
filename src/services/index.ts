@@ -11,3 +11,5 @@ export * from './transformationService';
 export * from './clientDetectionService';
 export * from './loggingService';
 export * from './serviceContainer';
+export * from './optimizedClientDetectionService';
+export * from './clientDetectionFactory';

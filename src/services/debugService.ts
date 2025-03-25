@@ -8,6 +8,11 @@
 import { ImageResizerConfig } from '../config';
 import { PerformanceMetrics } from './interfaces';
 import { Logger } from '../utils/logging';
+import { OptimizedLogger } from '../utils/optimized-logging';
+import { 
+  batchUpdateHeaders,
+  mergeResponseUpdates
+} from '../utils/optimized-response';
 import { DebugService, StorageResult, ClientInfo, TransformOptions } from './interfaces';
 
 // Enhanced interface for debug visualization data
@@ -66,10 +71,41 @@ interface DebugVisualizationData {
 }
 
 export class DefaultDebugService implements DebugService {
-  private logger: Logger;
+  private logger: Logger | OptimizedLogger;
+  private isOptimizedLogger: boolean;
 
   constructor(logger: Logger) {
     this.logger = logger;
+    // Check if we have an optimized logger
+    this.isOptimizedLogger = !!(logger as OptimizedLogger).isLevelEnabled;
+  }
+  
+  /**
+   * Set the logger for the debug service
+   * 
+   * @param logger The logger to use
+   */
+  setLogger(logger: Logger): void {
+    this.logger = logger;
+    this.isOptimizedLogger = !!(logger as OptimizedLogger).isLevelEnabled;
+    this.debugLog('Logger set for DebugService');
+  }
+  
+  /**
+   * Performance-optimized debug logging
+   * Only logs if debug level is enabled
+   * 
+   * @param message The message to log
+   * @param data Optional additional data
+   */
+  private debugLog(message: string, data?: any): void {
+    if (this.isOptimizedLogger) {
+      if ((this.logger as OptimizedLogger).isLevelEnabled('DEBUG')) {
+        this.logger.debug(message, data);
+      }
+    } else {
+      this.logger.debug(message, data);
+    }
   }
 
   /**
@@ -96,7 +132,7 @@ export class DefaultDebugService implements DebugService {
       return response;
     }
 
-    this.logger.debug('Adding enhanced debug headers', { 
+    this.debugLog('Adding enhanced debug headers', { 
       url: url.toString(),
       debugEnabled: true,
       headerCategories: config.debug.headers || [],
@@ -104,54 +140,49 @@ export class DefaultDebugService implements DebugService {
       metricsAvailable: !!metrics
     });
 
-    // Create a new response with the same body but new headers
-    const newResponse = new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: new Headers(response.headers)
-    });
-    
-    // Get configurable header names or use defaults
-    const headerNames = config.debug.headerNames || {};
-    
-    // Add basic debug headers
-    newResponse.headers.set(headerNames.debugEnabled || 'X-Debug-Enabled', 'true');
-    newResponse.headers.set(headerNames.version || 'X-Image-Resizer-Version', config.version);
-    newResponse.headers.set(headerNames.environment || 'X-Environment', config.environment);
-    
-    // Add processing mode and source headers
-    newResponse.headers.set(headerNames.processingMode || 'X-Processing-Mode', 'cf-transform');
+    // Prepare to update headers in a batch operation
+    const headerUpdates = (headers: Headers) => {
+      // Get configurable header names or use defaults
+      const headerNames = config.debug.headerNames || {};
+      
+      // Add basic debug headers
+      headers.set(headerNames.debugEnabled || 'X-Debug-Enabled', 'true');
+      headers.set(headerNames.version || 'X-Image-Resizer-Version', config.version);
+      headers.set(headerNames.environment || 'X-Environment', config.environment);
+      
+      // Add processing mode and source headers
+      headers.set(headerNames.processingMode || 'X-Processing-Mode', 'cf-transform');
     
     // Add responsive sizing info
     if (options.width) {
-      newResponse.headers.set('X-Actual-Width', options.width.toString());
+      headers.set('X-Actual-Width', options.width.toString());
       
       // Was this width determined responsively?
       const isResponsive = request.headers.has('Viewport-Width') || request.headers.has('DPR');
-      newResponse.headers.set('X-Responsive-Sizing', isResponsive ? 'true' : 'false');
+      headers.set('X-Responsive-Sizing', isResponsive ? 'true' : 'false');
     }
     
     // Forward Warning headers if any (Cloudflare Image Resizing sends validation warnings here)
     const warningHeader = response.headers.get('Warning');
     if (warningHeader) {
-      newResponse.headers.set('Warning', warningHeader);
+      headers.set('Warning', warningHeader);
     }
     
     // Add storage debug headers
-    newResponse.headers.set(headerNames.storageType || 'X-Storage-Type', storageResult.sourceType);
+    headers.set(headerNames.storageType || 'X-Storage-Type', storageResult.sourceType);
     if (storageResult.contentType) {
-      newResponse.headers.set(headerNames.originalContentType || 'X-Original-Content-Type', storageResult.contentType);
+      headers.set(headerNames.originalContentType || 'X-Original-Content-Type', storageResult.contentType);
     }
     if (storageResult.size) {
-      newResponse.headers.set(headerNames.originalSize || 'X-Original-Size', storageResult.size.toString());
+      headers.set(headerNames.originalSize || 'X-Original-Size', storageResult.size.toString());
     }
     if (storageResult.originalUrl) {
-      newResponse.headers.set(headerNames.originalUrl || 'X-Original-URL', storageResult.originalUrl);
+      headers.set(headerNames.originalUrl || 'X-Original-URL', storageResult.originalUrl);
     }
     
     // Add storage priority information
-    newResponse.headers.set('X-Storage-Priority', config.storage.priority.join(','));
-    newResponse.headers.set('X-R2-Enabled',
+    headers.set('X-Storage-Priority', config.storage.priority.join(','));
+    headers.set('X-R2-Enabled',
       (config.storage.r2.enabled && config.storage.priority.includes('r2')).toString());
     
     // Add cache tag information if enabled
@@ -160,7 +191,7 @@ export class DefaultDebugService implements DebugService {
         // Import the CacheService for this instead of directly using the utility
         const cacheTags = this.generateCacheTags(storageResult.path || '', options, config);
         if (cacheTags.length > 0) {
-          newResponse.headers.set('X-Cache-Tags', cacheTags.join(', '));
+          headers.set('X-Cache-Tags', cacheTags.join(', '));
         }
       } catch (error) {
         this.logger.error('Error generating debug cache tags', { 
@@ -183,12 +214,12 @@ export class DefaultDebugService implements DebugService {
       
       // Add individual headers for each transform option
       Object.keys(cleanOptions).forEach(key => {
-        newResponse.headers.set(`X-Transform-${key}`, cleanOptions[key]);
+        headers.set(`X-Transform-${key}`, cleanOptions[key]);
       });
       
       // Add JSON string of all options for convenience
       try {
-        newResponse.headers.set('X-Transform-Options', JSON.stringify(cleanOptions));
+        headers.set('X-Transform-Options', JSON.stringify(cleanOptions));
       } catch (e) {
         // Ignore JSON errors
       }
@@ -202,25 +233,25 @@ export class DefaultDebugService implements DebugService {
       // Calculate time spent in each phase
       const totalTime = metrics.end - metrics.start;
       
-      newResponse.headers.set('X-Performance-Total-Ms', totalTime.toString());
+      headers.set('X-Performance-Total-Ms', totalTime.toString());
       
       if (metrics.storageStart && metrics.storageEnd) {
         const storageTime = metrics.storageEnd - metrics.storageStart;
-        newResponse.headers.set('X-Performance-Storage-Ms', storageTime.toString());
+        headers.set('X-Performance-Storage-Ms', storageTime.toString());
       }
       
       if (metrics.transformStart && metrics.transformEnd) {
         const transformTime = metrics.transformEnd - metrics.transformStart;
-        newResponse.headers.set('X-Performance-Transform-Ms', transformTime.toString());
+        headers.set('X-Performance-Transform-Ms', transformTime.toString());
       }
       
       if (metrics.detectionStart && metrics.detectionEnd) {
         const detectionTime = metrics.detectionEnd - metrics.detectionStart;
-        newResponse.headers.set('X-Performance-Detection-Ms', detectionTime.toString());
+        headers.set('X-Performance-Detection-Ms', detectionTime.toString());
         
         // Add detection source if available
         if (metrics.detectionSource) {
-          newResponse.headers.set('X-Detection-Source', metrics.detectionSource);
+          headers.set('X-Detection-Source', metrics.detectionSource);
         }
       }
     }
@@ -228,8 +259,8 @@ export class DefaultDebugService implements DebugService {
     // Add request details if in verbose mode
     if (config.debug.verbose) {
       
-      newResponse.headers.set('X-Request-Path', url.pathname);
-      newResponse.headers.set('X-Request-Query', url.search);
+      headers.set('X-Request-Path', url.pathname);
+      headers.set('X-Request-Query', url.search);
       
       // Add client hints
       const dpr = request.headers.get('DPR');
@@ -237,21 +268,21 @@ export class DefaultDebugService implements DebugService {
       const viewportHeight = request.headers.get('Viewport-Height');
       
       if (dpr) {
-        newResponse.headers.set('X-Client-DPR', dpr);
+        headers.set('X-Client-DPR', dpr);
       }
       
       if (viewportWidth) {
-        newResponse.headers.set('X-Client-Viewport-Width', viewportWidth);
+        headers.set('X-Client-Viewport-Width', viewportWidth);
       }
       
       if (viewportHeight) {
-        newResponse.headers.set('X-Client-Viewport-Height', viewportHeight);
+        headers.set('X-Client-Viewport-Height', viewportHeight);
       }
       
       // Add user agent
       const userAgent = request.headers.get('User-Agent');
       if (userAgent) {
-        newResponse.headers.set('X-Client-User-Agent', userAgent);
+        headers.set('X-Client-User-Agent', userAgent);
         
         // Add device detection info
         const isMobile = /Mobile|Android|iPhone|iPad|iPod/i.test(userAgent);
@@ -264,19 +295,22 @@ export class DefaultDebugService implements DebugService {
           deviceType = 'tablet';
         }
         
-        newResponse.headers.set('X-Device-Type', deviceType);
+        headers.set('X-Device-Type', deviceType);
       }
       
       // Add original URL path for troubleshooting
-      newResponse.headers.set('X-Original-Path', url.pathname);
+      headers.set('X-Original-Path', url.pathname);
       
       // Add derivative info if available
       if (options.derivative) {
-        newResponse.headers.set('X-Derivative-Template', options.derivative.toString());
+        headers.set('X-Derivative-Template', options.derivative.toString());
       }
     }
     
-    return newResponse;
+    };
+    
+    // Create a single response with all headers combined using the batch update function
+    return batchUpdateHeaders(response, [headerUpdates]);
   }
 
   /**
@@ -822,13 +856,39 @@ export class DefaultDebugService implements DebugService {
         url: request.url
       });
       
-      return createDebugHtmlReportUtil(
-        request,
-        storageResult,
-        options,
-        config,
-        metrics
-      );
+      // Create basic HTML report since the enhanced one failed
+      return new Response(`
+        <html>
+          <head>
+            <title>Debug Report (Basic Fallback)</title>
+            <style>
+              body { font-family: system-ui, sans-serif; margin: 20px; }
+              pre { background: #f5f5f5; padding: 10px; border-radius: 4px; }
+            </style>
+          </head>
+          <body>
+            <h1>Debug Report (Basic Fallback)</h1>
+            <p>There was an error generating the enhanced debug report. Here's the basic information:</p>
+            
+            <h2>Request</h2>
+            <pre>${request.url}</pre>
+            
+            <h2>Storage Result</h2>
+            <pre>${JSON.stringify(storageResult, null, 2)}</pre>
+            
+            <h2>Transform Options</h2>
+            <pre>${JSON.stringify(options, null, 2)}</pre>
+            
+            <h2>Performance Metrics</h2>
+            <pre>${JSON.stringify(metrics, null, 2)}</pre>
+          </body>
+        </html>
+      `, {
+        headers: {
+          'Content-Type': 'text/html',
+          'Cache-Control': 'no-store'
+        }
+      });
     }
   }
   

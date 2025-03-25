@@ -15,7 +15,10 @@ We have successfully:
    - `cache.ts`
    - `utils/akamai-compatibility.ts`
 4. Updated the `REFACTORING_PLAN.md` to reflect our progress
-5. **[NEW]** Modified `DefaultImageTransformationService` to use `CacheService` for cache operations instead of directly using utility functions
+5. Modified `DefaultImageTransformationService` to use `CacheService` for cache operations instead of directly using utility functions
+6. **[NEW]** Moved `PerformanceMetrics` interface from debug.ts to services/interfaces.ts
+7. **[NEW]** Updated index.ts to use `DebugService.setLogger` instead of `setDebugLogger` from debug.ts
+8. **[NEW]** Updated all imports of `PerformanceMetrics` to use it from services/interfaces.ts
 
 ## Detailed Changes
 
@@ -68,11 +71,25 @@ We've updated the `transformationService.ts` to use proper service dependencies:
 - Modified `applyCloudflareCache` usage to use the injected `CacheService` instead of the utility function
 - Added graceful fallback when `CacheService` is not available
 
-### 5. Remaining Dependencies
+### 5. Debug Service Integration
 
-Based on our code analysis, we have successfully migrated the core application code to use the service-oriented architecture. The remaining dependencies on `transform.ts` are primarily in test files:
+We've improved the integration with `DebugService`:
 
-- Tests files: Many test files still use the old utility functions
+- Moved `PerformanceMetrics` interface from debug.ts to services/interfaces.ts
+- Updated all imports of `PerformanceMetrics` to use it from its new location
+- Added re-export from debug.ts for backward compatibility
+- Updated index.ts to use `DebugService.setLogger` instead of `setDebugLogger` from debug.ts
+
+### 6. Remaining Dependencies
+
+Based on our code analysis, we have successfully migrated the core application code to use the service-oriented architecture. All primary dependencies have been migrated to services:
+
+- ✅ debug.ts now uses CacheService instead of importing directly from cache.ts
+- ✅ index.ts now uses DebugService instead of importing from debug.ts
+- ✅ transform.ts now uses CacheService instead of importing directly from cache.ts
+
+The only remaining dependencies are in:
+- Test files: Many test files still use the old utility functions
 
 ## Next Steps
 

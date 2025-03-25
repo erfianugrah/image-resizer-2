@@ -1,157 +1,269 @@
-/**
+/*
  * Image Resizer Worker
- * 
+ *
  * A simplified Cloudflare Worker for image resizing that leverages Cloudflare's Image Resizing service
  * with a service-oriented architecture inspired by video-resizer.
  */
 
-import { PerformanceMetrics } from './services/interfaces';
-import { AppError, TransformError, createErrorResponse } from './utils/errors';
-import { isAkamaiFormat } from './utils/akamai-compatibility';
-import { setLogger as setAkamaiLogger } from './utils/akamai-compatibility';
+import { PerformanceMetrics } from "./services/interfaces";
+import { AppError, createErrorResponse, TransformError } from "./utils/errors";
+import { isAkamaiFormat } from "./utils/akamai-compatibility";
+import { setLogger as setAkamaiLogger } from "./utils/akamai-compatibility";
 // Storage logger is now handled through StorageService
 // Transform logger is now handled through TransformationService
-import { setLogger as setDebugLogger } from './debug';
-import { setConfig as setDetectorConfig } from './utils/detector';
-import { createServiceContainer } from './services';
-import { 
-  handleRootPath, 
-  handleDebugReport, 
+// Debug logger is now handled through DebugService
+import { setConfig as setDetectorConfig } from "./utils/detector";
+import { createServiceContainer } from "./services";
+import { createLazyServiceContainer } from "./services/lazyServiceContainer";
+import { createRequestPerformanceMonitor, initializePerformanceBaseline } from "./utils/performance-integrations";
+import {
+  addAkamaiCompatibilityHeader,
   handleAkamaiCompatibility,
+  handleDebugReport,
   handleImageRequest,
-  addAkamaiCompatibilityHeader
-} from './handlers';
+  handleRootPath,
+  handlePerformanceReport,
+  handlePerformanceReset,
+} from "./handlers";
 
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
     // Attach env and ctx to the request object for use in services
     (request as any).env = env;
     (request as any).ctx = ctx;
-    
+
     // Start performance tracking
     const metrics: PerformanceMetrics = {
-      start: Date.now()
+      start: Date.now(),
     };
-    
-    // Create service container
-    const services = createServiceContainer(env);
+
+    // Choose service container implementation based on configuration
+    // Default to eager initialization until config is available
+    let services = createServiceContainer(env);
     const { logger, configurationService, loggingService } = services;
     
     // Get configuration via the configuration service
     const config = configurationService.getConfig();
     
-    // Log initialization with configured logger
-    logger.info(`Worker initialized with logging level ${loggingService.getLogLevel()}`);
+    // Check if lazy initialization is enabled
+    if (config.performance?.lazyServiceInitialization) {
+      // Replace with lazy container if enabled
+      services = createLazyServiceContainer(env);
+      logger.info('Using lazy service initialization');
+    }
     
+    // Initialize performance monitoring
+    const performanceBaseline = initializePerformanceBaseline(config, logger);
+    const performanceMonitor = createRequestPerformanceMonitor(metrics, logger, performanceBaseline);
+
+    // Log initialization with configured logger
+    logger.info(
+      `Worker initialized with logging level ${loggingService.getLogLevel()}`,
+    );
+
     // Initialize loggers for specific modules that are not using the service pattern yet
     // We now use the loggingService to get loggers for each module
-    const akamaiLogger = loggingService.getLogger('AkamaiCompat');
-    const debugLogger = loggingService.getLogger('Debug');
-    
+    const akamaiLogger = loggingService.getLogger("AkamaiCompat");
+    const debugLogger = loggingService.getLogger("Debug");
+
     // Set loggers for modules that still use the older pattern
     // These will be refactored in subsequent steps to use the service directly
     setAkamaiLogger(akamaiLogger);
     // Storage now uses the StorageService
     // Transform now uses the TransformationService
-    setDebugLogger(debugLogger);
-    
+    // Debug service already has logger from constructor, no need to set it
+
     // Initialize detector with configuration if available
     if (config.detector) {
       setDetectorConfig(config.detector);
-      logger.info('Client detector initialized with configuration', {
+      logger.info("Client detector initialized with configuration", {
         cacheSize: config.detector.cache.maxSize,
         strategies: Object.keys(config.detector.strategies)
-          .filter(key => {
-            const strategy = config.detector?.strategies[key as keyof typeof config.detector.strategies];
+          .filter((key) => {
+            const strategy = config.detector
+              ?.strategies[key as keyof typeof config.detector.strategies];
             return strategy?.enabled;
           })
-          .join(', '),
-        hashAlgorithm: config.detector.hashAlgorithm || 'simple'
+          .join(", "),
+        hashAlgorithm: config.detector.hashAlgorithm || "simple",
       });
     }
-    
+
     // Start request breadcrumb trail
-    logger.breadcrumb('Request started', undefined, {
+    logger.breadcrumb("Request started", undefined, {
       url: request.url,
       method: request.method,
-      userAgent: request.headers.get('user-agent') || 'unknown'
+      userAgent: request.headers.get("user-agent") || "unknown",
     });
-    
+
     // Parse URL
     let url = new URL(request.url);
-    
+
     try {
+      performanceMonitor.startOperation('total');
+      
       // Check for root path
       const rootResponse = handleRootPath(request);
       if (rootResponse) {
+        performanceMonitor.endOperation('total', { type: 'root_path' });
+        performanceMonitor.endRequest({ status: rootResponse.status, type: 'root_path' });
         return rootResponse;
       }
       
-      // Check for debug report request
-      const debugResponse = await handleDebugReport(request, services, metrics, config, logger);
-      if (debugResponse) {
-        return debugResponse;
+      // Check for performance report request
+      const performanceResponse = await handlePerformanceReport(request, services);
+      if (performanceResponse) {
+        performanceMonitor.endOperation('total', { type: 'performance_report' });
+        performanceMonitor.endRequest({ status: performanceResponse.status, type: 'performance_report' });
+        return performanceResponse;
       }
       
+      // Check for performance reset request
+      const resetResponse = await handlePerformanceReset(request, services);
+      if (resetResponse) {
+        performanceMonitor.endOperation('total', { type: 'performance_reset' });
+        performanceMonitor.endRequest({ status: resetResponse.status, type: 'performance_reset' });
+        return resetResponse;
+      }
+
+      // Check for debug report request
+      const debugResponse = await handleDebugReport(
+        request,
+        services,
+        metrics,
+        config,
+        logger,
+      );
+      if (debugResponse) {
+        performanceMonitor.endOperation('total', { type: 'debug_report' });
+        performanceMonitor.endRequest({ status: debugResponse.status, type: 'debug_report' });
+        return debugResponse;
+      }
+
       // Handle Akamai compatibility if applicable
+      performanceMonitor.startOperation('akamai_compat');
       const isAkamai = isAkamaiFormat(url);
       url = handleAkamaiCompatibility(request, url, services);
-      
+      performanceMonitor.endOperation('akamai_compat', { used: isAkamai });
+
       // Process the image transformation request
-      let finalResponse = await handleImageRequest(request, url, services, metrics);
-      
+      performanceMonitor.startOperation('image_request');
+      let finalResponse = await handleImageRequest(
+        request,
+        url,
+        services,
+        metrics,
+      );
+      performanceMonitor.endOperation('image_request', { 
+        status: finalResponse.status,
+        contentType: finalResponse.headers.get('content-type')
+      });
+
       // Add Akamai compatibility header if enabled and used
-      finalResponse = addAkamaiCompatibilityHeader(finalResponse, isAkamai, services);
-      
+      if (isAkamai) {
+        performanceMonitor.startOperation('add_akamai_header');
+        finalResponse = addAkamaiCompatibilityHeader(
+          finalResponse,
+          isAkamai,
+          services,
+        );
+        performanceMonitor.endOperation('add_akamai_header');
+      }
+
+      // End the overall request timing
+      performanceMonitor.endOperation('total');
+      performanceMonitor.endRequest({ 
+        status: finalResponse.status,
+        contentType: finalResponse.headers.get('content-type'),
+        contentLength: finalResponse.headers.get('content-length')
+      });
+
       return finalResponse;
     } catch (error) {
       // Log the error with detailed information
-      logger.error('Error processing image', {
+      logger.error("Error processing image", {
         url: request.url,
         error: error instanceof Error ? error.message : String(error),
-        errorType: error instanceof Error ? error.constructor.name : 'Unknown',
-        stack: error instanceof Error ? error.stack : undefined
+        errorType: error instanceof Error ? error.constructor.name : "Unknown",
+        stack: error instanceof Error ? error.stack : undefined,
       });
-      
+
       // Mark the error with a breadcrumb for easier tracing
-      logger.breadcrumb('Request processing error occurred', undefined, {
-        errorType: error instanceof Error ? error.constructor.name : 'Unknown',
+      logger.breadcrumb("Request processing error occurred", undefined, {
+        errorType: error instanceof Error ? error.constructor.name : "Unknown",
         url: request.url,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
+
+      // Track error with performance monitoring
+      try {
+        // First try to end the total operation if it was started
+        performanceMonitor.endOperation('total', { error: true });
+      } catch (endError) {
+        // Ignore errors from ending the operation - it may not have been started
+      }
       
-      // Set the end time for performance metrics
-      metrics.end = Date.now();
-      const totalDuration = metrics.end - metrics.start;
+      performanceMonitor.startOperation('error_handling');
       
-      logger.breadcrumb('Request error metrics', totalDuration, {
+      // Record error type in peformance data
+      const errorType = error instanceof Error ? error.constructor.name : "Unknown";
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // Get performance metrics
+      performanceMonitor.updateMetrics();
+      const storageTimeMs = performanceMonitor.getOperationTime('storage');
+      const transformTimeMs = performanceMonitor.getOperationTime('transform');
+      
+      // End performance timing for error handling
+      const totalDuration = performanceMonitor.endOperation('error_handling', {
+        errorType,
+        errorMessage
+      });
+
+      logger.breadcrumb("Request error metrics", totalDuration, {
         totalDurationMs: totalDuration,
-        storageTimeMs: (metrics.storageEnd && metrics.storageStart) ? metrics.storageEnd - metrics.storageStart : 0,
-        transformTimeMs: (metrics.transformEnd && metrics.transformStart) ? metrics.transformEnd - metrics.transformStart : 0
+        storageTimeMs: storageTimeMs,
+        transformTimeMs: transformTimeMs,
       });
+
+      // Create appropriate error response
+      let errorResponse: Response;
       
       // Return a formatted error response
       if (error instanceof AppError) {
-        logger.debug('Returning error response for known error type', {
+        logger.debug("Returning error response for known error type", {
           errorType: error.constructor.name,
-          status: error.status
+          status: error.status,
         });
-        logger.breadcrumb('Returning structured error response', undefined, {
+        logger.breadcrumb("Returning structured error response", undefined, {
           errorType: error.constructor.name,
-          status: error.status
+          status: error.status,
         });
-        return createErrorResponse(error);
+        errorResponse = createErrorResponse(error);
       } else {
         // Wrap unknown errors in TransformError
-        logger.debug('Wrapping unknown error in TransformError');
-        logger.breadcrumb('Wrapping in TransformError', undefined, {
-          originalError: error instanceof Error ? error.message : String(error)
+        logger.debug("Wrapping unknown error in TransformError");
+        logger.breadcrumb("Wrapping in TransformError", undefined, {
+          originalError: errorMessage,
         });
         const transformError = new TransformError(
-          `Error processing image: ${error instanceof Error ? error.message : String(error)}`
+          `Error processing image: ${errorMessage}`,
         );
-        return createErrorResponse(transformError);
+        errorResponse = createErrorResponse(transformError);
       }
+      
+      // Record final error metrics
+      performanceMonitor.endRequest({
+        status: errorResponse.status,
+        errorType,
+        errorMessage
+      });
+      
+      return errorResponse;
     }
   },
 } satisfies ExportedHandler<Env>;

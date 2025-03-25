@@ -1,20 +1,12 @@
 /**
- * Logging utilities for the image resizer worker
+ * Optimized logging utilities for the image resizer worker
  * 
- * This module provides centralized logging functions with configurable log levels
- * and structured logging capabilities.
+ * This module provides a performance-optimized version of the logging system
+ * with features to reduce overhead for disabled log levels and expensive operations.
  */
 
 import { ImageResizerConfig } from '../config';
-import { OptimizedLogger, createOptimizedLogger } from './optimized-logging';
-
-// Define log levels for clarity and control
-export enum LogLevel {
-  DEBUG = 0,
-  INFO = 1,
-  WARN = 2,
-  ERROR = 3
-}
+import { LogLevel, LogData, Logger } from './logging';
 
 // Mapping from string log levels to enum values
 const LOG_LEVEL_MAP: Record<string, LogLevel> = {
@@ -25,39 +17,40 @@ const LOG_LEVEL_MAP: Record<string, LogLevel> = {
 };
 
 /**
- * Type for log data with flexible structure but known types
+ * Enhanced logger interface with level checking capabilities
  */
-export type LogData = Record<string, string | number | boolean | null | undefined | string[] | number[] | Record<string, string | number | boolean | null | undefined>>;
-
-/**
- * Logger interface
- */
-export interface Logger {
-  debug(message: string, data?: LogData): void;
-  info(message: string, data?: LogData): void;
-  warn(message: string, data?: LogData): void;
-  error(message: string, data?: LogData): void;
-  breadcrumb(step: string, duration?: number, data?: LogData): void;
+export interface OptimizedLogger extends Logger {
+  /**
+   * Check if a specific log level is enabled
+   * @param level The log level to check
+   * @returns true if the level is enabled, false otherwise
+   */
+  isLevelEnabled(level: keyof typeof LogLevel): boolean;
+  
+  /**
+   * Get the current minimum log level
+   */
+  getMinLevel(): LogLevel;
+  
+  /**
+   * Enhanced breadcrumb method that only records timing when performance
+   * tracking is enabled.
+   * @param step The breadcrumb step name
+   * @param startTime The start time to measure from (optional)
+   * @param data Additional data to log
+   * @returns The current time for chaining performance measurements
+   */
+  trackedBreadcrumb(step: string, startTime?: number, data?: LogData): number;
 }
 
 /**
- * Create a logger instance
+ * Create an optimized logger instance with enhanced performance characteristics
  * 
  * @param config The image resizer configuration
- * @param context Optional context name for the logger (e.g., 'Akamai', 'Storage')
- * @param useOptimized Whether to use the optimized logger implementation
- * @returns A logger object
+ * @param context Optional context name for the logger
+ * @returns An optimized logger object with additional helpers
  */
-export function createLogger(
-  config: ImageResizerConfig, 
-  context?: string, 
-  useOptimized: boolean = false
-): Logger | OptimizedLogger {
-  // Use optimized logger if requested
-  if (useOptimized) {
-    return createOptimizedLogger(config, context);
-  }
-
+export function createOptimizedLogger(config: ImageResizerConfig, context?: string): OptimizedLogger {
   // Get configured log level, defaulting to INFO
   const configuredLevel = config.logging?.level || 'INFO';
   const minLevel = LOG_LEVEL_MAP[configuredLevel] || LogLevel.INFO;
@@ -71,39 +64,47 @@ export function createLogger(
   // Enable breadcrumbs if configured
   const enableBreadcrumbs = config.logging?.enableBreadcrumbs !== false;
   
-  // Return a logger object with methods for each log level
+  // Enable performance tracking
+  const enablePerformanceTracking = config.debug?.performanceTracking !== false;
+  
+  // Pre-check if various log levels are enabled to avoid repeated checks
+  const isDebugEnabled = minLevel <= LogLevel.DEBUG;
+  const isInfoEnabled = minLevel <= LogLevel.INFO;
+  const isWarnEnabled = minLevel <= LogLevel.WARN;
+  const isErrorEnabled = minLevel <= LogLevel.ERROR;
+  const isBreadcrumbEnabled = enableBreadcrumbs && isInfoEnabled;
+  
+  // Return an optimized logger object with additional helper methods
   return {
     debug(message: string, data?: LogData): void {
-      if (minLevel <= LogLevel.DEBUG) {
+      if (isDebugEnabled) {
         logMessage(LogLevel.DEBUG, message, data, context, includeTimestamp, useStructuredLogs);
       }
     },
     
     info(message: string, data?: LogData): void {
-      if (minLevel <= LogLevel.INFO) {
+      if (isInfoEnabled) {
         logMessage(LogLevel.INFO, message, data, context, includeTimestamp, useStructuredLogs);
       }
     },
     
     warn(message: string, data?: LogData): void {
-      if (minLevel <= LogLevel.WARN) {
+      if (isWarnEnabled) {
         logMessage(LogLevel.WARN, message, data, context, includeTimestamp, useStructuredLogs);
       }
     },
     
     error(message: string, data?: LogData): void {
-      if (minLevel <= LogLevel.ERROR) {
+      if (isErrorEnabled) {
         logMessage(LogLevel.ERROR, message, data, context, includeTimestamp, useStructuredLogs);
       }
     },
     
     breadcrumb(step: string, duration?: number, data?: LogData): void {
-      // Only log breadcrumbs if enabled in config
-      if (enableBreadcrumbs && minLevel <= LogLevel.INFO) {
-        const breadcrumbData = {
-          ...data,
-          ...(duration !== undefined ? { durationMs: duration } : {})
-        };
+      if (isBreadcrumbEnabled) {
+        const breadcrumbData = duration !== undefined 
+          ? { ...data, durationMs: duration } 
+          : data;
         
         logMessage(
           LogLevel.INFO, 
@@ -115,12 +116,38 @@ export function createLogger(
           true // mark as breadcrumb
         );
       }
+    },
+    
+    // Enhanced methods for performance optimization
+    
+    isLevelEnabled(level: keyof typeof LogLevel): boolean {
+      return minLevel <= LogLevel[level];
+    },
+    
+    getMinLevel(): LogLevel {
+      return minLevel;
+    },
+    
+    trackedBreadcrumb(step: string, startTime?: number, data?: LogData): number {
+      const now = Date.now();
+      
+      // Only calculate duration and log if both enabled
+      if (isBreadcrumbEnabled && enablePerformanceTracking && startTime !== undefined) {
+        const duration = now - startTime;
+        this.breadcrumb(step, duration, data);
+      } else if (isBreadcrumbEnabled) {
+        // Just log the breadcrumb without timing if tracking disabled
+        this.breadcrumb(step, undefined, data);
+      }
+      
+      return now;
     }
   };
 }
 
 /**
  * Internal function to format and log messages
+ * This is copied from the original logging.ts to keep compatibility
  */
 function logMessage(
   level: LogLevel,
@@ -162,8 +189,8 @@ function logMessage(
       logObj.data = data;
     }
     
-    // Log as JSON
-    console[getConsoleMethod(level)](JSON.stringify(logObj));
+    // Log as JSON - use a single operation
+    console.log(JSON.stringify(logObj));
   } else {
     // Create formatted log message
     let logMsg = `[${levelName}]`;
@@ -186,44 +213,11 @@ function logMessage(
     // Add message
     logMsg = `${logMsg} ${message}`;
     
-    // Log the message
-    console[getConsoleMethod(level)](logMsg);
-    
-    // Log additional data on a separate line if provided
+    // Log the message - using a single console operation when possible
     if (data) {
-      console[getConsoleMethod(level)]('Additional data:', data);
+      console.log(logMsg, data);
+    } else {
+      console.log(logMsg);
     }
   }
 }
-
-/**
- * Get the appropriate console method for the log level
- */
-function getConsoleMethod(_level: LogLevel): 'log' {
-  // In Cloudflare Workers, console.log is the most reliable method
-  // Other methods (debug, info) might not show up in wrangler tail
-  return 'log';
-}
-
-// Export a default logger that can be used before config is loaded
-export const defaultLogger: Logger = {
-  debug(message: string, data?: LogData): void {
-    console.log(`[DEBUG] ${message}`, data || '');
-  },
-  info(message: string, data?: LogData): void {
-    console.log(`[INFO] ${message}`, data || '');
-  },
-  warn(message: string, data?: LogData): void {
-    console.log(`[WARN] ${message}`, data || '');
-  },
-  error(message: string, data?: LogData): void {
-    console.log(`[ERROR] ${message}`, data || '');
-  },
-  breadcrumb(step: string, duration?: number, data?: LogData): void {
-    const breadcrumbData = {
-      ...data,
-      ...(duration !== undefined ? { durationMs: duration } : {})
-    };
-    console.log(`[INFO] 🔶 BREADCRUMB: ${step}`, breadcrumbData || '');
-  }
-};

@@ -1,0 +1,86 @@
+2025-03-25 11:22:06 - Starting performance validation process
+2025-03-25 11:22:06 - Building project with optimizations enabled
+
+> image-resizer-2@1.0.0 build
+> node scripts/generate-browser-support.js && npx esbuild src/index.ts --bundle --format=esm --outfile=dist/index.js
+
+Generated browser support data in /home/erfi/resizer/image-resizer-2/src/utils/browser-formats.ts
+
+Browser support summary:
+
+WEBP support:
+  and_chr: 133+ (Jan 2014)
+  and_ff: 135+ (Jan 2019)
+  chrome: 9+ (Jan 2014)
+  edge: 18+ (Nov 2018)
+  edge_chromium: 79+ (Jan 2020)
+  firefox: 65+ (Jan 2019)
+  ios_saf: 14+ (Sep 2020)
+  opera: 11.1+ (Jan 2014)
+  safari: 14+ (Sep 2020)
+  samsung: 4+ (Apr 2016)
+
+AVIF support:
+  and_chr: 133+ (Jul 2021)
+  and_ff: 135+ (Oct 2021)
+  chrome: 85+ (Aug 2020)
+  edge_chromium: 121+ (Apr 2021)
+  firefox: 93+ (Oct 2021)
+  ios_saf: 16+ (Mar 2023)
+  opera: 71+ (Aug 2020)
+  safari: 16.1+ (Mar 2023)
+  samsung: 14+ (Aug 2021)
+
+Total entries in dictionary: 19
+Using @mdn/browser-compat-data version: 5.7.5
+Update date: 2025-03-25T10:22:06.728Z
+2025-03-25 11:22:06 - Running performance validation tests
+🚀 Starting Final Performance Validation
+📊 Iterations: 5, Warmup: 2
+📂 Reports will be saved to: /home/erfi/resizer/image-resizer-2/reports/final-validation
+
+🧪 Running benchmark: test/performance/benchmark.ts
+
+🧪 Running benchmark: test/performance/storage-benchmark.ts
+
+🧪 Running benchmark: test/performance/cache-benchmark.ts
+
+🧪 Running benchmark: test/performance/client-detection-benchmark.ts
+
+📊 Generating Final Validation Report...
+
+✨ Final Performance Validation completed
+
+📝 Generating summary markdown report...
+✅ Summary report generated: /home/erfi/resizer/image-resizer-2/reports/final-validation/validation-summary-2025-03-25T10-22-06-928Z.md
+2025-03-25 11:22:08 - Running phase comparison tests
+
+🔍 Testing baseline: No optimizations
+✅ Updated config for baseline: No optimizations
+📊 Running benchmarks for baseline...
+🔨 Building project...
+
+🔍 Testing phase1: Phase 1: Non-Invasive Optimizations
+✅ Updated config for phase1: Phase 1: Non-Invasive Optimizations
+📊 Running benchmarks for phase1...
+🔨 Building project...
+
+🔍 Testing phase2: Phase 2: Architecture Optimizations
+✅ Updated config for phase2: Phase 2: Architecture Optimizations
+📊 Running benchmarks for phase2...
+🔨 Building project...
+
+🔍 Testing phase3: Phase 3: Major Performance Enhancements
+✅ Updated config for phase3: Phase 3: Major Performance Enhancements
+📊 Running benchmarks for phase3...
+🔨 Building project...
+
+📊 Generating phase comparison report...
+✅ Restored original config
+
+✨ Phase comparison completed
+✅ Phase comparison summary written to: /home/erfi/resizer/image-resizer-2/reports/phases/phase-summary-2025-03-25T10-22-08-445Z.md
+2025-03-25 11:22:11 - Copying validation documentation
+2025-03-25 11:22:11 - Creating validation summary at reports/validation/2025-03-25-11-22-06/VALIDATION_SUMMARY.md
+2025-03-25 11:22:11 - Validation process completed successfully
+2025-03-25 11:22:11 - Results available in reports/validation/2025-03-25-11-22-06
