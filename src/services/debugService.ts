@@ -14,6 +14,9 @@ import {
   mergeResponseUpdates
 } from '../utils/optimized-response';
 import { DebugService, StorageResult, ClientInfo, TransformOptions } from './interfaces';
+import { createEnhancedHtmlReport } from './debugVisualization';
+// The cache.ts file has been removed as part of the utility removal plan
+// generateCacheTags is now part of CacheService
 
 // Enhanced interface for debug visualization data
 interface DebugVisualizationData {
@@ -153,159 +156,159 @@ export class DefaultDebugService implements DebugService {
       // Add processing mode and source headers
       headers.set(headerNames.processingMode || 'X-Processing-Mode', 'cf-transform');
     
-    // Add responsive sizing info
-    if (options.width) {
-      headers.set('X-Actual-Width', options.width.toString());
+      // Add responsive sizing info
+      if (options.width) {
+        headers.set('X-Actual-Width', options.width.toString());
       
-      // Was this width determined responsively?
-      const isResponsive = request.headers.has('Viewport-Width') || request.headers.has('DPR');
-      headers.set('X-Responsive-Sizing', isResponsive ? 'true' : 'false');
-    }
+        // Was this width determined responsively?
+        const isResponsive = request.headers.has('Viewport-Width') || request.headers.has('DPR');
+        headers.set('X-Responsive-Sizing', isResponsive ? 'true' : 'false');
+      }
     
-    // Forward Warning headers if any (Cloudflare Image Resizing sends validation warnings here)
-    const warningHeader = response.headers.get('Warning');
-    if (warningHeader) {
-      headers.set('Warning', warningHeader);
-    }
+      // Forward Warning headers if any (Cloudflare Image Resizing sends validation warnings here)
+      const warningHeader = response.headers.get('Warning');
+      if (warningHeader) {
+        headers.set('Warning', warningHeader);
+      }
     
-    // Add storage debug headers
-    headers.set(headerNames.storageType || 'X-Storage-Type', storageResult.sourceType);
-    if (storageResult.contentType) {
-      headers.set(headerNames.originalContentType || 'X-Original-Content-Type', storageResult.contentType);
-    }
-    if (storageResult.size) {
-      headers.set(headerNames.originalSize || 'X-Original-Size', storageResult.size.toString());
-    }
-    if (storageResult.originalUrl) {
-      headers.set(headerNames.originalUrl || 'X-Original-URL', storageResult.originalUrl);
-    }
+      // Add storage debug headers
+      headers.set(headerNames.storageType || 'X-Storage-Type', storageResult.sourceType);
+      if (storageResult.contentType) {
+        headers.set(headerNames.originalContentType || 'X-Original-Content-Type', storageResult.contentType);
+      }
+      if (storageResult.size) {
+        headers.set(headerNames.originalSize || 'X-Original-Size', storageResult.size.toString());
+      }
+      if (storageResult.originalUrl) {
+        headers.set(headerNames.originalUrl || 'X-Original-URL', storageResult.originalUrl);
+      }
     
-    // Add storage priority information
-    headers.set('X-Storage-Priority', config.storage.priority.join(','));
-    headers.set('X-R2-Enabled',
-      (config.storage.r2.enabled && config.storage.priority.includes('r2')).toString());
+      // Add storage priority information
+      headers.set('X-Storage-Priority', config.storage.priority.join(','));
+      headers.set('X-R2-Enabled',
+        (config.storage.r2.enabled && config.storage.priority.includes('r2')).toString());
     
-    // Add cache tag information if enabled
-    if (config.cache.cacheTags?.enabled && storageResult.path) {
-      try {
+      // Add cache tag information if enabled
+      if (config.cache.cacheTags?.enabled && storageResult.path) {
+        try {
         // Import the CacheService for this instead of directly using the utility
-        const cacheTags = this.generateCacheTags(storageResult.path || '', options, config);
-        if (cacheTags.length > 0) {
-          headers.set('X-Cache-Tags', cacheTags.join(', '));
+          const cacheTags = this.generateCacheTags(storageResult.path || '', options, config);
+          if (cacheTags.length > 0) {
+            headers.set('X-Cache-Tags', cacheTags.join(', '));
+          }
+        } catch (error) {
+          this.logger.error('Error generating debug cache tags', { 
+            error: error instanceof Error ? error.message : String(error),
+            path: storageResult.path
+          });
         }
-      } catch (error) {
-        this.logger.error('Error generating debug cache tags', { 
-          error: error instanceof Error ? error.message : String(error),
-          path: storageResult.path
-        });
       }
-    }
     
-    // Add transformation debug headers
-    if (options) {
+      // Add transformation debug headers
+      if (options) {
       // Clean the transform options for header value (no nested objects)
-      const cleanOptions: Record<string, string> = {};
-      Object.keys(options).forEach(key => {
-        const value = options[key];
-        if (value !== undefined && value !== null && typeof value !== 'object') {
-          cleanOptions[key] = String(value);
-        }
-      });
+        const cleanOptions: Record<string, string> = {};
+        Object.keys(options).forEach(key => {
+          const value = options[key];
+          if (value !== undefined && value !== null && typeof value !== 'object') {
+            cleanOptions[key] = String(value);
+          }
+        });
       
-      // Add individual headers for each transform option
-      Object.keys(cleanOptions).forEach(key => {
-        headers.set(`X-Transform-${key}`, cleanOptions[key]);
-      });
+        // Add individual headers for each transform option
+        Object.keys(cleanOptions).forEach(key => {
+          headers.set(`X-Transform-${key}`, cleanOptions[key]);
+        });
       
-      // Add JSON string of all options for convenience
-      try {
-        headers.set('X-Transform-Options', JSON.stringify(cleanOptions));
-      } catch (e) {
+        // Add JSON string of all options for convenience
+        try {
+          headers.set('X-Transform-Options', JSON.stringify(cleanOptions));
+        } catch (e) {
         // Ignore JSON errors
-      }
-    }
-    
-    // Add performance metrics if enabled
-    if (config.debug.includePerformance && metrics) {
-      const now = Date.now();
-      metrics.end = metrics.end || now;
-      
-      // Calculate time spent in each phase
-      const totalTime = metrics.end - metrics.start;
-      
-      headers.set('X-Performance-Total-Ms', totalTime.toString());
-      
-      if (metrics.storageStart && metrics.storageEnd) {
-        const storageTime = metrics.storageEnd - metrics.storageStart;
-        headers.set('X-Performance-Storage-Ms', storageTime.toString());
-      }
-      
-      if (metrics.transformStart && metrics.transformEnd) {
-        const transformTime = metrics.transformEnd - metrics.transformStart;
-        headers.set('X-Performance-Transform-Ms', transformTime.toString());
-      }
-      
-      if (metrics.detectionStart && metrics.detectionEnd) {
-        const detectionTime = metrics.detectionEnd - metrics.detectionStart;
-        headers.set('X-Performance-Detection-Ms', detectionTime.toString());
-        
-        // Add detection source if available
-        if (metrics.detectionSource) {
-          headers.set('X-Detection-Source', metrics.detectionSource);
         }
       }
-    }
     
-    // Add request details if in verbose mode
-    if (config.debug.verbose) {
+      // Add performance metrics if enabled
+      if (config.debug.includePerformance && metrics) {
+        const now = Date.now();
+        metrics.end = metrics.end || now;
       
-      headers.set('X-Request-Path', url.pathname);
-      headers.set('X-Request-Query', url.search);
+        // Calculate time spent in each phase
+        const totalTime = metrics.end - metrics.start;
       
-      // Add client hints
-      const dpr = request.headers.get('DPR');
-      const viewportWidth = request.headers.get('Viewport-Width');
-      const viewportHeight = request.headers.get('Viewport-Height');
+        headers.set('X-Performance-Total-Ms', totalTime.toString());
       
-      if (dpr) {
-        headers.set('X-Client-DPR', dpr);
-      }
-      
-      if (viewportWidth) {
-        headers.set('X-Client-Viewport-Width', viewportWidth);
-      }
-      
-      if (viewportHeight) {
-        headers.set('X-Client-Viewport-Height', viewportHeight);
-      }
-      
-      // Add user agent
-      const userAgent = request.headers.get('User-Agent');
-      if (userAgent) {
-        headers.set('X-Client-User-Agent', userAgent);
-        
-        // Add device detection info
-        const isMobile = /Mobile|Android|iPhone|iPad|iPod/i.test(userAgent);
-        const isTablet = /iPad|Android(?!.*Mobile)/i.test(userAgent);
-        
-        let deviceType = 'desktop';
-        if (isMobile && !isTablet) {
-          deviceType = 'mobile';
-        } else if (isTablet) {
-          deviceType = 'tablet';
+        if (metrics.storageStart && metrics.storageEnd) {
+          const storageTime = metrics.storageEnd - metrics.storageStart;
+          headers.set('X-Performance-Storage-Ms', storageTime.toString());
         }
+      
+        if (metrics.transformStart && metrics.transformEnd) {
+          const transformTime = metrics.transformEnd - metrics.transformStart;
+          headers.set('X-Performance-Transform-Ms', transformTime.toString());
+        }
+      
+        if (metrics.detectionStart && metrics.detectionEnd) {
+          const detectionTime = metrics.detectionEnd - metrics.detectionStart;
+          headers.set('X-Performance-Detection-Ms', detectionTime.toString());
         
-        headers.set('X-Device-Type', deviceType);
+          // Add detection source if available
+          if (metrics.detectionSource) {
+            headers.set('X-Detection-Source', metrics.detectionSource);
+          }
+        }
       }
+    
+      // Add request details if in verbose mode
+      if (config.debug.verbose) {
       
-      // Add original URL path for troubleshooting
-      headers.set('X-Original-Path', url.pathname);
+        headers.set('X-Request-Path', url.pathname);
+        headers.set('X-Request-Query', url.search);
       
-      // Add derivative info if available
-      if (options.derivative) {
-        headers.set('X-Derivative-Template', options.derivative.toString());
+        // Add client hints
+        const dpr = request.headers.get('DPR');
+        const viewportWidth = request.headers.get('Viewport-Width');
+        const viewportHeight = request.headers.get('Viewport-Height');
+      
+        if (dpr) {
+          headers.set('X-Client-DPR', dpr);
+        }
+      
+        if (viewportWidth) {
+          headers.set('X-Client-Viewport-Width', viewportWidth);
+        }
+      
+        if (viewportHeight) {
+          headers.set('X-Client-Viewport-Height', viewportHeight);
+        }
+      
+        // Add user agent
+        const userAgent = request.headers.get('User-Agent');
+        if (userAgent) {
+          headers.set('X-Client-User-Agent', userAgent);
+        
+          // Add device detection info
+          const isMobile = /Mobile|Android|iPhone|iPad|iPod/i.test(userAgent);
+          const isTablet = /iPad|Android(?!.*Mobile)/i.test(userAgent);
+        
+          let deviceType = 'desktop';
+          if (isMobile && !isTablet) {
+            deviceType = 'mobile';
+          } else if (isTablet) {
+            deviceType = 'tablet';
+          }
+        
+          headers.set('X-Device-Type', deviceType);
+        }
+      
+        // Add original URL path for troubleshooting
+        headers.set('X-Original-Path', url.pathname);
+      
+        // Add derivative info if available
+        if (options.derivative) {
+          headers.set('X-Derivative-Template', options.derivative.toString());
+        }
       }
-    }
     
     };
     
@@ -554,13 +557,13 @@ export class DefaultDebugService implements DebugService {
             <tr>
               <td>Cache Tags</td>
               <td>${(() => {
-                try {
-                  const cacheTags = this.generateCacheTags(storageResult.path || '', options, config);
-                  return cacheTags.length > 0 ? cacheTags.join(', ') : 'None';
-                } catch (e) {
-                  return 'Error generating cache tags';
-                }
-              })()}</td>
+    try {
+      const cacheTags = this.generateCacheTags(storageResult.path || '', options, config);
+      return cacheTags.length > 0 ? cacheTags.join(', ') : 'None';
+    } catch (e) {
+      return 'Error generating cache tags';
+    }
+  })()}</td>
             </tr>
             ` : ''}
           </table>
@@ -831,8 +834,7 @@ export class DefaultDebugService implements DebugService {
     metrics: PerformanceMetrics,
     visualizationData: DebugVisualizationData
   ): Response {
-    // Import our enhanced visualization module
-    const { createEnhancedHtmlReport } = require('./debugVisualization');
+    // Use the imported visualization module
     
     try {
       // Use the enhanced report generator with our visualization data
@@ -996,9 +998,8 @@ export class DefaultDebugService implements DebugService {
     let cacheTags: string[] = [];
     if (config.cache.cacheTags?.enabled && storageResult.path) {
       try {
-        // Import the utility function if needed
-        const { generateCacheTags } = require('../cache');
-        cacheTags = generateCacheTags(
+        // Use the class's own implementation instead of the removed utility
+        cacheTags = this.generateCacheTags(
           storageResult.path,
           options,
           config

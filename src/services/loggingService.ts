@@ -6,8 +6,9 @@
  */
 
 import { ImageResizerConfig } from '../config';
-import { Logger, LogLevel, LogData, createLogger } from '../utils/logging';
+import { Logger, LogLevel, LogData } from '../utils/logging';
 import { OptimizedLogger } from '../utils/optimized-logging';
+import { createLogger } from '../utils/logger-factory';
 import { LoggingService } from './interfaces';
 
 // Mapping from string log levels to enum values

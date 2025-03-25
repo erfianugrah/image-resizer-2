@@ -1377,11 +1377,11 @@ export class DefaultImageTransformationService implements ImageTransformationSer
           } else if (key === 'mode') {
             // Map Akamai fit modes to Cloudflare
             switch(value) {
-              case 'fit': result.fit = 'contain'; break;
-              case 'stretch': result.fit = 'scale-down'; break;
-              case 'fill': result.fit = 'cover'; break;
-              case 'crop': result.fit = 'crop'; break;
-              case 'pad': result.fit = 'pad'; break;
+            case 'fit': result.fit = 'contain'; break;
+            case 'stretch': result.fit = 'scale-down'; break;
+            case 'fill': result.fit = 'cover'; break;
+            case 'crop': result.fit = 'crop'; break;
+            case 'pad': result.fit = 'pad'; break;
             }
           }
         }
@@ -1399,10 +1399,10 @@ export class DefaultImageTransformationService implements ImageTransformationSer
         } else {
           // Map named quality levels
           switch (params.quality.toLowerCase()) {
-            case 'low': result.quality = 50; break;
-            case 'medium': result.quality = 75; break;
-            case 'high': result.quality = 90; break;
-            default: result.quality = 85;
+          case 'low': result.quality = 50; break;
+          case 'medium': result.quality = 75; break;
+          case 'high': result.quality = 90; break;
+          default: result.quality = 85;
           }
         }
       }
@@ -1456,14 +1456,14 @@ export class DefaultImageTransformationService implements ImageTransformationSer
    */
   private evaluateCondition(actual: number, operator: string, expected: number): boolean {
     switch (operator) {
-      case '>': return actual > expected;
-      case '>=': return actual >= expected;
-      case '<': return actual < expected;
-      case '<=': return actual <= expected;
-      case '=':
-      case '==': return actual === expected;
-      case '!=': return actual !== expected;
-      default: return false;
+    case '>': return actual > expected;
+    case '>=': return actual >= expected;
+    case '<': return actual < expected;
+    case '<=': return actual <= expected;
+    case '=':
+    case '==': return actual === expected;
+    case '!=': return actual !== expected;
+    default: return false;
     }
   }
 
@@ -1568,12 +1568,12 @@ export class DefaultImageTransformationService implements ImageTransformationSer
       if (options.anim === 'true') {
         options.anim = true;
         this.logger.breadcrumb('Converted anim="true" to boolean true', undefined, {
-          originalValue: "true"
+          originalValue: 'true'
         });
       } else if (options.anim === 'false') {
         options.anim = false;
         this.logger.breadcrumb('Converted anim="false" to boolean false', undefined, {
-          originalValue: "false"
+          originalValue: 'false'
         });
       } else {
         this.logger.warn('Invalid anim value, must be boolean', {

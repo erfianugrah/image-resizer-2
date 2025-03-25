@@ -214,6 +214,9 @@ export interface ImageResizerConfig {
     enableStructuredLogs: boolean;
     enableBreadcrumbs?: boolean; // Enable breadcrumbs for e2e tracing
     enableCacheMetrics?: boolean; // Enable cache hit/miss metrics
+    usePino?: boolean; // Use Pino logger instead of custom logger
+    prettyPrint?: boolean; // Use pretty printing for Pino logs (development)
+    colorize?: boolean; // Colorize Pino logs
   };
   
   // Performance optimization settings
@@ -2028,6 +2031,18 @@ export function getConfig(env: Env): ImageResizerConfig {
   
   if (env.LOGGING_BREADCRUMBS_ENABLED) {
     config.logging.enableBreadcrumbs = env.LOGGING_BREADCRUMBS_ENABLED === 'true';
+  }
+  
+  if (env.LOGGING_USE_PINO) {
+    config.logging.usePino = env.LOGGING_USE_PINO === 'true';
+  }
+  
+  if (env.LOGGING_PRETTY_PRINT) {
+    config.logging.prettyPrint = env.LOGGING_PRETTY_PRINT === 'true';
+  }
+  
+  if (env.LOGGING_COLORIZE) {
+    config.logging.colorize = env.LOGGING_COLORIZE === 'true';
   }
   
   // Apply feature flag settings

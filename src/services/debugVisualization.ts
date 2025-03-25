@@ -741,14 +741,14 @@ export function createEnhancedHtmlReport(
                 <tr>
                   <th>Original Size</th>
                   <td>${visualizationData.imageComparison.original.size ? 
-                    `${visualizationData.imageComparison.original.size} bytes (${Math.round(visualizationData.imageComparison.original.size / 1024)} KB)` : 
-                    'Unknown'}</td>
+    `${visualizationData.imageComparison.original.size} bytes (${Math.round(visualizationData.imageComparison.original.size / 1024)} KB)` : 
+    'Unknown'}</td>
                 </tr>
                 <tr>
                   <th>Dimensions</th>
                   <td>${visualizationData.imageComparison.original.width && visualizationData.imageComparison.original.height ? 
-                    `${visualizationData.imageComparison.original.width}×${visualizationData.imageComparison.original.height}` : 
-                    'Unknown'}</td>
+    `${visualizationData.imageComparison.original.width}×${visualizationData.imageComparison.original.height}` : 
+    'Unknown'}</td>
                 </tr>
                 ${visualizationData.storageInfo.originalUrl ? `
                 <tr>
@@ -790,8 +790,8 @@ export function createEnhancedHtmlReport(
                   <th>Cache Tags</th>
                   <td>
                     ${visualizationData.cacheInfo.cacheTags.length > 0 ? 
-                      visualizationData.cacheInfo.cacheTags.map(tag => `<span class="tag">${tag}</span>`).join('') : 
-                      'None'}
+    visualizationData.cacheInfo.cacheTags.map(tag => `<span class="tag">${tag}</span>`).join('') : 
+    'None'}
                   </td>
                 </tr>
               </table>
@@ -890,8 +890,8 @@ export function createEnhancedHtmlReport(
                 <div class="image-panel-header">
                   Original Image
                   ${visualizationData.imageComparison.original.size ? 
-                    `<span class="badge badge-primary">${Math.round(visualizationData.imageComparison.original.size / 1024)} KB</span>` : 
-                    ''}
+    `<span class="badge badge-primary">${Math.round(visualizationData.imageComparison.original.size / 1024)} KB</span>` : 
+    ''}
                 </div>
                 <div class="image-container">
                   <img src="${visualizationData.imageComparison.original.url}" alt="Original image" />
@@ -900,16 +900,16 @@ export function createEnhancedHtmlReport(
                   <dl>
                     <dt>Dimensions</dt>
                     <dd>${visualizationData.imageComparison.original.width && visualizationData.imageComparison.original.height ? 
-                      `${visualizationData.imageComparison.original.width}×${visualizationData.imageComparison.original.height}` : 
-                      'Unknown'}</dd>
+    `${visualizationData.imageComparison.original.width}×${visualizationData.imageComparison.original.height}` : 
+    'Unknown'}</dd>
                     
                     <dt>Content Type</dt>
                     <dd>${visualizationData.imageComparison.original.contentType || 'Unknown'}</dd>
                     
                     <dt>Size</dt>
                     <dd>${visualizationData.imageComparison.original.size ? 
-                      `${visualizationData.imageComparison.original.size} bytes (${Math.round(visualizationData.imageComparison.original.size / 1024)} KB)` : 
-                      'Unknown'}</dd>
+    `${visualizationData.imageComparison.original.size} bytes (${Math.round(visualizationData.imageComparison.original.size / 1024)} KB)` : 
+    'Unknown'}</dd>
                   </dl>
                 </div>
               </div>
@@ -918,8 +918,8 @@ export function createEnhancedHtmlReport(
                 <div class="image-panel-header">
                   Transformed Image
                   ${visualizationData.imageComparison.transformed.estimatedSize ? 
-                    `<span class="badge badge-success">${Math.round(visualizationData.imageComparison.transformed.estimatedSize / 1024)} KB (est.)</span>` : 
-                    ''}
+    `<span class="badge badge-success">${Math.round(visualizationData.imageComparison.transformed.estimatedSize / 1024)} KB (est.)</span>` : 
+    ''}
                 </div>
                 <div class="image-container">
                   <img src="${visualizationData.imageComparison.transformed.url}" alt="Transformed image" />
@@ -928,11 +928,11 @@ export function createEnhancedHtmlReport(
                   <dl>
                     <dt>Dimensions</dt>
                     <dd>${visualizationData.imageComparison.transformed.width ? 
-                      `${visualizationData.imageComparison.transformed.width}${visualizationData.imageComparison.transformed.height ? 
-                        `×${visualizationData.imageComparison.transformed.height}` : 
-                        ''
-                      }` : 
-                      'Auto'}</dd>
+    `${visualizationData.imageComparison.transformed.width}${visualizationData.imageComparison.transformed.height ? 
+      `×${visualizationData.imageComparison.transformed.height}` : 
+      ''
+    }` : 
+    'Auto'}</dd>
                     
                     <dt>Format</dt>
                     <dd>${transformOptions.format || 'Auto'}</dd>
@@ -942,8 +942,8 @@ export function createEnhancedHtmlReport(
                     
                     <dt>Estimated Size</dt>
                     <dd>${visualizationData.imageComparison.transformed.estimatedSize ? 
-                      `${visualizationData.imageComparison.transformed.estimatedSize} bytes (${Math.round(visualizationData.imageComparison.transformed.estimatedSize / 1024)} KB)` : 
-                      'Unknown'}</dd>
+    `${visualizationData.imageComparison.transformed.estimatedSize} bytes (${Math.round(visualizationData.imageComparison.transformed.estimatedSize / 1024)} KB)` : 
+    'Unknown'}</dd>
                     
                     ${visualizationData.imageComparison.transformed.estimatedSize && visualizationData.imageComparison.original.size ? `
                     <dt>Compression Ratio</dt>
@@ -1234,10 +1234,10 @@ export function createEnhancedHtmlReport(
                   <th>Device Widths</th>
                   <td>
                     ${config.responsive.deviceWidths ? 
-                      Object.entries(config.responsive.deviceWidths).map(([device, width]) => 
-                        `${device}: ${width}px`
-                      ).join(', ') : 
-                      'None'}
+    Object.entries(config.responsive.deviceWidths).map(([device, width]) => 
+      `${device}: ${width}px`
+    ).join(', ') : 
+    'None'}
                   </td>
                 </tr>
               </table>

@@ -3,7 +3,7 @@
  */
 
 import { Env } from '../types';
-import { createLogger } from '../utils/logging';
+import { createLogger } from '../utils/logger-factory';
 import { 
   CacheService, 
   DebugService, 

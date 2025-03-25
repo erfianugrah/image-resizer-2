@@ -457,6 +457,9 @@ For detailed information about the cache tag system, see [CACHE_TAGS.md](docs/CA
 - `LOGGING_INCLUDE_TIMESTAMP`: Whether to include timestamps (`true`/`false`)
 - `LOGGING_ENABLE_STRUCTURED_LOGS`: Whether to output logs in JSON format (`true`/`false`)
 - `LOGGING_BREADCRUMBS_ENABLED`: Whether to enable breadcrumb tracing (`true`/`false`)
+- `LOGGING_USE_PINO`: Use Pino logger instead of built-in logger (`true`/`false`)
+- `LOGGING_PRETTY_PRINT`: Format logs in a human-readable format (`true`/`false`)
+- `LOGGING_COLORIZE`: Use colors in pretty-printed logs (`true`/`false`)
 
 For detailed information about the logging system and breadcrumb tracing, see [LOGGING.md](docs/LOGGING.md).
 

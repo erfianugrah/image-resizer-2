@@ -1049,7 +1049,7 @@ export class DefaultCacheService implements CacheService {
       // Path-based tags generation
       try {
         // Add base tag for the image path (normalized to avoid special chars)
-        const leadingSlashPattern = config.cache.cacheTags?.pathNormalization?.leadingSlashPattern || '^\/+';
+        const leadingSlashPattern = config.cache.cacheTags?.pathNormalization?.leadingSlashPattern || '^/+';
         const invalidCharsPattern = config.cache.cacheTags?.pathNormalization?.invalidCharsPattern || '[^a-zA-Z0-9-_/.]';
         const replacementChar = config.cache.cacheTags?.pathNormalization?.replacementChar || '-';
         
@@ -1252,9 +1252,9 @@ export class DefaultCacheService implements CacheService {
       if (storageResult.response && typeof storageResult.response.status === 'number') {
         const status = storageResult.response.status;
         const statusCategory = status >= 200 && status < 300 ? 'success' :
-                              status >= 300 && status < 400 ? 'redirect' :
-                              status >= 400 && status < 500 ? 'client-error' :
-                              'server-error';
+          status >= 300 && status < 400 ? 'redirect' :
+            status >= 400 && status < 500 ? 'client-error' :
+              'server-error';
         
         tags.push(`${prefix}status-${statusCategory}`);
         
@@ -2128,27 +2128,27 @@ export class DefaultCacheService implements CacheService {
         
         // Format-specific TTL adjustments
         switch (format) {
-          case 'svg+xml':
-            // SVGs are vector and rarely change, so cache longer
-            ttl = Math.max(ttl, 86400 * 14); // 2 weeks
-            break;
+        case 'svg+xml':
+          // SVGs are vector and rarely change, so cache longer
+          ttl = Math.max(ttl, 86400 * 14); // 2 weeks
+          break;
             
-          case 'avif':
-          case 'webp':
-            // Modern formats indicate optimization focus, can cache longer
-            ttl = Math.max(ttl, 86400 * 7); // 1 week
-            break;
+        case 'avif':
+        case 'webp':
+          // Modern formats indicate optimization focus, can cache longer
+          ttl = Math.max(ttl, 86400 * 7); // 1 week
+          break;
             
-          case 'jpeg':
-          case 'jpg':
-          case 'png':
-            // Standard formats, use normal TTL
-            break;
+        case 'jpeg':
+        case 'jpg':
+        case 'png':
+          // Standard formats, use normal TTL
+          break;
             
-          case 'gif':
-            // GIFs might be animations, slightly shorter TTL
-            ttl = Math.min(ttl, 86400 * 3); // 3 days
-            break;
+        case 'gif':
+          // GIFs might be animations, slightly shorter TTL
+          ttl = Math.min(ttl, 86400 * 3); // 3 days
+          break;
         }
       }
       

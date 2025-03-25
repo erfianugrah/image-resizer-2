@@ -33,6 +33,9 @@
 		"LOGGING_STRUCTURED": "true",
 		"LOGGING_TIMESTAMP": "true",
 		"LOGGING_BREADCRUMBS_ENABLED": "true",
+		"LOGGING_USE_PINO": "true", // Set to true to enable Pino logger
+		"LOGGING_PRETTY_PRINT": "true", // Set to true for pretty logs (development)
+		"LOGGING_COLORIZE": "true", // Set to true for colorized logs (development)
 		/* Detector Configuration */
 		/* Cache Settings */
 		"DETECTOR_CACHE_MAX_SIZE": "5000",
@@ -261,6 +264,9 @@
 				"LOGGING_STRUCTURED": "true",
 				"LOGGING_TIMESTAMP": "true",
 				"LOGGING_BREADCRUMBS_ENABLED": "true",
+				"LOGGING_USE_PINO": "true", // Set to true to enable Pino logger
+				"LOGGING_PRETTY_PRINT": "true", // Set to true for pretty logs (development)
+				"LOGGING_COLORIZE": "true", // Set to true for colorized logs (development)
 				/* Detector Configuration */
 				/* Cache Settings */
 				"DETECTOR_CACHE_MAX_SIZE": "2000", // Smaller in development
@@ -443,6 +449,9 @@
 				"LOGGING_STRUCTURED": "true",
 				"LOGGING_TIMESTAMP": "true",
 				"LOGGING_BREADCRUMBS_ENABLED": "true",
+				"LOGGING_USE_PINO": "true", // Set to true to enable Pino logger
+				"LOGGING_PRETTY_PRINT": "true", // Set to true for pretty logs (development)
+				"LOGGING_COLORIZE": "true", // Set to true for colorized logs (development)
 				/* Detector Configuration */
 				/* Cache Settings */
 				"DETECTOR_CACHE_MAX_SIZE": "5000",
@@ -624,13 +633,16 @@
 				"DEBUG": "true",
 				"REMOTE_URL": "https://cdn.erfianugrah.com",
 				"FALLBACK_URL": "https://cdn.erfianugrah.com",
-				"STORAGE_PRIORITY": "remote,fallback", // Default storage priority order
+				"STORAGE_PRIORITY": "r2,remote,fallback", // Default storage priority order
 				"ENABLE_AKAMAI_COMPATIBILITY": "true", // Enabled in production
 				"ENABLE_AKAMAI_ADVANCED_FEATURES": "true", // Enable advanced Akamai features in production
 				"LOGGING_LEVEL": "DEBUG",
 				"LOGGING_STRUCTURED": "true",
 				"LOGGING_TIMESTAMP": "true",
 				"LOGGING_BREADCRUMBS_ENABLED": "true",
+				"LOGGING_USE_PINO": "true", // Set to true to enable Pino logger
+				"LOGGING_PRETTY_PRINT": "true", // Set to true for pretty logs (development)
+				"LOGGING_COLORIZE": "true", // Set to true for colorized logs (development)
 				/* Detector Configuration */
 				/* Cache Settings */
 				"DETECTOR_CACHE_MAX_SIZE": "10000", // Larger in production
@@ -808,7 +820,7 @@
 			"r2_buckets": [
 				{
 					"binding": "IMAGES_BUCKET",
-					"bucket_name": "images"
+					"bucket_name": "images-weur"
 				}
 			]
 		}

@@ -13,8 +13,10 @@ import { Env } from '../types';
 // Use default logger until a configured one is provided
 let logger: Logger = defaultLogger;
 
-// Pre-loaded AWS client
-let awsClientInitialized = false;
+// Flag to track if AWS client is initialized
+// This will be used in a future implementation
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const awsClientInitialized = false;
 
 /**
  * Set the logger for the auth module

@@ -15,6 +15,9 @@ export interface Env {
   LOGGING_STRUCTURED?: string;
   LOGGING_TIMESTAMP?: string;
   LOGGING_BREADCRUMBS_ENABLED?: string;
+  LOGGING_USE_PINO?: string;
+  LOGGING_PRETTY_PRINT?: string;
+  LOGGING_COLORIZE?: string;
   CACHE_TAGS_ENABLED?: string;
   CACHE_TAGS_PREFIX?: string;
   CACHE_TAGS_CUSTOM?: string;

@@ -1178,10 +1178,8 @@ export class DefaultStorageService implements StorageService {
       }
       
       // Check if authentication is required for this origin
-      let finalUrl: string;
-      
       // Set the base URL
-      finalUrl = new URL(path, fallbackUrl).toString();
+      const finalUrl = new URL(path, fallbackUrl).toString();
       
       // Check if fallback auth is enabled specifically for this URL
       if (config.storage.fallbackAuth?.enabled) {

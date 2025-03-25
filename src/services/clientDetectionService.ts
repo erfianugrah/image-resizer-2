@@ -200,7 +200,7 @@ export class DefaultClientDetectionService implements ClientDetectionService {
         
         // Cap at reasonable maximum for the device class
         const maxWidth = clientInfo.deviceClassification === 'high-end' ? 2500 :
-                        clientInfo.deviceClassification === 'low-end' ? 1200 : 1800;
+          clientInfo.deviceClassification === 'low-end' ? 1200 : 1800;
         
         calculatedWidth = Math.min(calculatedWidth, maxWidth);
         
@@ -603,16 +603,16 @@ export class DefaultClientDetectionService implements ClientDetectionService {
       if (ectHeader) {
         // ECT header values: slow-2g, 2g, 3g, 4g
         switch (ectHeader.toLowerCase()) {
-          case 'slow-2g':
-          case '2g':
-            networkQuality = 'slow';
-            break;
-          case '3g':
-            networkQuality = 'medium';
-            break;
-          case '4g':
-            networkQuality = 'fast';
-            break;
+        case 'slow-2g':
+        case '2g':
+          networkQuality = 'slow';
+          break;
+        case '3g':
+          networkQuality = 'medium';
+          break;
+        case '4g':
+          networkQuality = 'fast';
+          break;
         }
       } else if (!isNaN(downlink)) {
         // Downlink is in Mbps
