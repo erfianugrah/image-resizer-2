@@ -231,7 +231,7 @@
    * Smart Placement for optimal performance
    */
 	"placement": {
-		"mode": "smart"
+		"mode": "off"
 	},
 	/**
    * R2 Binding for image storage
