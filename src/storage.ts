@@ -42,6 +42,10 @@ export interface StorageResult {
   height?: number; // The height of the image if available
 }
 
+// Cache for path transformations
+const pathTransformCache = new Map<string, string>();
+const MAX_CACHE_SIZE = 1000;
+
 /**
  * Apply path transformations for any origin type
  * This helper function is used to transform paths based on origin type
@@ -51,6 +55,14 @@ function applyPathTransformation(
   config: ImageResizerConfig, 
   originType: 'r2' | 'remote' | 'fallback'
 ): string {
+  // Create a cache key
+  const cacheKey = `${path}:${originType}`;
+  
+  // Check cache first
+  if (pathTransformCache.has(cacheKey)) {
+    return pathTransformCache.get(cacheKey)!;
+  }
+  
   // Skip if no pathTransforms in config
   if (!config.pathTransforms) {
     return path;
@@ -91,7 +103,105 @@ function applyPathTransformation(
     }
   }
   
+  // Save result in cache
+  pathTransformCache.set(cacheKey, normalizedPath);
+  
+  // Prune cache if too large
+  if (pathTransformCache.size > MAX_CACHE_SIZE) {
+    // Remove oldest entry (first in map)
+    const iterator = pathTransformCache.keys().next();
+    if (iterator && !iterator.done && iterator.value) {
+      pathTransformCache.delete(iterator.value);
+    }
+  }
+  
   return normalizedPath;
+}
+
+/**
+ * Helper function to extract conditional request options
+ */
+function extractConditionalOptions(request: Request): R2GetOptions {
+  const options: R2GetOptions = {};
+  
+  // Process If-None-Match / If-Modified-Since
+  const ifNoneMatch = request.headers.get('If-None-Match');
+  const ifModifiedSince = request.headers.get('If-Modified-Since');
+  
+  if (ifNoneMatch) {
+    options.onlyIf = { etagDoesNotMatch: ifNoneMatch };
+  } else if (ifModifiedSince) {
+    const ifModifiedSinceDate = new Date(ifModifiedSince);
+    if (!isNaN(ifModifiedSinceDate.getTime())) {
+      options.onlyIf = { uploadedAfter: ifModifiedSinceDate };
+    }
+  }
+  
+  // Process Range header
+  const rangeHeader = request.headers.get('Range');
+  if (rangeHeader && rangeHeader.startsWith('bytes=')) {
+    try {
+      const rangeValue = rangeHeader.substring(6);
+      const [start, end] = rangeValue.split('-').map(v => parseInt(v, 10));
+      
+      if (!isNaN(start)) {
+        const range: R2Range = { offset: start };
+        
+        if (!isNaN(end)) {
+          range.length = end - start + 1;
+        }
+        
+        options.range = range;
+      }
+    } catch (e) {
+      // Invalid range header, ignore
+      logger.warn('Invalid range header', { rangeHeader });
+    }
+  }
+  
+  return options;
+}
+
+/**
+ * Helper function to create R2 response
+ */
+function createR2Response(
+  object: any, // Using any to avoid type issues with R2ObjectBody vs R2Object
+  options: R2GetOptions, 
+  normalizedPath: string,
+  config?: ImageResizerConfig
+): StorageResult {
+  // Create headers using R2 object's writeHttpMetadata
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  
+  // Add additional headers
+  const r2CacheTtl = config?.cache.ttl.r2Headers || 86400;
+  headers.set('Cache-Control', `public, max-age=${r2CacheTtl}`);
+  headers.set('Accept-Ranges', 'bytes');
+  
+  // Set status based on range request
+  let status = 200;
+  if (options.range && 'offset' in options.range) {
+    status = 206;
+    const offset = options.range.offset || 0;
+    const length = options.range.length || 0;
+    const end = offset + length - 1;
+    const total = object.size;
+    headers.set('Content-Range', `bytes ${offset}-${end}/${total}`);
+  }
+  
+  // Return a successful result with the object details
+  return {
+    response: new Response(object.body, {
+      headers,
+      status
+    }),
+    sourceType: 'r2',
+    contentType: object.httpMetadata?.contentType || null,
+    size: object.size,
+    path: normalizedPath
+  };
 }
 
 /**
@@ -107,119 +217,37 @@ async function fetchFromR2(
     // Normalize the path by removing leading slashes
     const normalizedPath = path.replace(/^\/+/, '');
     
-    // Handle conditional requests if we have a request object
+    // Prepare options - empty by default
+    const options: R2GetOptions = {};
+    
+    // Add conditional request options if we have a request
     if (request) {
-      const ifNoneMatch = request.headers.get('If-None-Match');
-      const ifModifiedSince = request.headers.get('If-Modified-Since');
-      
-      // Check for conditional request options
-      const options: R2GetOptions = {};
-      
-      if (ifNoneMatch) {
-        options.onlyIf = { etagDoesNotMatch: ifNoneMatch };
-      } else if (ifModifiedSince) {
-        const ifModifiedSinceDate = new Date(ifModifiedSince);
-        if (!isNaN(ifModifiedSinceDate.getTime())) {
-          options.onlyIf = { uploadedAfter: ifModifiedSinceDate };
-        }
-      }
-      
-      // Handle range requests
-      const rangeHeader = request.headers.get('Range');
-      if (rangeHeader && rangeHeader.startsWith('bytes=')) {
-        try {
-          const rangeValue = rangeHeader.substring(6);
-          const [start, end] = rangeValue.split('-').map(v => parseInt(v, 10));
-          
-          if (!isNaN(start)) {
-            const range: R2Range = { offset: start };
-            
-            if (!isNaN(end)) {
-              range.length = end - start + 1;
-            }
-            
-            options.range = range;
-          }
-        } catch (e) {
-          // Invalid range header, ignore
-          logger.warn('Invalid range header', { rangeHeader });
-        }
-      }
-      
-      // Attempt to get the object from R2 with options
-      const object = await bucket.get(normalizedPath, options);
-      
-      // Handle 304 Not Modified
-      if (object === null && (ifNoneMatch || ifModifiedSince)) {
-        return {
-          response: new Response(null, { status: 304 }),
-          sourceType: 'r2',
-          contentType: null,
-          size: 0
-        };
-      }
-      
-      if (!object) {
-        return null;
-      }
-      
-      // Create headers using R2 object's writeHttpMetadata
-      const headers = new Headers();
-      object.writeHttpMetadata(headers);
-      
-      // Add additional headers
-      const r2CacheTtl = config?.cache.ttl.r2Headers || 86400;
-      headers.set('Cache-Control', `public, max-age=${r2CacheTtl}`);
-      headers.set('Accept-Ranges', 'bytes');
-      
-      // The Range response
-      let status = 200;
-      if (options.range && 'offset' in options.range) {
-        status = 206;
-        const offset = options.range.offset || 0;
-        const length = options.range.length || 0;
-        const end = offset + length - 1;
-        const total = object.size;
-        headers.set('Content-Range', `bytes ${offset}-${end}/${total}`);
-      }
-      
-      // Return a successful result with the object details
+      // Extract and apply conditional options
+      const conditionalOptions = extractConditionalOptions(request);
+      Object.assign(options, conditionalOptions);
+    }
+    
+    // Single code path for fetching with options
+    const object = await bucket.get(normalizedPath, options);
+    
+    // Handle 304 Not Modified for conditional requests
+    if (object === null && request && 
+        (request.headers.get('If-None-Match') || request.headers.get('If-Modified-Since'))) {
       return {
-        response: new Response(object.body, {
-          headers,
-          status
-        }),
+        response: new Response(null, { status: 304 }),
         sourceType: 'r2',
-        contentType: object.httpMetadata?.contentType || null,
-        size: object.size,
-        path: normalizedPath
-      };
-    } else {
-      // Simple case - no request object
-      const object = await bucket.get(normalizedPath);
-      
-      if (!object) {
-        return null;
-      }
-      
-      // Create headers using R2 object's writeHttpMetadata
-      const headers = new Headers();
-      object.writeHttpMetadata(headers);
-      
-      // Add additional headers
-      const r2CacheTtl = config?.cache.ttl.r2Headers || 86400;
-      headers.set('Cache-Control', `public, max-age=${r2CacheTtl}`);
-      headers.set('Accept-Ranges', 'bytes');
-      
-      // Return a successful result with the object details
-      return {
-        response: new Response(object.body, { headers }),
-        sourceType: 'r2',
-        contentType: object.httpMetadata?.contentType || null,
-        size: object.size,
-        path: normalizedPath
+        contentType: null,
+        size: 0
       };
     }
+    
+    // Return null if object not found
+    if (!object) {
+      return null;
+    }
+    
+    // Create response using helper function
+    return createR2Response(object, options, normalizedPath, config);
   } catch (error) {
     logger.error('Error fetching from R2', { 
       error: error instanceof Error ? error.message : String(error),
@@ -686,48 +714,72 @@ export async function fetchImage(
           throw new Error('R2 bucket is undefined');
         }
         
-        const result = await fetchFromR2(r2Key, bucket, request, config);
-        const fetchEnd = Date.now();
-        
-        if (result) {
-          logger.debug('Found image in R2 bucket for subrequest', { r2Key });
-          logger.breadcrumb('R2 fetch successful for image-resizing subrequest', fetchEnd - fetchStart, {
-            contentType: result.contentType,
-            size: result.size,
-            key: r2Key
-          });
-          return result;
-        }
-        
-        // If the image is not found with transformed path, try the simple normalized path as fallback
+        // Only do parallel fetches when paths might be different
         const normalizedPath = path.startsWith('/') ? path.substring(1) : path;
+        
         if (r2Key !== normalizedPath) {
-          logger.debug('Image not found with transformed key, trying normalized path', { 
-            r2Key, 
-            normalizedPath 
+          // Use parallel fetching to optimize performance
+          logger.debug('Using parallel R2 fetch for subrequest', {
+            r2Key,
+            normalizedPath
           });
           
-          // Make sure bucket is defined before using it
-          if (!bucket) {
-            logger.error('R2 bucket is undefined', { path: normalizedPath });
-            throw new Error('R2 bucket is undefined');
+          // Start both fetches in parallel
+          const [transformedResult, normalizedResult] = await Promise.allSettled([
+            fetchFromR2(r2Key, bucket, request, config),
+            fetchFromR2(normalizedPath, bucket, request, config)
+          ]);
+          
+          // Check transformed path result first
+          if (transformedResult.status === 'fulfilled' && transformedResult.value) {
+            const fetchEnd = Date.now();
+            logger.debug('Found image in R2 bucket using transformed key', { r2Key });
+            logger.breadcrumb('R2 parallel fetch successful for transformed key', fetchEnd - fetchStart, {
+              contentType: transformedResult.value.contentType,
+              size: transformedResult.value.size,
+              key: r2Key
+            });
+            return transformedResult.value;
           }
           
-          const fallbackResult = await fetchFromR2(normalizedPath, bucket, request, config);
-          if (fallbackResult) {
+          // Then check normalized path result
+          if (normalizedResult.status === 'fulfilled' && normalizedResult.value) {
+            const fetchEnd = Date.now();
             logger.debug('Found image in R2 bucket using normalized path', { normalizedPath });
-            logger.breadcrumb('R2 fallback fetch successful', Date.now() - fetchStart, {
-              contentType: fallbackResult.contentType,
-              size: fallbackResult.size,
+            logger.breadcrumb('R2 parallel fetch successful for normalized path', fetchEnd - fetchStart, {
+              contentType: normalizedResult.value.contentType,
+              size: normalizedResult.value.size,
               key: normalizedPath
             });
-            return fallbackResult;
+            return normalizedResult.value;
           }
+          
+          // Neither fetch worked
+          const fetchEnd = Date.now();
+          logger.breadcrumb('Image not found in R2 for subrequest (parallel fetch)', fetchEnd - fetchStart, {
+            paths: `${r2Key}, ${normalizedPath}`,
+            fetchMethod: 'parallel'
+          });
+        } else {
+          // Paths are the same, just do one fetch
+          const result = await fetchFromR2(r2Key, bucket, request, config);
+          const fetchEnd = Date.now();
+          
+          if (result) {
+            logger.debug('Found image in R2 bucket for subrequest', { r2Key });
+            logger.breadcrumb('R2 fetch successful for image-resizing subrequest', fetchEnd - fetchStart, {
+              contentType: result.contentType,
+              size: result.size,
+              key: r2Key
+            });
+            return result;
+          }
+          
+          logger.breadcrumb('Image not found in R2 for subrequest', fetchEnd - fetchStart, {
+            path: r2Key,
+            fetchMethod: 'single'
+          });
         }
-        
-        logger.breadcrumb('Image not found in R2 for subrequest', fetchEnd - fetchStart, {
-          paths: r2Key !== normalizedPath ? `${r2Key}, ${normalizedPath}` : r2Key
-        });
       } catch (error) {
         logger.error('Error in R2 fetch for subrequest', {
           error: error instanceof Error ? error.message : String(error),
@@ -772,21 +824,73 @@ export async function fetchImage(
       
       const bucket = env.IMAGES_BUCKET;
       const fetchStart = Date.now();
+      
       // Make sure bucket is defined before using it
       if (!bucket) {
         logger.error('R2 bucket is undefined', { path: transformedPath });
         throw new Error('R2 bucket is undefined');
       }
-      result = await fetchFromR2(transformedPath, bucket, request, config);
-      const fetchEnd = Date.now();
       
-      if (result) {
-        logger.breadcrumb('R2 fetch successful', fetchEnd - fetchStart, {
-          size: result.size,
-          contentType: result.contentType
+      // Only do parallel fetches when paths might be different
+      if (transformedPath !== path && transformedPath !== path.replace(/^\/+/, '')) {
+        // Create normalized path for parallel fetch
+        const normalizedPath = path.startsWith('/') ? path.substring(1) : path;
+        
+        // Start both fetches in parallel
+        logger.debug('Using parallel R2 fetch for transformed and normalized paths', {
+          transformedPath,
+          normalizedPath
         });
+        
+        const fetchPromises = [
+          fetchFromR2(transformedPath, bucket, request, config)
+            .then(result => result ? { result, path: 'transformed' } : null),
+          fetchFromR2(normalizedPath, bucket, request, config)
+            .then(result => result ? { result, path: 'normalized' } : null)
+        ];
+        
+        // Wait for results - use Promise.allSettled to get both results
+        const results = await Promise.allSettled(fetchPromises);
+        let finalResult = null;
+        
+        // Process results - first check for success
+        for (const promiseResult of results) {
+          if (promiseResult.status === 'fulfilled' && promiseResult.value) {
+            finalResult = promiseResult.value;
+            break;
+          }
+        }
+        
+        const fetchEnd = Date.now();
+        
+        if (finalResult) {
+          logger.debug('Parallel R2 fetch succeeded using path strategy', { 
+            pathType: finalResult.path 
+          });
+          
+          result = finalResult.result;
+          
+          logger.breadcrumb('R2 fetch successful', fetchEnd - fetchStart, {
+            size: result.size,
+            contentType: result.contentType,
+            pathStrategy: finalResult.path
+          });
+        } else {
+          logger.breadcrumb('Parallel R2 fetch failed for all paths', fetchEnd - fetchStart);
+        }
       } else {
-        logger.breadcrumb('R2 fetch failed', fetchEnd - fetchStart);
+        // Single path fetch - original behavior
+        result = await fetchFromR2(transformedPath, bucket, request, config);
+        const fetchEnd = Date.now();
+        
+        if (result) {
+          logger.breadcrumb('R2 fetch successful', fetchEnd - fetchStart, {
+            size: result.size,
+            contentType: result.contentType
+          });
+        } else {
+          logger.breadcrumb('R2 fetch failed', fetchEnd - fetchStart);
+        }
       }
     }
     
