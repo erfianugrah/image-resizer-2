@@ -440,6 +440,43 @@ export class PerformanceBaseline {
   clear(): void {
     this.baselines.clear();
   }
+  
+  /**
+   * Initialize a baseline category with empty data
+   * 
+   * @param category The measurement category to initialize
+   * @param maxSamples Maximum number of samples to keep (default: 100)
+   */
+  initializeBaseline(category: string, maxSamples: number = 100): void {
+    if (this.logger) {
+      this.logger.debug(`Initializing performance baseline for category: ${category}`);
+    }
+    
+    // Set up empty stats for common operations in this category
+    const defaultOperations = ['read', 'write', 'process', 'transform', 'fetch', 'general'];
+    
+    for (const operation of defaultOperations) {
+      const key = `${category}:${operation}`;
+      
+      // Only initialize if not already present
+      if (!this.baselines.has(key)) {
+        this.baselines.set(key, {
+          count: 0,
+          totalTime: 0,
+          minTime: Number.MAX_SAFE_INTEGER,
+          maxTime: 0,
+          average: 0,
+          category,
+          operation,
+          samples: []
+        });
+      }
+    }
+    
+    if (this.logger) {
+      this.logger.debug(`Initialized performance baseline for ${category} with ${defaultOperations.length} default operations`);
+    }
+  }
 }
 
 // Sample data type for performance statistics

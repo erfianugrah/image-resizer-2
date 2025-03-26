@@ -24,6 +24,15 @@ export class DefaultClientDetectionService implements ClientDetectionService {
     lowEnd: number;
     highEnd: number;
   };
+  private detectionStatistics: {
+    detectionCount: number;
+    cacheHitCount: number;
+    detectionSources: Record<string, number>;
+    detectedBrowsers: Record<string, number>;
+    detectedDeviceTypes: Record<string, number>;
+    detectedFormatSupport: Record<string, number>;
+    averageDetectionTime: number;
+  };
 
   constructor(logger: Logger) {
     this.logger = logger;
@@ -36,6 +45,128 @@ export class DefaultClientDetectionService implements ClientDetectionService {
       lowEnd: 30,
       highEnd: 70
     };
+    this.detectionStatistics = {
+      detectionCount: 0,
+      cacheHitCount: 0,
+      detectionSources: {},
+      detectedBrowsers: {},
+      detectedDeviceTypes: {},
+      detectedFormatSupport: {},
+      averageDetectionTime: 0
+    };
+  }
+  
+  /**
+   * Service lifecycle method for initialization
+   * 
+   * This method is called during the service container initialization phase
+   * and performs any necessary setup such as:
+   * - Initializing the detector cache
+   * - Setting up detection statistics tracking
+   * - Configuring threshold values
+   * 
+   * @returns Promise that resolves when initialization is complete
+   */
+  async initialize(): Promise<void> {
+    this.logger.debug('Initializing ClientDetectionService');
+    
+    // Reset detection statistics
+    this.detectionStatistics = {
+      detectionCount: 0,
+      cacheHitCount: 0,
+      detectionSources: {},
+      detectedBrowsers: {},
+      detectedDeviceTypes: {},
+      detectedFormatSupport: {
+        webp: 0,
+        avif: 0,
+        jpeg: 0,
+        png: 0,
+        gif: 0
+      },
+      averageDetectionTime: 0
+    };
+    
+    // Reset detector cache if necessary
+    if (!this.detectorCacheEnabled) {
+      detector.clearCache();
+      this.logger.debug('Cleared detector cache during initialization (cache disabled)');
+    }
+    
+    // Update detector configuration
+    detector.updateConfig({
+      cache: {
+        enableCache: this.detectorCacheEnabled,
+        maxCacheSize: 1000
+      }
+    });
+    
+    this.logger.info('ClientDetectionService initialization complete');
+    return Promise.resolve();
+  }
+  
+  /**
+   * Service lifecycle method for shutdown
+   * 
+   * This method is called during the service container shutdown phase
+   * and performs any necessary cleanup such as:
+   * - Logging detection statistics
+   * - Clearing the detector cache
+   * 
+   * @returns Promise that resolves when shutdown is complete
+   */
+  async shutdown(): Promise<void> {
+    this.logger.debug('Shutting down ClientDetectionService');
+    
+    // Log detection statistics if any detections were performed
+    if (this.detectionStatistics.detectionCount > 0) {
+      const cacheHitRate = Math.round(
+        (this.detectionStatistics.cacheHitCount / this.detectionStatistics.detectionCount) * 100
+      );
+      
+      this.logger.debug('Client detection statistics', {
+        detectionCount: this.detectionStatistics.detectionCount,
+        cacheHitCount: this.detectionStatistics.cacheHitCount,
+        cacheHitRate: `${cacheHitRate}%`,
+        averageDetectionTime: `${Math.round(this.detectionStatistics.averageDetectionTime)}ms`,
+        detectionSources: this.detectionStatistics.detectionSources,
+        mostCommonBrowser: this.getMostCommonKey(this.detectionStatistics.detectedBrowsers),
+        mostCommonDeviceType: this.getMostCommonKey(this.detectionStatistics.detectedDeviceTypes),
+        formatSupport: this.detectionStatistics.detectedFormatSupport
+      });
+    } else {
+      this.logger.debug('No client detections were performed during this session');
+    }
+    
+    // Clear the detector cache
+    detector.clearCache();
+    
+    this.logger.info('ClientDetectionService shutdown complete');
+    return Promise.resolve();
+  }
+  
+  /**
+   * Helper method to find the most common key in a record
+   * 
+   * @param record Record with keys and count values
+   * @returns The most common key or undefined if the record is empty
+   */
+  private getMostCommonKey(record: Record<string, number>): string | undefined {
+    if (Object.keys(record).length === 0) {
+      return undefined;
+    }
+    
+    let mostCommonKey: string | undefined;
+    let highestCount = 0;
+    
+    Object.entries(record).forEach(([key, count]) => {
+      if (count > highestCount) {
+        mostCommonKey = key;
+        highestCount = count;
+      }
+    });
+    
+    return mostCommonKey;
   }
 
   /**
@@ -69,14 +200,41 @@ export class DefaultClientDetectionService implements ClientDetectionService {
    * Detect client information from the request
    */
   async detectClient(request: Request): Promise<ClientInfo> {
+    const startTime = Date.now();
     this.logger.debug('Detecting client information', {
       url: request.url,
       headers: this.getSafeHeadersForLogging(request)
     });
 
     try {
+      // Increment detection count for statistics
+      this.detectionStatistics.detectionCount++;
+      
       // Use the detector utility to get client capabilities
       const capabilities = await detector.detect(request, this.detectorCacheEnabled);
+      
+      // Track cache hit (if available)
+      if (capabilities.fromCache) {
+        this.detectionStatistics.cacheHitCount++;
+      }
+      
+      // Track detection source
+      const source = capabilities.detectionSource || 'unknown';
+      if (this.detectionStatistics.detectionSources[source]) {
+        this.detectionStatistics.detectionSources[source]++;
+      } else {
+        this.detectionStatistics.detectionSources[source] = 1;
+      }
+      
+      // Track browser information
+      if (capabilities.browser?.name) {
+        const browser = capabilities.browser.name.toLowerCase();
+        if (this.detectionStatistics.detectedBrowsers[browser]) {
+          this.detectionStatistics.detectedBrowsers[browser]++;
+        } else {
+          this.detectionStatistics.detectedBrowsers[browser] = 1;
+        }
+      }
       
       // Convert the detector result to the ClientInfo interface
       const clientInfo: ClientInfo = {
@@ -96,6 +254,37 @@ export class DefaultClientDetectionService implements ClientDetectionService {
           ? capabilities.device.processors < 4
           : undefined
       };
+      
+      // Track device type
+      if (clientInfo.deviceType) {
+        const deviceType = clientInfo.deviceType;
+        if (this.detectionStatistics.detectedDeviceTypes[deviceType]) {
+          this.detectionStatistics.detectedDeviceTypes[deviceType]++;
+        } else {
+          this.detectionStatistics.detectedDeviceTypes[deviceType] = 1;
+        }
+      }
+      
+      // Track format support
+      if (clientInfo.acceptsWebp) {
+        this.detectionStatistics.detectedFormatSupport.webp++;
+      }
+      if (clientInfo.acceptsAvif) {
+        this.detectionStatistics.detectedFormatSupport.avif++;
+      }
+      
+      // Track detection time
+      const detectionTime = Date.now() - startTime;
+      const currentAvg = this.detectionStatistics.averageDetectionTime;
+      const count = this.detectionStatistics.detectionCount;
+      
+      // Calculate moving average for detection time
+      if (currentAvg === 0) {
+        this.detectionStatistics.averageDetectionTime = detectionTime;
+      } else {
+        this.detectionStatistics.averageDetectionTime = 
+          (currentAvg * (count - 1) + detectionTime) / count;
+      }
 
       this.logger.debug('Client detection completed', {
         deviceType: clientInfo.deviceType,
@@ -107,7 +296,9 @@ export class DefaultClientDetectionService implements ClientDetectionService {
         detectionMethod: capabilities.detectionSource || 'unknown',
         networkQuality: clientInfo.networkQuality,
         deviceClassification: clientInfo.deviceClassification,
-        preferredFormats: clientInfo.preferredFormats?.join(',')
+        preferredFormats: clientInfo.preferredFormats?.join(','),
+        detectionTime: `${detectionTime}ms`,
+        fromCache: capabilities.fromCache || false
       });
 
       return clientInfo;

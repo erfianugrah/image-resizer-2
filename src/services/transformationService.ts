@@ -37,6 +37,10 @@ export class DefaultImageTransformationService implements ImageTransformationSer
   private cacheService?: CacheService;
   private isOptimizedLogger: boolean;
   private performanceTracking: boolean;
+  private formatStatistics: Record<string, number> = {};
+  private optionStatistics: Record<string, any> = {};
+  private requestCount: number = 0;
+  private errorCount: number = 0;
   
   constructor(
     logger: Logger, 
@@ -54,6 +58,127 @@ export class DefaultImageTransformationService implements ImageTransformationSer
     
     // Determine if performance tracking is enabled
     this.performanceTracking = configService?.getConfig().debug?.performanceTracking !== false;
+  }
+  
+  /**
+   * Service lifecycle method for initialization
+   * 
+   * This method is called during the service container initialization phase
+   * and performs necessary setup such as:
+   * - Initializing format statistics tracking
+   * - Verifying required dependencies are present
+   * - Setting up performance benchmarks
+   * 
+   * @returns Promise that resolves when initialization is complete
+   */
+  async initialize(): Promise<void> {
+    this.logger.debug('Initializing ImageTransformationService');
+    
+    // Reset statistics
+    this.formatStatistics = {};
+    this.optionStatistics = {};
+    this.requestCount = 0;
+    this.errorCount = 0;
+    
+    // Verify that required services are available
+    if (!this.configService) {
+      this.logger.warn('ImageTransformationService initialized without ConfigurationService');
+    }
+    
+    // Client detection service is optional, but useful
+    if (!this.clientDetectionService) {
+      this.logger.debug('ImageTransformationService initialized without ClientDetectionService');
+    }
+    
+    // Initialize statistics tracking with default values
+    const defaultFormats = ['avif', 'webp', 'jpeg', 'png', 'gif', 'auto'];
+    defaultFormats.forEach(format => {
+      this.formatStatistics[format] = 0;
+    });
+    
+    // Initialize option statistics for tracking common transform options
+    this.optionStatistics = {
+      widthDistribution: {},
+      qualityDistribution: {},
+      fitModes: {},
+      pixelProcessed: 0,
+      avgProcessingTime: 0
+    };
+    
+    // Get configuration for additional initialization if available
+    if (this.configService) {
+      const config = this.configService.getConfig();
+      
+      // Additional format-specific initialization based on configuration
+      if (config.responsive?.formatQuality) {
+        Object.keys(config.responsive.formatQuality).forEach(format => {
+          if (!defaultFormats.includes(format)) {
+            this.formatStatistics[format] = 0;
+          }
+        });
+      }
+      
+      // Set performance tracking flag based on configuration
+      this.performanceTracking = config.debug?.performanceTracking !== false;
+      this.debugLog('Performance tracking ' + (this.performanceTracking ? 'enabled' : 'disabled'));
+    }
+    
+    this.logger.info('ImageTransformationService initialization complete');
+    return Promise.resolve();
+  }
+  
+  /**
+   * Service lifecycle method for shutdown
+   * 
+   * This method is called during the service container shutdown phase
+   * and performs cleanup tasks such as:
+   * - Logging format usage statistics
+   * - Reporting performance metrics
+   * 
+   * @returns Promise that resolves when shutdown is complete
+   */
+  async shutdown(): Promise<void> {
+    this.logger.debug('Shutting down ImageTransformationService');
+    
+    // Log format statistics if any transformations were performed
+    if (this.requestCount > 0) {
+      // Filter out formats with no usage
+      const usedFormats = Object.entries(this.formatStatistics)
+        .filter(([_, count]) => count > 0)
+        .reduce((acc, [format, count]) => {
+          acc[format] = count;
+          return acc;
+        }, {} as Record<string, number>);
+        
+      // Calculate percentages
+      const formatPercentages = Object.entries(usedFormats).reduce((acc, [format, count]) => {
+        acc[format] = Math.round((count / this.requestCount) * 100);
+        return acc;
+      }, {} as Record<string, number>);
+      
+      this.logger.debug('Transformation format statistics', {
+        requestCount: this.requestCount,
+        errorCount: this.errorCount,
+        errorRate: this.requestCount > 0 ? Math.round((this.errorCount / this.requestCount) * 100) + '%' : '0%',
+        formatCounts: usedFormats,
+        formatPercentages
+      });
+      
+      // Log detailed option statistics if available
+      if (Object.keys(this.optionStatistics.widthDistribution).length > 0) {
+        this.logger.debug('Transformation option statistics', {
+          widthDistribution: this.optionStatistics.widthDistribution,
+          qualityDistribution: this.optionStatistics.qualityDistribution,
+          fitModes: this.optionStatistics.fitModes,
+          avgProcessingTime: this.optionStatistics.avgProcessingTime
+        });
+      }
+    } else {
+      this.logger.debug('No transformations were performed during this session');
+    }
+    
+    this.logger.info('ImageTransformationService shutdown complete');
+    return Promise.resolve();
   }
   
   /**
@@ -503,6 +628,9 @@ export class DefaultImageTransformationService implements ImageTransformationSer
         userAgent: request.headers.get('User-Agent')?.substring(0, 50) || 'unknown'
       });
       
+      // Track statistics for the successful transformation
+      this.trackTransformationStatistics(transformOptions, fetchStart, Date.now());
+      
       return response;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -517,6 +645,9 @@ export class DefaultImageTransformationService implements ImageTransformationSer
         error: errorMsg,
         fallback: 'original image'
       });
+      
+      // Track error in statistics
+      this.errorCount++;
       
       // In case of error, return the original image
       return originalResponse;
@@ -1482,6 +1613,97 @@ export class DefaultImageTransformationService implements ImageTransformationSer
     
     // Round to the nearest 100 for caching efficiency
     return Math.ceil(calculatedWidth / 100) * 100;
+  }
+
+  /**
+   * Track transformation statistics for monitoring and optimization
+   * 
+   * @param options The transformation options applied
+   * @param startTime The start time of the transformation
+   * @param endTime The end time of the transformation
+   */
+  private trackTransformationStatistics(
+    options: TransformOptions, 
+    startTime: number, 
+    endTime: number
+  ): void {
+    // Skip tracking if not in performance tracking mode
+    if (!this.performanceTracking) {
+      return;
+    }
+    
+    // Increment request count
+    this.requestCount++;
+    
+    // Track format usage
+    if (options.format) {
+      const format = options.format as string;
+      if (this.formatStatistics[format] !== undefined) {
+        this.formatStatistics[format]++;
+      } else {
+        this.formatStatistics[format] = 1;
+      }
+    } else {
+      // Default format tracking
+      this.formatStatistics['auto']++;
+    }
+    
+    // Track width distribution
+    if (options.width && typeof options.width === 'number') {
+      // Round to nearest 100px for better grouping
+      const widthBucket = Math.floor(options.width / 100) * 100;
+      const widthKey = `${widthBucket}-${widthBucket + 99}`;
+      
+      if (this.optionStatistics.widthDistribution[widthKey] !== undefined) {
+        this.optionStatistics.widthDistribution[widthKey]++;
+      } else {
+        this.optionStatistics.widthDistribution[widthKey] = 1;
+      }
+    }
+    
+    // Track quality distribution
+    if (options.quality && typeof options.quality === 'number') {
+      // Group by 10s for better aggregation
+      const qualityBucket = Math.floor(options.quality / 10) * 10;
+      const qualityKey = `${qualityBucket}-${qualityBucket + 9}`;
+      
+      if (this.optionStatistics.qualityDistribution[qualityKey] !== undefined) {
+        this.optionStatistics.qualityDistribution[qualityKey]++;
+      } else {
+        this.optionStatistics.qualityDistribution[qualityKey] = 1;
+      }
+    }
+    
+    // Track fit modes
+    if (options.fit) {
+      const fit = options.fit as string;
+      if (this.optionStatistics.fitModes[fit] !== undefined) {
+        this.optionStatistics.fitModes[fit]++;
+      } else {
+        this.optionStatistics.fitModes[fit] = 1;
+      }
+    }
+    
+    // Track processing time
+    const processingTime = endTime - startTime;
+    const currentAvg = this.optionStatistics.avgProcessingTime;
+    
+    // Calculate new moving average
+    if (currentAvg === 0) {
+      this.optionStatistics.avgProcessingTime = processingTime;
+    } else {
+      // Simple moving average calculation
+      this.optionStatistics.avgProcessingTime = 
+        (currentAvg * (this.requestCount - 1) + processingTime) / this.requestCount;
+    }
+    
+    // Estimate pixels processed if dimensions are available
+    if (options.width && options.height && 
+        typeof options.width === 'number' && 
+        typeof options.height === 'number') {
+      const pixels = options.width * options.height;
+      this.optionStatistics.pixelProcessed += pixels;
+    }
   }
 
   /**

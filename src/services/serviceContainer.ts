@@ -29,9 +29,10 @@ import { createAuthService } from './authServiceFactory';
  * Create a service container with all required services
  * 
  * @param env Environment variables from Cloudflare
+ * @param initializeLifecycle Whether to initialize service lifecycle
  * @returns Service container with all services
  */
-export function createServiceContainer(env: Env): ServiceContainer {
+export function createServiceContainer(env: Env, initializeLifecycle = false): ServiceContainer {
   // Create the configuration service first
   // Create a minimal logger for bootstrapping the configuration service
   // We're using any here because we need to bootstrap without a full config
@@ -94,14 +95,8 @@ export function createServiceContainer(env: Env): ServiceContainer {
   // Connect the client detection service to the transformation service
   transformationService.setClientDetectionService(clientDetectionService);
 
-  mainLogger.info('Service container initialized with all services', {
-    serviceCount: 8,
-    services: 'configuration, logging, storage, transformation, cache, debug, clientDetection, auth',
-    environment: config.environment
-  });
-
-  // Return the container with all services
-  return {
+  // Create the service container
+  const container: ServiceContainer = {
     storageService,
     transformationService,
     cacheService,
@@ -110,6 +105,97 @@ export function createServiceContainer(env: Env): ServiceContainer {
     configurationService,
     loggingService,
     authService,
-    logger: mainLogger
+    logger: mainLogger,
+    
+    // Add lifecycle management methods
+    async initialize(): Promise<void> {
+      mainLogger.debug('Initializing service container lifecycle');
+      
+      // Initialize services in dependency order
+      await configurationService.initialize();
+      
+      // Initialize other services that support lifecycle
+      if ('initialize' in loggingService && typeof loggingService.initialize === 'function') {
+        await (loggingService as any).initialize();
+      }
+      
+      if ('initialize' in authService && typeof authService.initialize === 'function') {
+        await (authService as any).initialize();
+      }
+      
+      if ('initialize' in storageService && typeof storageService.initialize === 'function') {
+        await (storageService as any).initialize();
+      }
+      
+      if ('initialize' in cacheService && typeof cacheService.initialize === 'function') {
+        await (cacheService as any).initialize();
+      }
+      
+      if ('initialize' in clientDetectionService && typeof clientDetectionService.initialize === 'function') {
+        await (clientDetectionService as any).initialize();
+      }
+      
+      if ('initialize' in debugService && typeof debugService.initialize === 'function') {
+        await (debugService as any).initialize();
+      }
+      
+      if ('initialize' in transformationService && typeof transformationService.initialize === 'function') {
+        await (transformationService as any).initialize();
+      }
+      
+      mainLogger.info('Service container lifecycle initialization complete');
+    },
+    
+    async shutdown(): Promise<void> {
+      mainLogger.debug('Shutting down service container lifecycle');
+      
+      // Shut down services in reverse dependency order
+      if ('shutdown' in transformationService && typeof transformationService.shutdown === 'function') {
+        await (transformationService as any).shutdown();
+      }
+      
+      if ('shutdown' in debugService && typeof debugService.shutdown === 'function') {
+        await (debugService as any).shutdown();
+      }
+      
+      if ('shutdown' in clientDetectionService && typeof clientDetectionService.shutdown === 'function') {
+        await (clientDetectionService as any).shutdown();
+      }
+      
+      if ('shutdown' in cacheService && typeof cacheService.shutdown === 'function') {
+        await (cacheService as any).shutdown();
+      }
+      
+      if ('shutdown' in storageService && typeof storageService.shutdown === 'function') {
+        await (storageService as any).shutdown();
+      }
+      
+      if ('shutdown' in authService && typeof authService.shutdown === 'function') {
+        await (authService as any).shutdown();
+      }
+      
+      if ('shutdown' in loggingService && typeof loggingService.shutdown === 'function') {
+        await (loggingService as any).shutdown();
+      }
+      
+      // Shut down configuration service last
+      await configurationService.shutdown();
+      
+      mainLogger.info('Service container lifecycle shutdown complete');
+    }
   };
+
+  mainLogger.info('Service container initialized with all services', {
+    serviceCount: 8,
+    services: 'configuration, logging, storage, transformation, cache, debug, clientDetection, auth',
+    environment: config.environment
+  });
+
+  // Initialize service lifecycle if requested
+  if (initializeLifecycle) {
+    // Use void to ignore the promise - the caller can await the initialize method if needed
+    void container.initialize();
+  }
+
+  return container;
 }

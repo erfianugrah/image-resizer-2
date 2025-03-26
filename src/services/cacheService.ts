@@ -48,9 +48,11 @@ function isResponse(obj: unknown): obj is Response {
 export class DefaultCacheService implements CacheService {
   private logger: Logger;
   private configService: ConfigurationService;
+  
   // Circuit breaker states for different cache operations
   private cacheWriteCircuitBreaker: CircuitBreakerState;
   private cacheReadCircuitBreaker: CircuitBreakerState;
+  
   // Track recent failures for adaptive behavior
   private recentFailures: {timestamp: number, errorCode: string}[] = [];
 
@@ -696,7 +698,7 @@ export class DefaultCacheService implements CacheService {
           };
           
           // Create a specific CacheWriteError with additional context
-          const error = new CacheWriteError(`Failed to write to cache`, {
+          const error = new CacheWriteError('Failed to write to cache', {
             originalError: cacheError instanceof Error ? cacheError.message : String(cacheError),
             ...errorContext
           });
@@ -2476,5 +2478,77 @@ export class DefaultCacheService implements CacheService {
         retryable: true // TTL calculation can be retried with default values
       });
     }
+  }
+  
+  /**
+   * Service lifecycle method for initialization
+   * 
+   * Initializes the cache service with necessary setup:
+   * - Resets circuit breaker states
+   * - Clears failure tracking
+   * - Initializes cache metrics
+   * 
+   * @returns Promise that resolves when initialization is complete
+   */
+  async initialize(): Promise<void> {
+    this.logger.debug('Initializing DefaultCacheService');
+    
+    // Reset circuit breaker states
+    this.cacheWriteCircuitBreaker = createCircuitBreakerState();
+    this.cacheReadCircuitBreaker = createCircuitBreakerState();
+    
+    // Clear failure tracking
+    this.recentFailures = [];
+    
+    // Get configuration settings
+    const config = this.configService.getConfig();
+    const cacheSettings = config.cache;
+    
+    // Apply circuit breaker settings from configuration if available
+    if (cacheSettings.circuitBreaker) {
+      // We don't directly modify the circuit breaker state based on config,
+      // but we can use the settings when creating new ones
+      const failureThreshold = cacheSettings.circuitBreaker.failureThreshold || 5;
+      const resetTimeoutMs = cacheSettings.circuitBreaker.resetTimeoutMs || 30000;
+      const successThreshold = cacheSettings.circuitBreaker.successThreshold || 2;
+      
+      // Log the configuration we'll use for circuit breakers
+      this.logger.debug('Configured circuit breakers for cache operations', {
+        failureThreshold,
+        resetTimeoutMs,
+        successThreshold
+      });
+    }
+    
+    this.logger.info('DefaultCacheService initialization complete');
+    return Promise.resolve();
+  }
+  
+  /**
+   * Service lifecycle method for shutdown
+   * 
+   * Performs cleanup operations:
+   * - Logs cache operation statistics
+   * - Resets internal state
+   * 
+   * @returns Promise that resolves when shutdown is complete
+   */
+  async shutdown(): Promise<void> {
+    this.logger.debug('Shutting down DefaultCacheService');
+    
+    // Log circuit breaker state
+    this.logger.debug('Cache circuit breaker state at shutdown', {
+      writeCircuitOpen: this.cacheWriteCircuitBreaker.isOpen,
+      readCircuitOpen: this.cacheReadCircuitBreaker.isOpen,
+      writeFailures: this.cacheWriteCircuitBreaker.failureCount,
+      readFailures: this.cacheReadCircuitBreaker.failureCount,
+      recentFailures: this.recentFailures.length
+    });
+    
+    // Reset failure tracking
+    this.recentFailures = [];
+    
+    this.logger.info('DefaultCacheService shutdown complete');
+    return Promise.resolve();
   }
 }

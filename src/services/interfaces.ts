@@ -7,6 +7,7 @@
 
 import { ImageResizerConfig } from '../config';
 import { Logger } from '../utils/logging';
+import { PathTransforms } from '../utils/path';
 
 /**
  * Performance timing points for tracking request processing
@@ -275,6 +276,33 @@ export interface CacheService {
     options?: TransformOptions,
     storageResult?: StorageResult
   ): Promise<Response>;
+  
+  /**
+   * Service lifecycle method for initialization
+   * 
+   * This method is called during the service container initialization phase
+   * and should perform any necessary setup such as:
+   * - Initializing cache metrics
+   * - Preparing failure tracking for circuit breaker
+   * - Connecting to external monitoring systems
+   * - Loading any persistent state
+   * 
+   * @returns Promise that resolves when initialization is complete
+   */
+  initialize(): Promise<void>;
+  
+  /**
+   * Service lifecycle method for shutdown
+   * 
+   * This method is called during the service container shutdown phase
+   * and should perform any necessary cleanup such as:
+   * - Persisting cache statistics
+   * - Closing any external connections
+   * - Releasing resources
+   * 
+   * @returns Promise that resolves when shutdown is complete
+   */
+  shutdown(): Promise<void>;
 }
 
 /**
@@ -479,6 +507,84 @@ export interface ConfigurationService {
    * @returns True if the feature is enabled
    */
   isFeatureEnabled(featureName: string): boolean;
+  
+  /**
+   * Get the default configuration
+   * 
+   * @returns Default configuration
+   */
+  getDefaultConfig(): ImageResizerConfig;
+  
+  /**
+   * Reload configuration from environment variables
+   * 
+   * @returns Updated configuration
+   */
+  reloadConfig(): ImageResizerConfig;
+  
+  /**
+   * Get the path transformations for a specific origin type
+   * 
+   * @param originType The origin type (r2, remote, fallback)
+   * @returns Path transformations for the specified origin
+   */
+  getPathTransforms(originType: 'r2' | 'remote' | 'fallback'): PathTransforms;
+  
+  /**
+   * Get derivative configuration by name
+   * 
+   * @param derivativeName Name of the derivative
+   * @returns Derivative configuration or null if not found
+   */
+  getDerivative(derivativeName: string): Record<string, any> | null;
+  
+  /**
+   * Get all available derivative names
+   * 
+   * @returns Array of derivative names
+   */
+  getDerivativeNames(): string[];
+  
+  /**
+   * Check if a path should be considered immutable content
+   * 
+   * @param path Path to check
+   * @param contentType Optional content type for additional checking
+   * @param derivative Optional derivative name for additional checking
+   * @returns True if the content should be considered immutable
+   */
+  isImmutableContent(path: string, contentType?: string, derivative?: string): boolean;
+  
+  /**
+   * Check if caching should be bypassed for a particular path
+   * 
+   * @param path Path to check
+   * @param format Optional image format for format-based bypass
+   * @returns True if cache should be bypassed
+   */
+  shouldBypassForPath(path: string, format?: string): boolean;
+  
+  /**
+   * Get appropriate TTL for a path based on path-based TTL configuration
+   * 
+   * @param path Path to get TTL for
+   * @returns TTL value in seconds, or undefined if no match
+   */
+  getPathBasedTtl(path: string): number | undefined;
+  
+  /**
+   * Service lifecycle method for initialization
+   * 
+   * @returns Promise that resolves when initialization is complete
+   */
+  initialize(): Promise<void>;
+  
+  /**
+   * Service lifecycle method for shutdown
+   * 
+   * @returns Promise that resolves when shutdown is complete
+   */
+  shutdown(): Promise<void>;
 }
 
 /**
@@ -590,6 +696,20 @@ export interface ServiceContainer {
   // Added new services
   detectorService?: ClientDetectionService;
   pathService?: PathService;
+  
+  /**
+   * Initialize all services in the container
+   * 
+   * @returns Promise that resolves when all services are initialized
+   */
+  initialize(): Promise<void>;
+  
+  /**
+   * Shut down all services in the container
+   * 
+   * @returns Promise that resolves when all services are shut down
+   */
+  shutdown(): Promise<void>;
 }
 
 /**

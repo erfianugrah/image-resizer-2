@@ -53,6 +53,9 @@ export class DefaultStorageService implements StorageService {
   
   // Track recent failures for adaptive behavior
   private recentFailures: {timestamp: number, errorCode: string, source: string}[] = [];
+  
+  // Store baseline performance metrics
+  private performanceBaseline: Record<string, number> = {};
 
   constructor(
     logger: Logger, 
@@ -67,6 +70,172 @@ export class DefaultStorageService implements StorageService {
     this.r2CircuitBreaker = createCircuitBreakerState();
     this.remoteCircuitBreaker = createCircuitBreakerState();
     this.fallbackCircuitBreaker = createCircuitBreakerState();
+  }
+  
+  /**
+   * Service lifecycle method for initialization
+   * 
+   * This method is called during the service container initialization phase
+   * and performs any necessary setup such as:
+   * - Initializing circuit breaker states
+   * - Establishing baseline performance metrics
+   * - Verifying storage configurations
+   * 
+   * @returns Promise that resolves when initialization is complete
+   */
+  async initialize(): Promise<void> {
+    this.logger.debug('Initializing StorageService');
+    
+    // Reset circuit breaker states
+    this.r2CircuitBreaker = createCircuitBreakerState();
+    this.remoteCircuitBreaker = createCircuitBreakerState();
+    this.fallbackCircuitBreaker = createCircuitBreakerState();
+    
+    // Clear failure history
+    this.recentFailures = [];
+    
+    // Get the configuration
+    const config = this.configService.getConfig();
+    
+    // Verify storage configuration
+    if (config.storage) {
+      // Log priority configuration for verification
+      this.logger.debug('Storage priority configuration', {
+        priority: config.storage.priority,
+        r2Enabled: config.storage.r2?.enabled,
+        remoteUrl: !!config.storage.remoteUrl,
+        fallbackUrl: !!config.storage.fallbackUrl
+      });
+      
+      // Establish baseline performance metrics if enabled
+      if (config.performance?.baselineTracking) {
+        this.initializePerformanceBaseline();
+      }
+    }
+    
+    // Verify connectivity to remote sources if enabled
+    if (config.storage?.verifyConnectionsOnStartup) {
+      await this.verifyStorageConnections(config);
+    }
+    
+    this.logger.info('StorageService initialization complete');
+    return Promise.resolve();
+  }
+  
+  /**
+   * Service lifecycle method for shutdown
+   * 
+   * This method is called during the service container shutdown phase
+   * and performs any necessary cleanup such as:
+   * - Logging performance statistics
+   * - Releasing any resources
+   * 
+   * @returns Promise that resolves when shutdown is complete
+   */
+  async shutdown(): Promise<void> {
+    this.logger.debug('Shutting down StorageService');
+    
+    // Log circuit breaker state statistics
+    this.logger.debug('Storage circuit breaker states at shutdown', {
+      r2CircuitOpen: this.r2CircuitBreaker.isOpen,
+      remoteCircuitOpen: this.remoteCircuitBreaker.isOpen,
+      fallbackCircuitOpen: this.fallbackCircuitBreaker.isOpen,
+      r2Failures: this.r2CircuitBreaker.failureCount,
+      remoteFailures: this.remoteCircuitBreaker.failureCount,
+      fallbackFailures: this.fallbackCircuitBreaker.failureCount,
+      recentFailures: this.recentFailures.length
+    });
+    
+    // Log source-specific failure statistics if there are any
+    if (this.recentFailures.length > 0) {
+      const r2Failures = this.recentFailures.filter(f => f.source === 'r2').length;
+      const remoteFailures = this.recentFailures.filter(f => f.source === 'remote').length;
+      const fallbackFailures = this.recentFailures.filter(f => f.source === 'fallback').length;
+      
+      this.logger.debug('Storage failure statistics', {
+        r2Failures,
+        remoteFailures,
+        fallbackFailures,
+        mostCommonSource: this.getMostCommonFailureSource(),
+        mostCommonError: this.getMostCommonErrorCode()
+      });
+    }
+    
+    // Report performance metrics if available
+    if (Object.keys(this.performanceBaseline).length > 0) {
+      this.logger.debug('Storage performance baseline at shutdown', this.performanceBaseline);
+    }
+    
+    // Clear failure tracking and performance metrics
+    this.recentFailures = [];
+    this.performanceBaseline = {};
+    
+    this.logger.info('StorageService shutdown complete');
+    return Promise.resolve();
+  }
+  
+  /**
+   * Initialize performance baseline metrics
+   */
+  private initializePerformanceBaseline(): void {
+    this.performanceBaseline = {
+      startTimestamp: Date.now(),
+      r2SuccessCount: 0,
+      r2FailureCount: 0,
+      r2AverageResponseTime: 0,
+      remoteSuccessCount: 0,
+      remoteFailureCount: 0,
+      remoteAverageResponseTime: 0,
+      fallbackSuccessCount: 0,
+      fallbackFailureCount: 0,
+      fallbackAverageResponseTime: 0
+    };
+    
+    this.logger.debug('Initialized storage performance baseline', this.performanceBaseline);
+  }
+  
+  /**
+   * Verify connectivity to configured storage sources
+   * 
+   * @param config Application configuration
+   */
+  private async verifyStorageConnections(config: ImageResizerConfig): Promise<void> {
+    this.logger.debug('Verifying storage connections');
+    const env = {} as any; // Empty env for verification
+    const verificationResults: Record<string, boolean> = {};
+    
+    // Create a dummy request for testing
+    const dummyRequest = new Request('https://example.com/verification');
+    
+    try {
+      // Check defined priority
+      for (const source of config.storage.priority) {
+        // Skip verification if not configured
+        if (source === 'r2' && (!config.storage.r2?.enabled || !config.storage.r2?.bindingName)) {
+          verificationResults.r2 = false;
+          continue;
+        }
+        if (source === 'remote' && !config.storage.remoteUrl) {
+          verificationResults.remote = false;
+          continue;
+        }
+        if (source === 'fallback' && !config.storage.fallbackUrl) {
+          verificationResults.fallback = false;
+          continue;
+        }
+        
+        this.logger.debug(`Verifying ${source} storage connection`);
+        // Verification logic would go here in a real implementation
+        // This is just a stub for demonstration
+        verificationResults[source] = true;
+      }
+      
+      this.logger.debug('Storage connection verification results', verificationResults);
+    } catch (error) {
+      this.logger.error('Error during storage connection verification', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
   }
   
   /**

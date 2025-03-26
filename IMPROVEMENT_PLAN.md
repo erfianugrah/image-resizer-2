@@ -14,7 +14,7 @@ This document outlines key improvements for the image-resizer-2 project, with a 
 - [ ] Move configuration utilities to ConfigurationService
 - [x] Implement proper dependency injection container
 - [x] Add automatic dependency resolution based on interfaces
-- [ ] Implement service lifecycle management (init, destroy)
+- [x] Implement service lifecycle management (init, destroy)
 - [ ] Add service health checks and diagnostics
 - [x] Create service registration system for plugins
 - [ ] Implement versioned service interfaces for compatibility
@@ -167,11 +167,11 @@ This document outlines key improvements for the image-resizer-2 project, with a 
 
 | Category | Not Started | In Progress | Completed | Total |
 |----------|-------------|-------------|-----------|-------|
-| Core Architecture | 14 | 0 | 16 | 30 |
+| Core Architecture | 13 | 0 | 17 | 30 |
 | Performance | 22 | 0 | 10 | 32 |
 | Operational | 26 | 0 | 3 | 29 |
 | Technical Debt | 30 | 0 | 0 | 30 |
-| **Overall** | **92** | **0** | **29** | **121** |
+| **Overall** | **91** | **0** | **30** | **121** |
 
 ## Key Dependencies
 

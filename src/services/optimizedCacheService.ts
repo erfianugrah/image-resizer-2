@@ -83,8 +83,7 @@ export class OptimizedCacheService implements CacheService {
     // Initialize cache tiers
     this.initializeCacheTiers();
     
-    // Set up cache cleanup
-    setInterval(() => this.cleanupAccessPatterns(), 60000); // Cleanup every minute
+    // We'll use the initialize method to set up the cleanup timer
   }
   
   /**
@@ -797,5 +796,91 @@ export class OptimizedCacheService implements CacheService {
       // Return the original response to ensure request succeeds
       return response;
     }
+  }
+  
+  /**
+   * Service lifecycle method for initialization
+   * 
+   * Initializes the optimized cache service with necessary setup:
+   * - Sets up cache tiers
+   * - Configures access pattern tracking
+   * - Initializes performance baseline
+   * - Sets up automatic cleanup
+   * 
+   * @returns Promise that resolves when initialization is complete
+   */
+  async initialize(): Promise<void> {
+    this.logger.debug('Initializing OptimizedCacheService');
+    
+    // Reset access patterns
+    this.accessPatterns.clear();
+    
+    // Initialize the default service first
+    await this.defaultService.initialize();
+    
+    // Get configuration settings
+    const config = this.configService.getConfig();
+    const cacheSettings = config.cache;
+    
+    // Apply configuration settings
+    if (cacheSettings.bypassThreshold !== undefined) {
+      this.bypassThreshold = cacheSettings.bypassThreshold;
+    }
+    
+    if (cacheSettings.maxAccessPatterns !== undefined) {
+      this.maxAccessPatterns = cacheSettings.maxAccessPatterns;
+    }
+    
+    // Initialize performance baseline
+    if (config.performance && config.performance.baselineEnabled) {
+      this.performanceBaseline.initializeBaseline('cache_operations', 100);
+    }
+    
+    // Re-initialize cache tiers from the latest configuration
+    this.initializeCacheTiers();
+    
+    // Set up regular cache cleanup timer
+    const cleanupInterval = setInterval(() => this.cleanupAccessPatterns(), 60000); // Cleanup every minute
+    
+    // Store interval ID for later cleanup in shutdown
+    (this as any).cleanupIntervalId = cleanupInterval;
+    
+    this.logger.info('OptimizedCacheService initialization complete');
+    return Promise.resolve();
+  }
+  
+  /**
+   * Service lifecycle method for shutdown
+   * 
+   * Performs cleanup operations:
+   * - Stops background processes
+   * - Logs cache operation statistics
+   * - Resets internal state
+   * 
+   * @returns Promise that resolves when shutdown is complete
+   */
+  async shutdown(): Promise<void> {
+    this.logger.debug('Shutting down OptimizedCacheService');
+    
+    // Stop the cleanup interval
+    if ((this as any).cleanupIntervalId) {
+      clearInterval((this as any).cleanupIntervalId);
+      (this as any).cleanupIntervalId = null;
+    }
+    
+    // Log access pattern statistics
+    this.logger.debug('Cache access patterns at shutdown', {
+      accessPatternsCount: this.accessPatterns.size,
+      maxAccessPatterns: this.maxAccessPatterns
+    });
+    
+    // Shutdown the underlying default service
+    await this.defaultService.shutdown();
+    
+    // Clear access patterns
+    this.accessPatterns.clear();
+    
+    this.logger.info('OptimizedCacheService shutdown complete');
+    return Promise.resolve();
   }
 }

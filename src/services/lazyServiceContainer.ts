@@ -48,6 +48,91 @@ export function createLazyServiceContainer(env: Env): ServiceContainer {
   
   // Create service factories for lazy initialization
   const serviceFactories: Record<keyof ServiceContainer, () => any> = {
+    // Lifecycle method for initializing all services
+    initialize: () => async () => {
+      // Ensure configuration service is initialized
+      if (!realServices.configurationService) {
+        realServices.configurationService = serviceFactories.configurationService();
+      }
+      
+      // Get logger for initialization
+      if (!realServices.logger) {
+        realServices.logger = serviceFactories.logger();
+      }
+      
+      const logger = realServices.logger!;
+      logger.debug('Initializing lazy service container lifecycle');
+      
+      // Initialize services in dependency order
+      if ('initialize' in realServices.configurationService! && 
+          typeof (realServices.configurationService as any).initialize === 'function') {
+        await (realServices.configurationService as any).initialize();
+      }
+      
+      // Initialize logging service if exists
+      if (realServices.loggingService && 
+          'initialize' in realServices.loggingService && 
+          typeof (realServices.loggingService as any).initialize === 'function') {
+        await (realServices.loggingService as any).initialize();
+      }
+      
+      // Initialize other services that are already loaded and support lifecycle
+      for (const serviceName of Object.keys(realServices) as (keyof ServiceContainer)[]) {
+        const service = realServices[serviceName];
+        if (service && 
+            serviceName !== 'configurationService' && 
+            serviceName !== 'loggingService' &&
+            serviceName !== 'logger' &&
+            'initialize' in service && 
+            typeof (service as any).initialize === 'function') {
+          logger.debug(`Initializing lazy loaded service: ${serviceName}`);
+          await (service as any).initialize();
+        }
+      }
+      
+      logger.info('Lazy service container lifecycle initialization complete');
+    },
+    
+    // Lifecycle method for shutting down all services
+    shutdown: () => async () => {
+      // Ensure logger is available
+      if (!realServices.logger) {
+        realServices.logger = serviceFactories.logger();
+      }
+      
+      const logger = realServices.logger!;
+      logger.debug('Shutting down lazy service container lifecycle');
+      
+      // Shutdown services in reverse dependency order (all loaded services)
+      for (const serviceName of Object.keys(realServices) as (keyof ServiceContainer)[]) {
+        const service = realServices[serviceName];
+        if (service && 
+            serviceName !== 'configurationService' && 
+            serviceName !== 'logger' &&
+            'shutdown' in service && 
+            typeof (service as any).shutdown === 'function') {
+          logger.debug(`Shutting down lazy loaded service: ${serviceName}`);
+          await (service as any).shutdown();
+        }
+      }
+      
+      // Shut down logging service if it exists
+      if (realServices.loggingService && 
+          'shutdown' in realServices.loggingService && 
+          typeof (realServices.loggingService as any).shutdown === 'function') {
+        await (realServices.loggingService as any).shutdown();
+      }
+      
+      // Shut down configuration service last if it exists
+      if (realServices.configurationService && 
+          'shutdown' in realServices.configurationService && 
+          typeof (realServices.configurationService as any).shutdown === 'function') {
+        await (realServices.configurationService as any).shutdown();
+      }
+      
+      logger.info('Lazy service container lifecycle shutdown complete');
+    },
+    
     // Detector service initialization - defined first to help TypeScript inference
     detectorService: () => {
       // Ensure prerequisite services 
