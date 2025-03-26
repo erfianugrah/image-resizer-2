@@ -713,6 +713,10 @@ export class DefaultCacheService implements CacheService {
         'Cache API operation',
         this.cacheWriteCircuitBreaker
       );
+    } catch (error) {
+      throw this.handleError(error, 'Cache API caching', request, 'CACHE_API_ERROR');
+    } finally {
+      // Any cleanup code can go here
     }
   }
 
@@ -2018,59 +2022,9 @@ export class DefaultCacheService implements CacheService {
     } catch (error) {
       // Handle operation errors
       throw this.handleError(error, operationName, request);
+    } finally {
+      // Any cleanup or finalization steps can go here
     }
-  }
-
-  private prepareTaggedRequest(
-    request: Request,
-    response: Response,
-    pathOverride?: string,
-    options?: TransformOptions
-  ): Request {
-    const config = this.configService.getConfig();
-    
-    // If cache tags are not enabled, return the original request
-    if (!config.cache.cacheTags?.enabled) {
-      return request;
-    }
-    
-    try {
-      const url = new URL(request.url);
-      const path = pathOverride || url.pathname;
-      
-      // Extract options from URL parameters
-      const extractedOptions = this.extractOptionsFromUrl(url);
-      
-      // Merge with passed options if available
-      const mergedOptions = options ? { ...extractedOptions, ...options } : extractedOptions;
-      
-      // Generate tags for this request
-      const tags = this.generateCacheTags(request, {
-        response: new Response(''), // Dummy response
-        sourceType: 'remote',
-        contentType: response.headers.get('Content-Type') || 'application/octet-stream',
-        size: parseInt(response.headers.get('Content-Length') || '0', 10) || 0,
-        path
-      }, mergedOptions);
-      
-      if (tags.length > 0) {
-        this.logger.debug('Adding cache tags to request', {
-          tagCount: tags.length,
-          sampleTags: tags.slice(0, 3).join(', ') + (tags.length > 3 ? '...' : '')
-        });
-        
-        // Apply tags to request
-        return this.applyTagsToRequest(request, tags);
-      }
-    } catch (tagsError) {
-      // If tag generation fails, log but continue with the original request
-      this.logger.warn('Failed to generate cache tags for request', {
-        error: tagsError instanceof Error ? tagsError.message : String(tagsError),
-        url: request.url
-      });
-    }
-    
-    return request;
   }
 
   /**
