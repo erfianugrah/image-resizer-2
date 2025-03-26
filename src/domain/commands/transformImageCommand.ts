@@ -4,7 +4,9 @@
  * Encapsulates the business logic for transforming an image
  */
 
-import { ServiceContainer, StorageResult, ClientInfo, TransformOptions, PerformanceMetrics } from '../../services/interfaces';
+import { ServiceContainer, ClientInfo, TransformOptions, PerformanceMetrics } from '../../services/interfaces';
+import { Env } from '../../types';
+import type { ExecutionContext } from '@cloudflare/workers-types';
 import { Command } from './command';
 
 /**
@@ -88,7 +90,7 @@ export class TransformImageCommand implements Command<Response> {
       const storageResult = await storageService.fetchImage(
         this.imagePath, 
         config, 
-        (this.request as any).env, 
+        (this.request as unknown as { env: Env }).env, 
         this.request
       );
       
@@ -109,10 +111,49 @@ export class TransformImageCommand implements Command<Response> {
         options: Object.keys(this.options).join(',')
       });
       
+      // Check if smart processing is requested
+      let transformOptions = { ...this.options };
+      if (transformOptions.smart === true && transformationService.processSmartOptions) {
+        logger.breadcrumb('Smart transformation requested, processing with metadata', undefined, {
+          imagePath: this.imagePath,
+          smartOptions: JSON.stringify({
+            platform: transformOptions.platform,
+            content: transformOptions.content,
+            device: transformOptions.device,
+            aspect: transformOptions.aspect
+          })
+        });
+        
+        try {
+          // Process with metadata service to get optimized parameters
+          transformOptions = await transformationService.processSmartOptions(
+            this.request,
+            this.imagePath,
+            transformOptions,
+            config,
+            (this.request as unknown as { env: Env }).env
+          );
+          
+          logger.debug('Smart transformation options applied', {
+            originalOptionCount: Object.keys(this.options).length,
+            processedOptionCount: Object.keys(transformOptions).length,
+            width: transformOptions.width,
+            height: transformOptions.height,
+            fit: transformOptions.fit,
+            hasGravity: !!transformOptions.gravity
+          });
+        } catch (error) {
+          logger.error('Error in smart transformation processing', {
+            error: error instanceof Error ? error.message : String(error)
+          });
+          // Continue with original options if smart processing fails
+        }
+      }
+      
       const transformedResponse = await transformationService.transformImage(
         this.request,
         storageResult,
-        this.options,
+        transformOptions,
         config
       );
       
@@ -177,7 +218,7 @@ export class TransformImageCommand implements Command<Response> {
         finalResponse = await cacheService.cacheWithFallback(
           this.request,
           finalResponse,
-          (this.request as any).ctx,
+          (this.request as unknown as { ctx: ExecutionContext }).ctx,
           this.options,
           storageResult
         );

@@ -52,6 +52,6 @@ export function createStorageService(
       logger.info('Using default storage service with sequential operations');
     }
     
-    return service;
+    return service as StorageService;
   }
 }

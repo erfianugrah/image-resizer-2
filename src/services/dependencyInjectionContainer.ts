@@ -402,10 +402,14 @@ export function createContainerBuilder(env: Env): DIContainer {
     
     try {
       // Try to create using the old factory
-      const clientDetectionFactory = require('./clientDetectionFactory');
-      if (clientDetectionFactory && clientDetectionFactory.createClientDetectionService) {
-        return clientDetectionFactory.createClientDetectionService(config, logger);
-      }
+      // Import dynamically to avoid require statement
+      import('./clientDetectionFactory').then(clientDetectionFactory => {
+        if (clientDetectionFactory && clientDetectionFactory.createClientDetectionService) {
+          return clientDetectionFactory.createClientDetectionService(config, logger);
+        }
+      }).catch(() => null);
+      
+      // Continue with fallback in case the import fails
     } catch (e) {
       logger.debug('Old client detection factory not available, using detector service');
     }

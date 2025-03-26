@@ -32,8 +32,9 @@ export default {
     ctx: ExecutionContext,
   ): Promise<Response> {
     // Attach env and ctx to the request object for use in services
-    (request as any).env = env;
-    (request as any).ctx = ctx;
+    // Use proper type assertion to avoid TypeScript errors
+    (request as unknown as { env: any }).env = env;
+    (request as unknown as { ctx: ExecutionContext }).ctx = ctx;
 
     // Start performance tracking
     const metrics: PerformanceMetrics = {
@@ -142,6 +143,41 @@ export default {
         performanceMonitor.endOperation('total', { type: 'debug_report' });
         performanceMonitor.endRequest({ status: debugResponse.status, type: 'debug_report' });
         return debugResponse;
+      }
+      
+      // Check for metadata-driven transformation request (path starts with /smart/)
+      if (url.pathname.startsWith('/smart/')) {
+        try {
+          // Import the metadata handler dynamically to avoid circular dependencies
+          const { handleMetadataTransformation } = await import('./handlers/metadataHandler');
+          
+          performanceMonitor.startOperation('metadata_transform');
+          logger.debug('Handling metadata-driven transformation', { path: url.pathname });
+          
+          const metadataResponse = await handleMetadataTransformation(request, env, services);
+          
+          performanceMonitor.endOperation('metadata_transform', {
+            status: metadataResponse.status,
+            contentType: metadataResponse.headers.get('content-type')
+          });
+          
+          performanceMonitor.endOperation('total', { type: 'metadata_transform' });
+          performanceMonitor.endRequest({ 
+            status: metadataResponse.status, 
+            type: 'metadata_transform',
+            contentType: metadataResponse.headers.get('content-type')
+          });
+          
+          return metadataResponse;
+        } catch (error) {
+          logger.error('Error in metadata transformation handler', {
+            error: error instanceof Error ? error.message : String(error),
+            path: url.pathname
+          });
+          
+          // Let the request continue to be handled by the standard image handler
+          logger.warn('Falling back to standard image handler after metadata handler error');
+        }
       }
 
       // Handle Akamai compatibility if applicable
@@ -268,7 +304,9 @@ export default {
   },
   
   // Add shutdown lifecycle hook for cleanup
-  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+  async scheduled(controller: any, env: Env, ctx: ExecutionContext): Promise<void> {
+    // Map controller to event for compatibility with our code
+    const event = controller as unknown as ScheduledEvent;
     // Create service container with minimal initialization
     const services = createContainer(env, {
       initializeServices: false  // Don't initialize since we'll just shut down

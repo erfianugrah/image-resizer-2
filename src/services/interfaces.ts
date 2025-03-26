@@ -8,6 +8,8 @@
 import { ImageResizerConfig } from '../config';
 import { Logger } from '../utils/logging';
 import { PathTransforms } from '../utils/path';
+import { Env } from '../types';
+import type { ExecutionContext } from '@cloudflare/workers-types';
 
 /**
  * Performance timing points for tracking request processing
@@ -66,8 +68,20 @@ export interface TransformOptions {
     rotate?: number;
   }>;  // For watermarks and overlays
   'origin-auth'?: 'share-publicly';
+  
+  // Smart transformation options
+  smart?: boolean;  // Enable smart transformations using metadata
+  platform?: string;  // Target platform for aspect ratio optimization
+  content?: string;  // Content type for focal point optimization
+  device?: 'mobile' | 'tablet' | 'desktop' | string;  // Target device type
+  aspect?: string;  // Custom aspect ratio in format "width:height" or "width-height"
+  focal?: string;  // Custom focal point in format "x,y" (values 0-1)
+  allowExpansion?: boolean;  // Allow image expansion to fit aspect ratio
+  
+  // Internal use options
   _conditions?: any[]; // For conditional transformations (internal use)
   _customEffects?: any[]; // For custom effects (internal use)
+  _metadataResult?: any; // For storing metadata analysis results (internal use)
   [key: string]: any;
 }
 
@@ -135,6 +149,13 @@ export interface ImageTransformationService {
   setClientDetectionService(service: ClientDetectionService): void;
   
   /**
+   * Set the metadata fetching service
+   * 
+   * @param service The metadata service to use
+   */
+  setMetadataService(service: MetadataFetchingService): void;
+  
+  /**
    * Transform an image based on the provided options
    * 
    * @param request Original request
@@ -163,6 +184,28 @@ export interface ImageTransformationService {
     clientInfo: ClientInfo, 
     config: ImageResizerConfig
   ): TransformOptions;
+  
+  /**
+   * Process smart transformation options using metadata
+   * 
+   * This method is called when 'smart=true' is present in the options.
+   * It uses the metadata service to fetch and analyze the image, then
+   * updates the transformation options accordingly.
+   * 
+   * @param request Original request
+   * @param imagePath Path to the image
+   * @param options Current transformation options
+   * @param config Application configuration
+   * @param env Environment variables
+   * @returns Updated transformation options with metadata-informed settings
+   */
+  processSmartOptions(
+    request: Request,
+    imagePath: string,
+    options: TransformOptions,
+    config: ImageResizerConfig,
+    env: Env
+  ): Promise<TransformOptions>;
 }
 
 /**
@@ -680,6 +723,125 @@ export interface PathService {
 }
 
 /**
+ * Metadata fetching service for retrieving and processing image metadata
+ */
+export interface MetadataFetchingService {
+  /**
+   * Fetch image metadata using format=json
+   * 
+   * @param imagePath Path to the image
+   * @param config Application configuration
+   * @param env Environment variables
+   * @param request Original request for context
+   * @returns Promise with the image metadata
+   */
+  fetchMetadata(
+    imagePath: string,
+    config: ImageResizerConfig,
+    env: Env,
+    request: Request
+  ): Promise<ImageMetadata>;
+  
+  /**
+   * Process image metadata to determine optimal transformation parameters
+   * 
+   * @param metadata Original image metadata
+   * @param targetAspect Optional target aspect ratio (width/height)
+   * @param options Additional processing options
+   * @returns Transformation recommendations
+   */
+  processMetadata(
+    metadata: ImageMetadata,
+    targetAspect?: { width: number, height: number },
+    options?: MetadataProcessingOptions
+  ): TransformationResult;
+  
+  /**
+   * Fetch and process image metadata in one operation
+   * 
+   * @param imagePath Path to the image
+   * @param config Application configuration
+   * @param env Environment variables
+   * @param request Original request for context
+   * @param targetAspect Optional target aspect ratio
+   * @param options Additional processing options
+   * @returns Promise with transformation recommendations
+   */
+  fetchAndProcessMetadata(
+    imagePath: string,
+    config: ImageResizerConfig,
+    env: Env,
+    request: Request,
+    targetAspect?: { width: number, height: number },
+    options?: MetadataProcessingOptions
+  ): Promise<TransformationResult>;
+  
+  /**
+   * Service lifecycle method for initialization
+   */
+  initialize(): Promise<void>;
+  
+  /**
+   * Service lifecycle method for shutdown
+   */
+  shutdown(): Promise<void>;
+}
+
+/**
+ * Image metadata structure returned by format=json
+ */
+export interface ImageMetadata {
+  metadata: {
+    width: number;
+    height: number;
+    format?: string;
+    orientation?: number;
+    originalMetadata?: Record<string, any>; // Store the raw metadata from Cloudflare
+    estimationMethod?: 'direct' | 'exif' | 'headers' | 'file-size' | 'minimal-fallback' | 'error-fallback'; // How dimensions were determined
+    metadataSource?: 'format-json' | 'metadata-json' | 'cf-metadata' | 'headers' | 'storage-service' | 'estimation'; // Source of metadata
+    confidence?: 'high' | 'medium' | 'low'; // Confidence in the accuracy of the metadata
+    [key: string]: any;
+  };
+  errors?: string[];
+  messages?: string[];
+}
+
+/**
+ * Options for metadata processing
+ */
+export interface MetadataProcessingOptions {
+  targetPlatform?: 'twitter' | 'facebook' | 'instagram' | 'pinterest' | 'linkedin' | string;
+  focalPoint?: { x: number, y: number };
+  contentType?: 'portrait' | 'landscape' | 'product' | 'banner' | 'profile' | string;
+  deviceType?: 'mobile' | 'tablet' | 'desktop';
+  allowExpansion?: boolean;
+  preserveFocalPoint?: boolean;
+  qualityFactor?: number;
+}
+
+/**
+ * Result of transformation processing
+ */
+export interface TransformationResult {
+  aspectCrop?: {
+    width: number;
+    height: number;
+    hoffset: number;
+    voffset: number;
+    allowExpansion?: boolean;
+  };
+  dimensions?: {
+    width?: number;
+    height?: number;
+  };
+  format?: string;
+  quality?: number;
+  dpr?: number;
+  originalMetadata?: ImageMetadata;
+  transformUrl?: string;
+}
+
+/**
  * Service container to provide access to all services
  */
 export interface ServiceContainer {
@@ -697,6 +859,7 @@ export interface ServiceContainer {
   detectorService?: ClientDetectionService;
   pathService?: PathService;
   lifecycleManager?: LifecycleManagerService;
+  metadataService?: MetadataFetchingService;
   
   /**
    * Initialize all services in the container

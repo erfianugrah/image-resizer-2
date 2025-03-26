@@ -11,6 +11,9 @@ import { Logger } from '../utils/logging';
 
 /**
  * Represents the health status of a service
+ * 
+ * NOTE: This interface is also defined in ./interfaces.ts
+ * Any changes here should be synced with that definition
  */
 export interface ServiceHealth {
   serviceName: string;
@@ -25,6 +28,9 @@ export interface ServiceHealth {
 
 /**
  * Contains lifecycle statistics and metrics for all services
+ * 
+ * NOTE: This interface is also defined in ./interfaces.ts
+ * Any changes here should be synced with that definition
  */
 export interface LifecycleStatistics {
   applicationStartTime: number;
@@ -83,8 +89,11 @@ export class LifecycleManager {
     // Debug service depends on logging
     'debugService': ['loggingService'],
     
-    // Transformation service depends on configuration, logging, cache, and client detection
-    'transformationService': ['configurationService', 'loggingService', 'cacheService', 'clientDetectionService'],
+    // Metadata service depends on storage, cache, configuration, and logging
+    'metadataService': ['configurationService', 'loggingService', 'storageService', 'cacheService'],
+    
+    // Transformation service depends on configuration, logging, cache, client detection, and metadata
+    'transformationService': ['configurationService', 'loggingService', 'cacheService', 'clientDetectionService', 'metadataService'],
     
     // Path service depends on configuration and logging
     'pathService': ['configurationService', 'loggingService'],
@@ -515,7 +524,7 @@ export class LifecycleManager {
    */
   public createHealthReport(): string {
     const stats = this.statistics;
-    let report = `Application Health Report\n\n`;
+    let report = 'Application Health Report\n\n';
     
     // Add overall statistics
     report += `Overall Status: ${this.isApplicationHealthy() ? 'Healthy' : 'Unhealthy'}\n`;
@@ -528,7 +537,7 @@ export class LifecycleManager {
     report += `\nInitialization Time: ${stats.totalInitializationTimeMs || 'N/A'} ms\n\n`;
     
     // Add details for each service
-    report += `Service Status:\n`;
+    report += 'Service Status:\n';
     
     // Sort services by initialization order
     const serviceNames = [...this.statistics.initializeOrder];
@@ -549,7 +558,7 @@ export class LifecycleManager {
       }
       
       const status = health.status === 'initialized' ? 'Healthy' : 
-                    (health.status === 'failed' ? 'Failed' : health.status);
+        (health.status === 'failed' ? 'Failed' : health.status);
       
       report += `- ${serviceName}: ${status}`;
       
@@ -566,7 +575,7 @@ export class LifecycleManager {
     
     // Add errors if any
     if (stats.errors.length > 0) {
-      report += `\nErrors:\n`;
+      report += '\nErrors:\n';
       for (const error of stats.errors) {
         report += `- ${error.serviceName} (${error.phase}): ${error.message}\n`;
       }

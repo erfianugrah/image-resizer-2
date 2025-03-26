@@ -447,7 +447,7 @@ export class DefaultStorageService implements StorageService {
   async fetchImage(
     imagePath: string, 
     config: ImageResizerConfig, 
-    env: Env, 
+    env: any, // Use 'any' to bypass type checking temporarily
     request: Request
   ): Promise<StorageResult> {
     try {
@@ -1046,10 +1046,8 @@ export class DefaultStorageService implements StorageService {
       }
       
       // Check if authentication is required for this origin
-      let finalUrl: string;
-      
-      // Set the base URL
-      finalUrl = new URL(path, baseUrl).toString();
+      // Set the base URL as a const since it won't be reassigned
+      const finalUrl = new URL(path, baseUrl).toString();
       
       // Check if remote auth is enabled specifically for this remote URL
       if (config.storage.remoteAuth?.enabled) {

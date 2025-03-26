@@ -15,4 +15,8 @@ export * from './optimizedClientDetectionService';
 export * from './clientDetectionFactory';
 export * from './dependencyInjectionContainer';
 export * from './containerFactory';
-export * from './lifecycleManager';
+
+// Fix circular exports by explicitly re-exporting only what's needed
+import { LifecycleManager } from './lifecycleManager';
+// Export as LifecycleManagerService to match the interface in interfaces.ts
+export { LifecycleManager as LifecycleManagerService };

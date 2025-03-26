@@ -221,10 +221,17 @@ Debug Header Example: Add `?debug=true` to any image URL
 
 ### Akamai Compatibility Examples
 
-#### Basic Akamai Parameters
+The Image Resizer supports two Akamai Image Manager parameter formats:
+
+#### Dot Notation Format (im.X)
 ![Akamai Resize](https://images.erfi.dev/Granna_1.JPG?im.resize=width:400,height:300,mode:fit&im.quality=80)
 
 Demo URL: [https://images.erfi.dev/Granna_1.JPG?im.resize=width:400,height:300,mode:fit&im.quality=80](https://images.erfi.dev/Granna_1.JPG?im.resize=width:400,height:300,mode:fit&im.quality=80)
+
+#### Equals Notation Format (im=X)
+![Akamai AspectCrop](https://images.erfi.dev/Granna_1.JPG?im=AspectCrop=(1,1),xPosition=0.5,yPosition=0.5)
+
+Demo URL: [https://images.erfi.dev/Granna_1.JPG?im=AspectCrop=(1,1),xPosition=0.5,yPosition=0.5](https://images.erfi.dev/Granna_1.JPG?im=AspectCrop=(1,1),xPosition=0.5,yPosition=0.5)
 
 #### Advanced Features - Blur
 ![Akamai Blur](https://images.erfi.dev/Granna_1.JPG?im.blur=20&im.resize=width:400)
@@ -232,9 +239,9 @@ Demo URL: [https://images.erfi.dev/Granna_1.JPG?im.resize=width:400,height:300,m
 Demo URL: [https://images.erfi.dev/Granna_1.JPG?im.blur=20&im.resize=width:400](https://images.erfi.dev/Granna_1.JPG?im.blur=20&im.resize=width:400)
 
 #### Advanced Features - Mirror
-![Akamai Mirror](https://images.erfi.dev/Granna_1.JPG?im.mirror=horizontal&im.resize=width:400)
+![Akamai Mirror](https://images.erfi.dev/Granna_1.JPG?im=Mirror,horizontal)
 
-Demo URL: [https://images.erfi.dev/Granna_1.JPG?im.mirror=horizontal&im.resize=width:400](https://images.erfi.dev/Granna_1.JPG?im.mirror=horizontal&im.resize=width:400)
+Demo URL: [https://images.erfi.dev/Granna_1.JPG?im=Mirror,horizontal](https://images.erfi.dev/Granna_1.JPG?im=Mirror,horizontal)
 
 #### Advanced Features - Conditional Transformations
 ![Conditional Transform](https://images.erfi.dev/Granna_1.JPG?im.if-dimension=width>800,im.resize=width:400&debug=true)

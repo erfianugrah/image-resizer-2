@@ -213,7 +213,7 @@ export function parseQueryOptions(
   // Parameters that should be parsed as strings
   const stringParams = [
     'fit', 'format', 'gravity', 'metadata', 'background',
-    'derivative', 'origin-auth'
+    'derivative', 'origin-auth', 'aspect', 'focal', 'platform', 'content', 'device'
   ];
   
   // Parameters that can be boolean or numeric
@@ -223,7 +223,7 @@ export function parseQueryOptions(
   const stringOrBooleanParams = ['flip'];
   
   // Parameters that are boolean only
-  const booleanParams = ['anim', 'strip', 'flop'];
+  const booleanParams = ['anim', 'strip', 'flop', 'smart', 'allowExpansion'];
   
   // Process 'auto' or numeric parameters
   autoOrNumericParams.forEach(param => {

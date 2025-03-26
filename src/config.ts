@@ -227,6 +227,7 @@ export interface ImageResizerConfig {
     responseOptimization?: boolean; // Enable response optimization
     optimizedClientDetection?: boolean; // Enable optimized client detection with request caching
     optimizedCaching?: boolean; // Enable optimized caching with tiered strategies
+    optimizedMetadataFetching?: boolean; // Enable optimized metadata fetching with caching
     baselineEnabled?: boolean; // Enable performance baseline tracking
     maxBaselineSamples?: number; // Maximum samples to store per operation
     reportingEnabled?: boolean; // Enable performance reporting
@@ -354,6 +355,31 @@ export interface ImageResizerConfig {
     };
   };
   
+  // Metadata processing settings
+  metadata?: {
+    enabled: boolean;                         // Enable metadata processing features
+    cacheTtl?: number;                        // TTL for cached metadata (seconds)
+    allowClientSpecifiedTargets?: boolean;    // Allow clients to specify target aspect ratios
+    platformPresets?: Record<string, {        // Platform-specific presets
+      aspectRatio: { width: number, height: number },
+      focalPoint?: { x: number, y: number },
+      dimensions?: { width?: number, height?: number },
+      format?: string,
+      quality?: number
+    }>;
+    contentTypePresets?: Record<string, {     // Content-type specific presets
+      focalPoint: { x: number, y: number }
+    }>;
+    defaultQuality?: number;                  // Default quality setting
+    maxCacheItems?: number;                   // Maximum number of items to store in memory cache
+    headerNames?: {                           // Custom header names
+      targetPlatform?: string,                // Header name for specifying target platform
+      targetAspect?: string,                  // Header name for specifying target aspect ratio
+      contentType?: string,                   // Header name for specifying content type
+      focalPoint?: string                     // Header name for specifying focal point
+    };
+  };
+  
   // Storage settings
   storage: {
     priority: ('r2' | 'remote' | 'fallback')[];
@@ -466,10 +492,55 @@ export const defaultConfig: ImageResizerConfig = {
     parallelStorageOperations: false,
     responseOptimization: true,
     optimizedClientDetection: true,
+    optimizedMetadataFetching: true,
     baselineEnabled: true,
     maxBaselineSamples: 100,
     reportingEnabled: true,
     timeoutMs: 5000
+  },
+  
+  // Default metadata settings
+  metadata: {
+    enabled: true,
+    cacheTtl: 3600,
+    allowClientSpecifiedTargets: true,
+    maxCacheItems: 1000,
+    defaultQuality: 80,
+    headerNames: {
+      targetPlatform: 'X-Target-Platform',
+      targetAspect: 'X-Target-Aspect',
+      contentType: 'X-Content-Type',
+      focalPoint: 'X-Focal-Point'
+    },
+    platformPresets: {
+      twitter: {
+        aspectRatio: { width: 16, height: 9 },
+        dimensions: { width: 1200 }
+      },
+      facebook: {
+        aspectRatio: { width: 1.91, height: 1 },
+        dimensions: { width: 1200 }
+      },
+      instagram: {
+        aspectRatio: { width: 1, height: 1 },
+        dimensions: { width: 1080 }
+      },
+      pinterest: {
+        aspectRatio: { width: 2, height: 3 },
+        dimensions: { width: 1000 }
+      }
+    },
+    contentTypePresets: {
+      portrait: {
+        focalPoint: { x: 0.5, y: 0.33 }
+      },
+      landscape: {
+        focalPoint: { x: 0.5, y: 0.4 }
+      },
+      product: {
+        focalPoint: { x: 0.5, y: 0.5 }
+      }
+    }
   },
   
   // Default detector configuration

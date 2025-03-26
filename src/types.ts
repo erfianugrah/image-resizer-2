@@ -124,6 +124,10 @@ export interface Env {
   FALLBACK_AWS_ACCESS_KEY?: string;
   FALLBACK_AWS_SECRET_KEY?: string;
   
+  // Required for compatibility with various service interfaces
+  DERIVATIVES?: Record<string, any>; // Changed to 'any' to support nested objects
+  FALLBACK_AUTH_CUSTOM_HEADERS?: Record<string, string>;
+  
   // Detector Cache Configuration
   DETECTOR_CACHE_MAX_SIZE?: string;
   DETECTOR_CACHE_PRUNE_AMOUNT?: string;

@@ -13,7 +13,8 @@ import {
   StorageService,
   ClientDetectionService,
   ConfigurationService,
-  LoggingService
+  LoggingService,
+  MetadataFetchingService
 } from './interfaces';
 import { DefaultCacheService } from './cacheService';
 import { DefaultDebugService } from './debugService';
@@ -24,6 +25,7 @@ import { DefaultConfigurationService } from './configurationService';
 import { DefaultLoggingService } from './loggingService';
 import { createClientDetectionService } from './clientDetectionFactory';
 import { createAuthService } from './authServiceFactory';
+import { createMetadataService } from './metadataServiceFactory';
 
 /**
  * Create a service container with all required services
@@ -69,12 +71,13 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
   const debugLogger = loggingService.getLogger('DebugService');
   const clientDetectionLogger = loggingService.getLogger('ClientDetectionService');
   const authLogger = loggingService.getLogger('AuthService');
+  const metadataLogger = loggingService.getLogger('MetadataService');
 
   // Create the auth service
   const authService: AuthService = createAuthService(config, authLogger);
 
   // Create service instances
-  const storageService: StorageService = new DefaultStorageService(storageLogger, configurationService, authService);
+  const storageService: StorageService = new DefaultStorageService(storageLogger, configurationService, authService) as StorageService;
   const cacheService: CacheService = new DefaultCacheService(cacheLogger, configurationService);
   const debugService: DebugService = new DefaultDebugService(debugLogger);
   
@@ -95,6 +98,18 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
   // Connect the client detection service to the transformation service
   transformationService.setClientDetectionService(clientDetectionService);
 
+  // Create the metadata service
+  const metadataService: MetadataFetchingService = createMetadataService(
+    config,
+    metadataLogger,
+    storageService,
+    cacheService,
+    configurationService
+  );
+  
+  // Connect the metadata service to the transformation service
+  transformationService.setMetadataService(metadataService);
+
   // Create the service container
   const container: ServiceContainer = {
     storageService,
@@ -105,6 +120,7 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
     configurationService,
     loggingService,
     authService,
+    metadataService,
     logger: mainLogger,
     
     // Add lifecycle management methods (these will be overridden by the lifecycle manager)
@@ -148,6 +164,10 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
           await (transformationService as any).initialize();
         }
         
+        if ('initialize' in metadataService && typeof metadataService.initialize === 'function') {
+          await (metadataService as any).initialize();
+        }
+        
         mainLogger.info('Service container lifecycle initialization complete (legacy method)');
       }
     },
@@ -163,6 +183,10 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
         // Shut down services in reverse dependency order
         if ('shutdown' in transformationService && typeof transformationService.shutdown === 'function') {
           await (transformationService as any).shutdown();
+        }
+        
+        if ('shutdown' in metadataService && typeof metadataService.shutdown === 'function') {
+          await (metadataService as any).shutdown();
         }
         
         if ('shutdown' in debugService && typeof debugService.shutdown === 'function') {
@@ -209,8 +233,8 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
   }
 
   mainLogger.info('Service container initialized with all services', {
-    serviceCount: 8,
-    services: 'configuration, logging, storage, transformation, cache, debug, clientDetection, auth',
+    serviceCount: 9,
+    services: 'configuration, logging, storage, transformation, cache, debug, clientDetection, auth, metadata',
     environment: config.environment
   });
 

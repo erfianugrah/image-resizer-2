@@ -22,17 +22,21 @@ import {
   ClientDetectionService,
   ConfigurationService,
   CacheService,
-  TransformOptions
+  TransformOptions,
+  MetadataFetchingService,
+  MetadataProcessingOptions
 } from './interfaces';
 import { 
   TransformationError, 
   TransformationTimeoutError,
   ValidationError 
 } from '../errors/transformationErrors';
+import { Env } from '../types';
 
 export class DefaultImageTransformationService implements ImageTransformationService {
   private logger: Logger | OptimizedLogger;
   private clientDetectionService?: ClientDetectionService;
+  private metadataService?: MetadataFetchingService;
   private configService?: ConfigurationService;
   private cacheService?: CacheService;
   private isOptimizedLogger: boolean;
@@ -46,18 +50,214 @@ export class DefaultImageTransformationService implements ImageTransformationSer
     logger: Logger, 
     clientDetectionService?: ClientDetectionService,
     configService?: ConfigurationService,
-    cacheService?: CacheService
+    cacheService?: CacheService,
+    metadataService?: MetadataFetchingService
   ) {
     this.logger = logger;
     this.clientDetectionService = clientDetectionService;
     this.configService = configService;
     this.cacheService = cacheService;
+    this.metadataService = metadataService;
     
     // Check if we have an optimized logger
     this.isOptimizedLogger = !!(logger as OptimizedLogger).isLevelEnabled;
     
     // Determine if performance tracking is enabled
     this.performanceTracking = configService?.getConfig().debug?.performanceTracking !== false;
+  }
+  
+  /**
+   * Process smart transformation options using metadata
+   * 
+   * This method is called when 'smart=true' is present in the options.
+   * It uses the metadata service to fetch and analyze the image, then
+   * updates the transformation options accordingly.
+   * 
+   * @param request Original request
+   * @param imagePath Path to the image
+   * @param options Current transformation options
+   * @param config Application configuration
+   * @param env Environment variables
+   * @returns Updated transformation options with metadata-informed settings
+   */
+  async processSmartOptions(
+    request: Request,
+    imagePath: string,
+    options: TransformOptions,
+    config: ImageResizerConfig,
+    env: Env
+  ): Promise<TransformOptions> {
+    const startTime = Date.now();
+    this.logger.debug('Processing smart transform options', {
+      imagePath,
+      optionsKeys: Object.keys(options).join(','),
+      smart: !!options.smart
+    });
+    
+    // Check if metadata service is available
+    if (!this.metadataService) {
+      this.logger.warn('Metadata service not available, skipping smart processing');
+      return options;
+    }
+    
+    try {
+      // Extract parameters for metadata processing
+      const processingOptions: MetadataProcessingOptions = {
+        targetPlatform: options.platform as string,
+        contentType: options.content as string,
+        deviceType: options.device as 'mobile' | 'tablet' | 'desktop',
+        allowExpansion: options.allowExpansion || false,
+        preserveFocalPoint: true
+      };
+      
+      // Extract custom focal point if provided
+      if (options.focal) {
+        try {
+          const [x, y] = options.focal.split(',').map(v => parseFloat(v));
+          if (!isNaN(x) && !isNaN(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+            processingOptions.focalPoint = { x, y };
+            this.logger.debug('Using custom focal point', { x, y });
+          }
+        } catch (error) {
+          this.logger.warn('Invalid focal point format', { focal: options.focal });
+        }
+      }
+      
+      // Parse target aspect ratio if provided
+      let targetAspect: { width: number, height: number } | undefined;
+      if (options.aspect) {
+        try {
+          // Support both colon format (16:9) and dash format (16-9)
+          const aspectString = options.aspect.replace('-', ':');
+          const [width, height] = aspectString.split(':').map(v => parseFloat(v));
+          
+          if (!isNaN(width) && !isNaN(height) && width > 0 && height > 0) {
+            targetAspect = { width, height };
+            this.logger.debug('Using custom aspect ratio', { 
+              width, 
+              height, 
+              ratio: width / height 
+            });
+          }
+        } catch (error) {
+          this.logger.warn('Invalid aspect ratio format', { aspect: options.aspect });
+        }
+      }
+      
+      // Fetch and process metadata
+      this.logger.debug('Fetching and processing metadata', {
+        imagePath,
+        targetAspect: targetAspect ? `${targetAspect.width}:${targetAspect.height}` : 'none',
+        processingOptions: JSON.stringify(processingOptions)
+      });
+      
+      const transformationResult = await this.metadataService.fetchAndProcessMetadata(
+        imagePath,
+        config,
+        env,
+        request,
+        targetAspect,
+        processingOptions
+      );
+      
+      // Create a new options object to avoid modifying the original
+      const updatedOptions = { ...options };
+      
+      // Apply aspect crop parameters if available
+      if (transformationResult.aspectCrop) {
+        // If we have aspect crop parameters, convert to CF Image parameters
+        const { width, height, hoffset, voffset, allowExpansion } = transformationResult.aspectCrop;
+        
+        // Store the metadata result for potential later use
+        updatedOptions._metadataResult = transformationResult;
+        
+        // Set dimensions based on the aspect crop
+        updatedOptions.width = width;
+        updatedOptions.height = height;
+        
+        // Set allowExpansion flag if specified
+        if (allowExpansion !== undefined) {
+          updatedOptions.allowExpansion = allowExpansion;
+        }
+        
+        // Set fit to cover for aspect cropping
+        updatedOptions.fit = 'cover';
+        
+        // Set gravity to coordinates for precise focal point
+        updatedOptions.gravity = { x: hoffset, y: voffset };
+        
+        this.logger.debug('Applied aspect crop parameters', {
+          width,
+          height,
+          hoffset,
+          voffset,
+          fit: updatedOptions.fit,
+          gravity: JSON.stringify(updatedOptions.gravity)
+        });
+      }
+      
+      // Apply dimension constraints if available
+      if (transformationResult.dimensions) {
+        // Only apply if we don't have aspect crop (which already sets width/height)
+        if (!transformationResult.aspectCrop) {
+          if (transformationResult.dimensions.width) {
+            updatedOptions.width = transformationResult.dimensions.width;
+          }
+          if (transformationResult.dimensions.height) {
+            updatedOptions.height = transformationResult.dimensions.height;
+          }
+          
+          this.logger.debug('Applied dimension constraints', {
+            width: updatedOptions.width,
+            height: updatedOptions.height
+          });
+        }
+      }
+      
+      // Apply format recommendation if available
+      if (transformationResult.format) {
+        updatedOptions.format = transformationResult.format;
+        this.logger.debug('Applied format recommendation', {
+          format: updatedOptions.format
+        });
+      }
+      
+      // Apply quality recommendation if available
+      if (transformationResult.quality) {
+        updatedOptions.quality = transformationResult.quality;
+        this.logger.debug('Applied quality recommendation', {
+          quality: updatedOptions.quality
+        });
+      }
+      
+      // Remove smart parameter to avoid reprocessing
+      delete updatedOptions.smart;
+      
+      // Remove processed parameters to avoid confusion
+      delete updatedOptions.platform;
+      delete updatedOptions.content;
+      delete updatedOptions.device;
+      delete updatedOptions.aspect;
+      delete updatedOptions.focal;
+      
+      const duration = Date.now() - startTime;
+      this.logger.debug('Smart processing completed', {
+        duration,
+        originalOptionCount: Object.keys(options).length,
+        updatedOptionCount: Object.keys(updatedOptions).length
+      });
+      
+      return updatedOptions;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error('Error in smart processing', {
+        error: errorMessage,
+        duration: Date.now() - startTime
+      });
+      
+      // Return original options in case of error
+      return options;
+    }
   }
   
   /**
@@ -197,6 +397,19 @@ export class DefaultImageTransformationService implements ImageTransformationSer
       }
     } else {
       this.logger.debug('Client detection service set');
+    }
+  }
+  
+  setMetadataService(service: MetadataFetchingService): void {
+    this.metadataService = service;
+    
+    // Only log if debug level is enabled
+    if (this.isOptimizedLogger) {
+      if ((this.logger as OptimizedLogger).isLevelEnabled('DEBUG')) {
+        this.logger.debug('Metadata service set');
+      }
+    } else {
+      this.logger.debug('Metadata service set');
     }
   }
   
@@ -750,6 +963,47 @@ export class DefaultImageTransformationService implements ImageTransformationSer
   }
 
   /**
+   * Check if a transformation requires original image metadata
+   * 
+   * This identifies transformation options that inherently need
+   * metadata about the original image to function correctly.
+   * 
+   * @param options Transformation options to check
+   * @returns True if metadata is required for the transformation
+   */
+  private requiresMetadata(options: TransformOptions): boolean {
+    // Check for smart transformation - safely convert any smart value to string to compare
+    const smartValue = options.smart !== undefined ? String(options.smart) : '';
+    if (options.smart === true || smartValue === 'true') {
+      this.logger.debug('Metadata required: smart=true parameter detected');
+      return true;
+    }
+    
+    // Check for aspect ratio specification
+    if (options.aspect) {
+      this.logger.debug('Metadata required: aspect ratio parameter detected', { aspect: options.aspect });
+      return true;
+    }
+    
+    // Check for focal point specification
+    if (options.focal) {
+      this.logger.debug('Metadata required: focal point parameter detected', { focal: options.focal });
+      return true;
+    }
+    
+    // Check for certain derivatives that rely on original dimensions
+    if (options.derivative) {
+      const metadataDerivatives = ['banner', 'avatar', 'profile', 'thumbnail', 'portrait', 'square'];
+      if (metadataDerivatives.includes(options.derivative)) {
+        this.logger.debug('Metadata required: derivative requires original dimensions', { derivative: options.derivative });
+        return true;
+      }
+    }
+    
+    return false;
+  }
+
+  /**
    * Build Cloudflare image transformation options
    */
   async buildTransformOptions(
@@ -775,6 +1029,193 @@ export class DefaultImageTransformationService implements ImageTransformationSer
         format: 'auto',
         quality: 'auto' as any
       };
+    }
+    
+    // Check if we need to fetch metadata for this transformation
+    if (this.requiresMetadata(options) && this.metadataService) {
+      const env = (request as unknown as { env: Env }).env;
+      
+      this.logger.debug('Fetching metadata for transformation', {
+        imagePath: storageResult.path,
+        requiresMetadata: true,
+        transformOptions: Object.keys(options).join(',')
+      });
+      
+      try {
+        // Fetch the metadata for the image
+        const metadata = await this.metadataService.fetchMetadata(
+          storageResult.path || '',
+          config,
+          env,
+          request
+        );
+        
+        this.logger.debug('Metadata fetched successfully', {
+          imagePath: storageResult.path,
+          width: metadata.metadata?.width,
+          height: metadata.metadata?.height,
+          format: metadata.metadata?.format,
+          confidence: metadata.metadata?.confidence
+        });
+        
+        // Set up metadata processing options
+        const processingOptions: MetadataProcessingOptions = {
+          preserveFocalPoint: true,
+          allowExpansion: options.allowExpansion || false
+        };
+        
+        // Add content type and platform information if available
+        if (options.content) {
+          processingOptions.contentType = options.content as string;
+        }
+        if (options.platform) {
+          processingOptions.targetPlatform = options.platform as string;
+        }
+        if (options.device) {
+          processingOptions.deviceType = options.device as 'mobile' | 'tablet' | 'desktop';
+        }
+        
+        // If we have a focal point, use it
+        if (options.focal) {
+          try {
+            const [x, y] = options.focal.split(',').map(v => parseFloat(v));
+            if (!isNaN(x) && !isNaN(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+              processingOptions.focalPoint = { x, y };
+              this.logger.debug('Using custom focal point', { x, y });
+            }
+          } catch (error) {
+            this.logger.warn('Invalid focal point format', { focal: options.focal });
+          }
+        }
+        
+        // Process the metadata based on what transformation is needed
+        if (options.aspect && metadata.metadata) {
+          this.logger.debug('Processing aspect ratio with metadata', {
+            aspect: options.aspect,
+            originalWidth: metadata.metadata.width,
+            originalHeight: metadata.metadata.height
+          });
+          
+          // Process the metadata - create a targetAspect object if aspect ratio is provided
+          let targetAspect: { width: number, height: number } | undefined;
+          
+          // If aspect ratio is provided, extract width and height
+          if (options.aspect) {
+            try {
+              // Support both colon format (16:9) and dash format (16-9)
+              const aspectString = options.aspect.toString().replace('-', ':');
+              const [width, height] = aspectString.split(':').map(v => parseFloat(v));
+              
+              if (!isNaN(width) && !isNaN(height) && width > 0 && height > 0) {
+                targetAspect = { width, height };
+                this.logger.debug('Using aspect ratio for metadata processing', {
+                  width,
+                  height,
+                  ratio: width / height
+                });
+              }
+            } catch (error) {
+              this.logger.warn('Invalid aspect ratio format', { aspect: options.aspect });
+            }
+          }
+          
+          // Call processMetadata with the extracted aspect ratio
+          const result = await this.metadataService.processMetadata(
+            metadata,
+            targetAspect,
+            processingOptions
+          );
+          
+          // Apply the processed metadata to the options
+          if (result.aspectCrop) {
+            if (!options.width) options.width = result.aspectCrop.width;
+            if (!options.height) options.height = result.aspectCrop.height;
+            if (!options.fit) options.fit = 'crop';
+            
+            // Cloudflare expects an object with x,y for gravity
+            if (!options.gravity && result.aspectCrop.hoffset !== undefined && result.aspectCrop.voffset !== undefined) {
+              // Create gravity object from hoffset and voffset
+              options.gravity = { 
+                x: result.aspectCrop.hoffset, 
+                y: result.aspectCrop.voffset 
+              };
+            }
+          }
+        }
+        
+        // If smart mode is enabled, process it with the metadata
+        const smartValue = options.smart !== undefined ? String(options.smart) : '';
+        if ((options.smart === true || smartValue === 'true') && metadata.metadata) {
+          this.logger.debug('Processing smart transformation with metadata', {
+            originalWidth: metadata.metadata.width,
+            originalHeight: metadata.metadata.height
+          });
+          
+          // For smart mode without aspect, use original aspect ratio but with smart cropping
+          if (!options.aspect) {
+            // Default to square if no other dimensions are provided
+            let width = options.width ? Number(options.width) : metadata.metadata.width;
+            let height = options.height ? Number(options.height) : metadata.metadata.height;
+            
+            // If neither width nor height is specified, use a reasonable default
+            if (!options.width && !options.height) {
+              width = Math.min(metadata.metadata.width, 800);
+              height = Math.round(width * (metadata.metadata.height / metadata.metadata.width));
+            }
+            
+            // Update the options with the calculated dimensions
+            options.width = width;
+            options.height = height;
+            options.fit = 'crop';
+            
+            // Use face gravity if no specific gravity or focal point is set
+            if (!options.gravity && !options.focal) {
+              options.gravity = 'face';
+              this.logger.debug('Using face detection for smart crop');
+            }
+          }
+          
+          // If it's a portrait or product image, apply special handling
+          if (options.content === 'portrait' || options.content === 'product') {
+            // For portraits, prioritize face detection
+            options.gravity = 'face';
+            
+            // For products, use center if no focal point is provided
+            if (options.content === 'product' && !options.focal) {
+              options.gravity = 'center';
+            }
+            
+            this.logger.debug('Applied special handling for content type', {
+              contentType: options.content,
+              gravity: options.gravity
+            });
+          }
+        }
+        
+        // For banner-type derivatives, apply special handling
+        if (options.derivative === 'banner' && metadata.metadata) {
+          this.logger.debug('Processing banner derivative with metadata', {
+            originalWidth: metadata.metadata.width,
+            originalHeight: metadata.metadata.height
+          });
+          
+          // Use face detection with wide aspect ratio if no specific gravity is set
+          if (!options.gravity && !options.focal) {
+            options.gravity = 'face';
+          }
+          
+          // Ensure a wide aspect ratio if not specifically set
+          if (!options.aspect) {
+            options.aspect = '16:5';
+          }
+        }
+      } catch (error) {
+        this.logger.warn('Error fetching metadata for transformation', {
+          error: error instanceof Error ? error.message : String(error),
+          imagePath: storageResult.path
+        });
+        // Continue with transformation without metadata
+      }
     }
     
     // Apply derivative template if specified
