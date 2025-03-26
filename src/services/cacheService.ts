@@ -608,54 +608,20 @@ export class DefaultCacheService implements CacheService {
           
           // Only cache successful responses
           if (cachedResponse.status >= 200 && cachedResponse.status < 300) {
-            // Clone response to avoid consuming the body
-            const clonedResponse = cachedResponse.clone();
+            // Prepare response for caching
+            const responseToCache = this.prepareCacheableResponse(cachedResponse);
             
             this.logger.breadcrumb('Storing successful response in Cache API', undefined, {
-              status: cachedResponse.status,
+              status: responseToCache.status,
               url: request.url
             });
             
-            // Generate cache tags for the request if enabled
-            let requestWithTags = request;
-            if (config.cache.cacheTags?.enabled) {
-              try {
-                const url = new URL(request.url);
-                const path = url.pathname;
-                
-                // Extract options from URL parameters
-                const extractedOptions = this.extractOptionsFromUrl(url);
-                
-                // Generate tags for this request
-                const tags = this.generateCacheTags(request, {
-                  response: new Response(''), // Dummy response
-                  sourceType: 'remote',
-                  contentType: clonedResponse.headers.get('Content-Type') || 'application/octet-stream',
-                  size: parseInt(clonedResponse.headers.get('Content-Length') || '0', 10) || 0,
-                  path
-                }, extractedOptions);
-                
-                if (tags.length > 0) {
-                  this.logger.debug('Adding cache tags to Cache API request', {
-                    tagCount: tags.length,
-                    sampleTags: tags.slice(0, 3).join(', ') + (tags.length > 3 ? '...' : '')
-                  });
-                  
-                  // Apply tags to request
-                  requestWithTags = this.applyTagsToRequest(request, tags);
-                }
-              } catch (tagsError) {
-                // If tag generation fails, log but continue with the original request
-                this.logger.warn('Failed to generate cache tags for Cache API', {
-                  error: tagsError instanceof Error ? tagsError.message : String(tagsError),
-                  url: request.url
-                });
-              }
-            }
+            // Prepare request with cache tags
+            const requestWithTags = this.prepareTaggedRequest(request, responseToCache);
             
-            // Use waitUntil to cache the response without blocking, using the request with tags
+            // Use waitUntil to cache the response without blocking, using the tagged request
             ctx.waitUntil(
-              caches.default.put(requestWithTags, clonedResponse).then(() => {
+              caches.default.put(requestWithTags, responseToCache).then(() => {
                 this.logger.breadcrumb('Successfully stored in Cache API');
               }).catch(error => {
                 this.logger.breadcrumb('Failed to store in Cache API', undefined, {
@@ -1487,19 +1453,20 @@ export class DefaultCacheService implements CacheService {
       
       if (cacheTagsEnabled && imagePath && options) {
         try {
-          // Create a dummy Request to pass to the generateCacheTags method
+          // Create a dummy request for tag generation
           const dummyRequest = new Request(`https://example.com${imagePath}`);
+          const dummyResponse = new Response();
           
-          // Create a minimal storage result
+          // Create a minimal storage result for tag generation
           const dummyStorageResult: StorageResult = {
-            response: new Response(),
+            response: dummyResponse,
             sourceType: 'remote',
             contentType: null,
             size: 0,
             path: imagePath
           };
           
-          // Generate tags
+          // Generate tags using the existing method
           cacheTags = this.generateCacheTags(dummyRequest, dummyStorageResult, options);
           
           if (cacheTags.length > 0) {
@@ -1906,6 +1873,92 @@ export class DefaultCacheService implements CacheService {
   }
   
   /**
+   * Prepare a response for caching by adding timestamp and proper cache headers
+   * 
+   * @param response Original response
+   * @returns Response ready for caching
+   * @private
+   */
+  private prepareCacheableResponse(response: Response): Response {
+    // Clone the response to avoid consuming the body
+    const clonedResponse = response.clone();
+    
+    // Add timestamp header for age calculation
+    const headers = new Headers(clonedResponse.headers);
+    if (!headers.has('Date')) {
+      headers.set('Date', new Date().toUTCString());
+    }
+    
+    return new Response(clonedResponse.body, {
+      status: clonedResponse.status,
+      statusText: clonedResponse.statusText,
+      headers
+    });
+  }
+  
+  /**
+   * Prepare a request with cache tags if enabled
+   * 
+   * @param request Original request
+   * @param response Response to be cached 
+   * @param pathOverride Optional path override
+   * @param options Optional transformation options
+   * @returns Request with cache tags applied if enabled
+   * @private
+   */
+  private prepareTaggedRequest(
+    request: Request,
+    response: Response,
+    pathOverride?: string,
+    options?: TransformOptions
+  ): Request {
+    const config = this.configService.getConfig();
+    
+    // If cache tags are not enabled, return the original request
+    if (!config.cache.cacheTags?.enabled) {
+      return request;
+    }
+    
+    try {
+      const url = new URL(request.url);
+      const path = pathOverride || url.pathname;
+      
+      // Extract options from URL parameters
+      const extractedOptions = this.extractOptionsFromUrl(url);
+      
+      // Merge with passed options if available
+      const mergedOptions = options ? { ...extractedOptions, ...options } : extractedOptions;
+      
+      // Generate tags for this request
+      const tags = this.generateCacheTags(request, {
+        response: new Response(''), // Dummy response
+        sourceType: 'remote',
+        contentType: response.headers.get('Content-Type') || 'application/octet-stream',
+        size: parseInt(response.headers.get('Content-Length') || '0', 10) || 0,
+        path
+      }, mergedOptions);
+      
+      if (tags.length > 0) {
+        this.logger.debug('Adding cache tags to request', {
+          tagCount: tags.length,
+          sampleTags: tags.slice(0, 3).join(', ') + (tags.length > 3 ? '...' : '')
+        });
+        
+        // Apply tags to request
+        return this.applyTagsToRequest(request, tags);
+      }
+    } catch (tagsError) {
+      // If tag generation fails, log but continue with the original request
+      this.logger.warn('Failed to generate cache tags for request', {
+        error: tagsError instanceof Error ? tagsError.message : String(tagsError),
+        url: request.url
+      });
+    }
+    
+    return request;
+  }
+
+  /**
    * Store a response in cache in the background
    * 
    * @param request The original request
@@ -1932,62 +1985,11 @@ export class DefaultCacheService implements CacheService {
           status: response.status
         });
         
-        // Clone the response to avoid consuming the body
-        const clonedResponse = response.clone();
+        // Prepare response for caching
+        const responseToCache = this.prepareCacheableResponse(response);
         
-        // Add timestamp header for age calculation
-        const headers = new Headers(clonedResponse.headers);
-        if (!headers.has('Date')) {
-          headers.set('Date', new Date().toUTCString());
-        }
-        
-        const responseToCache = new Response(clonedResponse.body, {
-          status: clonedResponse.status,
-          statusText: clonedResponse.statusText,
-          headers
-        });
-        
-        // Generate cache tags for the request if enabled
-        let requestWithTags = request;
-        const config = this.configService.getConfig();
-        
-        if (config.cache.cacheTags?.enabled) {
-          try {
-            const url = new URL(request.url);
-            const path = url.pathname;
-            
-            // Extract options from URL parameters
-            const extractedOptions = this.extractOptionsFromUrl(url);
-            
-            // Merge with passed options if available
-            const mergedOptions = options ? { ...extractedOptions, ...options } : extractedOptions;
-            
-            // Generate tags for this request
-            const tags = this.generateCacheTags(request, {
-              response: new Response(''), // Dummy response
-              sourceType: 'remote',
-              contentType: responseToCache.headers.get('Content-Type') || 'application/octet-stream',
-              size: parseInt(responseToCache.headers.get('Content-Length') || '0', 10) || 0,
-              path
-            }, mergedOptions);
-            
-            if (tags.length > 0) {
-              this.logger.debug('Adding cache tags to background Cache API request', {
-                tagCount: tags.length,
-                sampleTags: tags.slice(0, 3).join(', ') + (tags.length > 3 ? '...' : '')
-              });
-              
-              // Apply tags to request
-              requestWithTags = this.applyTagsToRequest(request, tags);
-            }
-          } catch (tagsError) {
-            // If tag generation fails, log but continue with the original request
-            this.logger.warn('Failed to generate cache tags for background Cache API', {
-              error: tagsError instanceof Error ? tagsError.message : String(tagsError),
-              url: request.url
-            });
-          }
-        }
+        // Prepare request with cache tags
+        const requestWithTags = this.prepareTaggedRequest(request, responseToCache, undefined, options);
         
         // Put in cache with the tagged request
         await caches.default.put(requestWithTags, responseToCache);
