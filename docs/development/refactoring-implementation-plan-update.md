@@ -86,6 +86,31 @@ This document provides a comprehensive update on the implementation progress of 
    - Implemented integration test between services
    - Developed domain command tests
 
+### Phase 5: Service Lifecycle Management ✅
+
+1. **Service Lifecycle Interface Definition**:
+   - Added `initialize()` and `shutdown()` methods to service interfaces
+   - Created contract for proper resource management
+   - Defined lifecycle ordering requirements
+
+2. **Core Service Lifecycle Implementation**:
+   - Implemented lifecycle methods for ConfigurationService
+   - Added circuit breaker management in CacheService
+   - Implemented interval cleanup in OptimizedCacheService
+   - Created proper resource management in all services
+
+3. **Advanced Lifecycle Features**:
+   - Implemented statistics gathering during service lifetime
+   - Added performance baseline tracking in services
+   - Created resource verification during startup
+   - Implemented proper resource cleanup during shutdown
+
+4. **Service Container Lifecycle Coordination**:
+   - Enhanced container to coordinate service initialization
+   - Added dependency-aware initialization order
+   - Implemented reverse-order shutdown for proper cleanup
+   - Added lifecycle testing for services
+
 ## Key Architectural Improvements
 
 ### 1. Service Isolation and Dependency Injection
@@ -186,7 +211,56 @@ export class TransformImageCommand implements Command<TransformImageInput, Respo
 }
 ```
 
-### 4. Testing Improvements
+### 4. Service Lifecycle Management
+
+The refactoring now includes comprehensive service lifecycle management:
+
+- Proper initialization and shutdown sequences for all services
+- Resource acquisition and cleanup
+- Performance tracking across service lifecycle
+- Statistics gathering for optimization
+- Error handling during initialization and shutdown
+
+Example of service lifecycle implementation:
+
+```typescript
+export class DefaultStorageService implements StorageService {
+  // Service properties...
+  private r2CircuitBreaker: CircuitBreakerState;
+  private recentFailures: {timestamp: number, errorCode: string, source: string}[] = [];
+  private performanceBaseline: Record<string, number> = {};
+
+  async initialize(): Promise<void> {
+    this.logger.debug('Initializing StorageService');
+    
+    // Reset circuit breaker states
+    this.r2CircuitBreaker = createCircuitBreakerState();
+    
+    // Initialize resources
+    if (this.configService.getValue('performance.baselineTracking', false)) {
+      this.initializePerformanceBaseline();
+    }
+    
+    this.logger.info('StorageService initialization complete');
+    return Promise.resolve();
+  }
+  
+  async shutdown(): Promise<void> {
+    this.logger.debug('Shutting down StorageService');
+    
+    // Report performance metrics
+    this.logger.debug('Storage performance baseline at shutdown', this.performanceBaseline);
+    
+    // Clean up resources
+    this.recentFailures = [];
+    
+    this.logger.info('StorageService shutdown complete');
+    return Promise.resolve();
+  }
+}
+```
+
+### 5. Testing Improvements
 
 The refactoring significantly improved the testability of the codebase:
 
@@ -194,6 +268,7 @@ The refactoring significantly improved the testability of the codebase:
 - Integration tests between services
 - Command-focused tests for business logic
 - Standardized mock factories for consistent testing
+- Lifecycle testing for proper resource management
 
 Example of the new testing approach:
 
@@ -209,16 +284,16 @@ describe('CacheService', () => {
     cacheService = new DefaultCacheService(mockLogger, mockConfigService);
   });
   
-  it('should apply cache headers to the response', () => {
-    // Arrange
-    const mockResponse = new Response('test');
-    const options = createMockTransformOptions();
-    
+  it('should support lifecycle methods', async () => {
     // Act
-    const result = cacheService.applyCacheHeaders(mockResponse, options);
+    await cacheService.initialize();
+    await cacheService.shutdown();
     
     // Assert
-    expect(result.headers.get('Cache-Control')).toContain('max-age=3600');
+    expect(mockLogger.debug).toHaveBeenCalledWith('Initializing CacheService');
+    expect(mockLogger.info).toHaveBeenCalledWith('CacheService initialization complete');
+    expect(mockLogger.debug).toHaveBeenCalledWith('Shutting down CacheService');
+    expect(mockLogger.debug).toHaveBeenCalledWith('Cache circuit breaker state at shutdown', expect.any(Object));
   });
   
   // More tests...
@@ -236,15 +311,23 @@ describe('CacheService', () => {
    - All utility files have been deleted
    - No remaining direct utility imports
 
-3. **Testing Strategy**: 70% Complete
+3. **Service Lifecycle Management**: 100% Complete
+   - Lifecycle methods added to all service interfaces
+   - Implementation completed for all services
+   - ServiceContainer lifecycle coordination implemented
+   - Resource tracking and cleanup implemented
+
+4. **Testing Strategy**: 75% Complete
    - Testing strategy document created
    - Mock utilities implemented
    - Sample tests created
+   - Service lifecycle tests implemented
    - Remaining service tests to be implemented
 
-4. **Documentation**: 80% Complete
+5. **Documentation**: 85% Complete
    - Architecture documentation updated
    - Service interaction documented
+   - Service lifecycle implementation documented
    - Testing strategy documented
    - API documentation in progress
 
@@ -264,14 +347,21 @@ describe('CacheService', () => {
 - Implement lazy loading for complex services
 - Add performance benchmarks
 
-### 3. Documentation Completion
+### 3. Centralized Lifecycle Management
+
+- Create a LifecycleManager service to coordinate initialization and shutdown
+- Add startup health checks and dependency validation
+- Implement graceful degradation for service initialization failures
+- Add detailed initialization timing metrics
+
+### 4. Documentation Completion
 
 - Create architectural diagrams
 - Add service interaction documentation
 - Document common patterns and best practices
 - Update API documentation
 
-### 4. Final Review
+### 5. Final Review
 
 - Conduct code review for all services
 - Verify adherence to DDD principles
@@ -289,14 +379,22 @@ describe('CacheService', () => {
 3. **Dependency Management**:
    Proper dependency injection simplified testing and prevented circular dependencies.
 
-4. **Backward Compatibility**:
+4. **Resource Lifecycle Management**:
+   Implementing proper initialization and shutdown methods significantly improved resource handling.
+
+5. **Statistics Gathering**:
+   Collecting metrics throughout service lifecycle provides valuable optimization insights.
+
+6. **Backward Compatibility**:
    The progressive migration approach allowed maintaining functionality during refactoring.
 
-5. **Test-Driven Approach**:
+7. **Test-Driven Approach**:
    Creating tests while refactoring helped verify behavior preservation.
 
 ## Conclusion
 
-The refactoring to a service-oriented architecture has significantly improved the codebase structure, separation of concerns, testability, and maintainability. The project now follows Domain-Driven Design principles with clear service boundaries and proper dependency management.
+The refactoring to a service-oriented architecture has significantly improved the codebase structure, separation of concerns, testability, and maintainability. The project now follows Domain-Driven Design principles with clear service boundaries, proper dependency management, and comprehensive lifecycle management.
 
-The remaining work focuses primarily on completing the test implementation and finalizing documentation. The core architectural refactoring is complete, with all utility functionality successfully migrated to the service layer.
+With the addition of service lifecycle management, the application now properly initializes resources, tracks performance and usage statistics throughout operation, and ensures proper cleanup during shutdown. This enhancement improves resource utilization, provides valuable metrics for optimization, and prevents resource leaks.
+
+The remaining work focuses primarily on completing the test implementation, creating a centralized lifecycle manager, and finalizing documentation. The core architectural refactoring is complete, with all utility functionality successfully migrated to the service layer and all services now supporting proper lifecycle management.
