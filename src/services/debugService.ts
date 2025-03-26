@@ -191,10 +191,13 @@ export class DefaultDebugService implements DebugService {
       // Add cache tag information if enabled
       if (config.cache.cacheTags?.enabled && storageResult.path) {
         try {
-        // Import the CacheService for this instead of directly using the utility
           const cacheTags = this.generateCacheTags(storageResult.path || '', options, config);
           if (cacheTags.length > 0) {
-            headers.set('X-Cache-Tags', cacheTags.join(', '));
+            // Set X-Cache-Tags header for debugging
+            headers.set('X-Cache-Tags', cacheTags.join(','));
+            
+            // Also show the header name that would be used in production
+            headers.set('X-Debug-Cache-Tag-Header', 'Cache-Tag');
           }
         } catch (error) {
           this.logger.error('Error generating debug cache tags', { 
@@ -1191,56 +1194,66 @@ export class DefaultDebugService implements DebugService {
     // Add path-based tags
     const pathParts = path.split('/').filter(Boolean);
     
-    // Add tags for each level of the path
+    // Add tags for each level of the path using the same format as cacheService
     if (pathParts.length > 0) {
-      // Add a tag for the entire path
-      tags.push(`${prefix}path:${path}`);
+      // Normalize the path following same rules as cacheService
+      const leadingSlashPattern = config.cache.cacheTags?.pathNormalization?.leadingSlashPattern || '^/+';
+      const invalidCharsPattern = config.cache.cacheTags?.pathNormalization?.invalidCharsPattern || '[^a-zA-Z0-9-_/.]';
+      const replacementChar = config.cache.cacheTags?.pathNormalization?.replacementChar || '-';
       
-      // Add tags for each directory level
-      let currentPath = '';
-      pathParts.forEach((part, index) => {
-        if (index < pathParts.length - 1) {
-          currentPath += `/${part}`;
-          tags.push(`${prefix}dir:${currentPath}`);
+      const normalizedPath = path
+        .replace(new RegExp(leadingSlashPattern), '') // Remove leading slashes
+        .replace(new RegExp(invalidCharsPattern, 'g'), replacementChar) // Replace special chars
+        .split('/')
+        .filter(Boolean);
+      
+      // Add a tag for the full path
+      tags.push(`${prefix}path-${normalizedPath.join('-').replace(/\./g, '-')}`);
+      
+      // Add tags for each path segment
+      normalizedPath.forEach((segment, index) => {
+        // Only add segment tags if there are multiple segments
+        if (normalizedPath.length > 1) {
+          // Also replace dots with dashes for segments for consistency
+          tags.push(`${prefix}segment-${index}-${segment.replace(/\./g, '-')}`);
         }
       });
       
-      // Add a tag for the filename
-      const filename = pathParts[pathParts.length - 1];
-      tags.push(`${prefix}file:${filename}`);
-      
-      // If the filename has an extension, add a tag for the extension
-      const extension = filename.split('.').pop();
-      if (extension && extension !== filename) {
-        tags.push(`${prefix}ext:${extension}`);
+      // Add filename as a separate tag
+      const filename = normalizedPath[normalizedPath.length - 1];
+      if (filename) {
+        tags.push(`${prefix}file-${filename.replace(/\./g, '-')}`);
       }
     }
     
-    // Add transformation-based tags
+    // Add transformation-based tags in the same format as cacheService
     if (options.width) {
-      tags.push(`${prefix}width:${options.width}`);
+      tags.push(`${prefix}width-${options.width}`);
     }
     
     if (options.height) {
-      tags.push(`${prefix}height:${options.height}`);
+      tags.push(`${prefix}height-${options.height}`);
+    }
+    
+    // Add combined dimensions tag if both width and height are specified
+    if (options.width && options.height) {
+      tags.push(`${prefix}dimensions-${options.width}x${options.height}`);
     }
     
     if (options.format && options.format !== 'auto') {
-      tags.push(`${prefix}format:${options.format}`);
+      tags.push(`${prefix}format-${options.format}`);
     }
     
     if (options.quality) {
-      // Group qualities into ranges to avoid too many tags
-      const qualityRange = Math.floor(options.quality / 10) * 10;
-      tags.push(`${prefix}quality:${qualityRange}-${qualityRange + 9}`);
+      tags.push(`${prefix}quality-${options.quality}`);
     }
     
     if (options.fit) {
-      tags.push(`${prefix}fit:${options.fit}`);
+      tags.push(`${prefix}fit-${options.fit}`);
     }
     
     if (options.derivative) {
-      tags.push(`${prefix}derivative:${options.derivative}`);
+      tags.push(`${prefix}derivative-${options.derivative}`);
     }
     
     return tags;

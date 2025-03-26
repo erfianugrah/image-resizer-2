@@ -324,15 +324,15 @@ export class DefaultCacheService implements CacheService {
           );
           
           if (tags.length > 0) {
-            // Use the Cache-Tag header supported by most CDNs
+            // Set Cache-Tag header on response (used by Cloudflare Cache API and other CDNs)
             newResponse.headers.set('Cache-Tag', tags.join(','));
             
-            // Add for Cloudflare too if both headers are enabled
+            // Add for Cloudflare legacy CDN if both headers are enabled
             if (config.cache.useMultipleCacheTagHeaders) {
               newResponse.headers.set('Cloudflare-CDN-Cache-Control', `tag=${tags.join(',')}`);
             }
             
-            this.logger.debug('Added cache tags to response', {
+            this.logger.debug('Added cache tags to response via Cache-Tag header', {
               tagCount: tags.length,
               firstFewTags: tags.slice(0, 3).join(', ') + (tags.length > 3 ? '...' : '')
             });
@@ -616,9 +616,60 @@ export class DefaultCacheService implements CacheService {
               url: request.url
             });
             
-            // Use waitUntil to cache the response without blocking
+            // Generate cache tags for the request if enabled
+            let requestWithTags = request;
+            if (config.cache.cacheTags?.enabled) {
+              try {
+                const url = new URL(request.url);
+                const path = url.pathname;
+                
+                // Extract options from URL parameters
+                const searchParams = url.searchParams;
+                const options: TransformOptions = {};
+                
+                if (searchParams.has('width')) options.width = parseInt(searchParams.get('width') || '0', 10);
+                if (searchParams.has('height')) options.height = parseInt(searchParams.get('height') || '0', 10);
+                if (searchParams.has('format')) options.format = searchParams.get('format') || undefined;
+                if (searchParams.has('quality')) options.quality = parseInt(searchParams.get('quality') || '0', 10);
+                if (searchParams.has('fit')) options.fit = searchParams.get('fit') || undefined;
+                
+                // Generate tags for this request
+                const tags = this.generateCacheTags(request, {
+                  response: new Response(''), // Dummy response
+                  sourceType: 'remote',
+                  contentType: clonedResponse.headers.get('Content-Type') || 'application/octet-stream',
+                  size: parseInt(clonedResponse.headers.get('Content-Length') || '0', 10) || 0,
+                  path
+                }, options);
+                
+                if (tags.length > 0) {
+                  this.logger.debug('Adding cache tags to Cache API request', {
+                    tagCount: tags.length,
+                    sampleTags: tags.slice(0, 3).join(', ') + (tags.length > 3 ? '...' : '')
+                  });
+                  
+                  // Create a new request with the cache tags in the cf property
+                  // This is the correct way to apply cache tags for Cloudflare Cache API
+                  const cfData = request.cf || {};
+                  requestWithTags = new Request(request, {
+                    cf: { 
+                      ...cfData,
+                      cacheTags: tags 
+                    }
+                  });
+                }
+              } catch (tagsError) {
+                // If tag generation fails, log but continue with the original request
+                this.logger.warn('Failed to generate cache tags for Cache API', {
+                  error: tagsError instanceof Error ? tagsError.message : String(tagsError),
+                  url: request.url
+                });
+              }
+            }
+            
+            // Use waitUntil to cache the response without blocking, using the request with tags
             ctx.waitUntil(
-              caches.default.put(request, clonedResponse).then(() => {
+              caches.default.put(requestWithTags, clonedResponse).then(() => {
                 this.logger.breadcrumb('Successfully stored in Cache API');
               }).catch(error => {
                 this.logger.breadcrumb('Failed to store in Cache API', undefined, {
@@ -632,70 +683,8 @@ export class DefaultCacheService implements CacheService {
             });
           }
           
-          // Check if response has cache tags and add them as header
-          if (config.cache.cacheTags?.enabled) {
-            try {
-              const url = new URL(request.url);
-              const path = url.pathname;
-              
-              // Get query parameters for options
-              const searchParams = url.searchParams;
-              const options: TransformOptions = {};
-              
-              // Extract basic parameters from the URL
-              if (searchParams.has('width')) options.width = parseInt(searchParams.get('width') || '0', 10);
-              if (searchParams.has('height')) options.height = parseInt(searchParams.get('height') || '0', 10);
-              if (searchParams.has('format')) options.format = searchParams.get('format') || undefined;
-              if (searchParams.has('quality')) options.quality = parseInt(searchParams.get('quality') || '0', 10);
-              if (searchParams.has('fit')) options.fit = searchParams.get('fit') || undefined;
-              
-              // Generate cache tags for the response
-              const tags = this.generateCacheTags(request, {
-                response: new Response(''), // Dummy response
-                sourceType: 'remote',
-                contentType: cachedResponse.headers.get('Content-Type') || 'application/octet-stream',
-                size: parseInt(cachedResponse.headers.get('Content-Length') || '0', 10) || 0,
-                path
-              }, options);
-              
-              if (tags.length > 0) {
-                this.logger.debug('Adding Cache-Tag header to response', {
-                  tagCount: tags.length,
-                  sampleTags: tags.slice(0, 3).join(', ') + (tags.length > 3 ? '...' : '')
-                });
-                
-                try {
-                  // Create a new response with the Cache-Tag header
-                  const headers = new Headers(cachedResponse.headers);
-                  headers.set('Cache-Tag', tags.join(','));
-                  
-                  return new Response(cachedResponse.body, {
-                    status: cachedResponse.status,
-                    statusText: cachedResponse.statusText,
-                    headers
-                  });
-                } catch (headerError) {
-                  // If adding headers fails, log and return original cached response
-                  this.logger.warn('Failed to add Cache-Tag header to response', {
-                    error: headerError instanceof Error ? headerError.message : String(headerError),
-                    tagCount: tags.length
-                  });
-                  return cachedResponse;
-                }
-              }
-              
-              return cachedResponse;
-            } catch (tagsError) {
-              // If there's an error generating tags, log it but continue
-              this.logger.warn('Error generating cache tags', {
-                error: tagsError instanceof Error ? tagsError.message : String(tagsError),
-                url: request.url
-              });
-              // Don't throw here, as this is non-critical - just return the cached response
-              return cachedResponse;
-            }
-          }
-          
+          // The Cache-Tag header should already be set on the response by applyCacheHeaders 
+          // before we store it in the cache, so no need to add it again here
           return cachedResponse;
         } catch (cacheError) {
           // Check for quota exceeded errors
@@ -1581,13 +1570,14 @@ export class DefaultCacheService implements CacheService {
         }
       }
       
-      // Add cache tags if available
+      // Add cache tags if available - for Cloudflare's fetch API
       if (cacheTags.length > 0) {
-        this.logger.debug('Adding cache tags to Cloudflare request', {
+        this.logger.debug('Adding cache tags to Cloudflare request CF object', {
           tagCount: cacheTags.length,
           firstFewTags: cacheTags.slice(0, 5).join(', ') + (cacheTags.length > 5 ? '...' : '')
         });
         
+        // Set cacheTags in the CF object for Cloudflare's fetch API
         result.cf = {
           ...result.cf,
           cacheTags
@@ -1926,11 +1916,68 @@ export class DefaultCacheService implements CacheService {
           headers
         });
         
-        // Put in cache
-        await caches.default.put(request, responseToCache);
+        // Generate cache tags for the request if enabled
+        let requestWithTags = request;
+        const config = this.configService.getConfig();
+        
+        if (config.cache.cacheTags?.enabled) {
+          try {
+            const url = new URL(request.url);
+            const path = url.pathname;
+            
+            // Extract options from URL parameters
+            const searchParams = url.searchParams;
+            const extractedOptions: TransformOptions = {};
+            
+            if (searchParams.has('width')) extractedOptions.width = parseInt(searchParams.get('width') || '0', 10);
+            if (searchParams.has('height')) extractedOptions.height = parseInt(searchParams.get('height') || '0', 10);
+            if (searchParams.has('format')) extractedOptions.format = searchParams.get('format') || undefined;
+            if (searchParams.has('quality')) extractedOptions.quality = parseInt(searchParams.get('quality') || '0', 10);
+            if (searchParams.has('fit')) extractedOptions.fit = searchParams.get('fit') || undefined;
+            
+            // Merge with passed options if available
+            const mergedOptions = options ? { ...extractedOptions, ...options } : extractedOptions;
+            
+            // Generate tags for this request
+            const tags = this.generateCacheTags(request, {
+              response: new Response(''), // Dummy response
+              sourceType: 'remote',
+              contentType: responseToCache.headers.get('Content-Type') || 'application/octet-stream',
+              size: parseInt(responseToCache.headers.get('Content-Length') || '0', 10) || 0,
+              path
+            }, mergedOptions);
+            
+            if (tags.length > 0) {
+              this.logger.debug('Adding cache tags to background Cache API request', {
+                tagCount: tags.length,
+                sampleTags: tags.slice(0, 3).join(', ') + (tags.length > 3 ? '...' : '')
+              });
+              
+              // Create a new request with the cache tags in the cf property
+              // This is the correct way to apply cache tags for Cloudflare Cache API
+              const cfData = request.cf || {};
+              requestWithTags = new Request(request, {
+                cf: { 
+                  ...cfData,
+                  cacheTags: tags 
+                }
+              });
+            }
+          } catch (tagsError) {
+            // If tag generation fails, log but continue with the original request
+            this.logger.warn('Failed to generate cache tags for background Cache API', {
+              error: tagsError instanceof Error ? tagsError.message : String(tagsError),
+              url: request.url
+            });
+          }
+        }
+        
+        // Put in cache with the tagged request
+        await caches.default.put(requestWithTags, responseToCache);
         
         this.logger.debug('Successfully stored in cache background', {
-          url: request.url
+          url: request.url,
+          usedTags: requestWithTags !== request
         });
       } else {
         this.logger.debug('Not caching non-success response in background', {
