@@ -1632,6 +1632,29 @@ export class DefaultImageTransformationService implements ImageTransformationSer
       return;
     }
     
+    // Ensure statistics objects are initialized
+    if (!this.formatStatistics) {
+      this.formatStatistics = {};
+    }
+    if (!this.optionStatistics) {
+      this.optionStatistics = {
+        widthDistribution: {},
+        qualityDistribution: {},
+        fitModes: {},
+        pixelProcessed: 0,
+        avgProcessingTime: 0
+      };
+    }
+    if (!this.optionStatistics.widthDistribution) {
+      this.optionStatistics.widthDistribution = {};
+    }
+    if (!this.optionStatistics.qualityDistribution) {
+      this.optionStatistics.qualityDistribution = {};
+    }
+    if (!this.optionStatistics.fitModes) {
+      this.optionStatistics.fitModes = {};
+    }
+    
     // Increment request count
     this.requestCount++;
     
@@ -1645,7 +1668,7 @@ export class DefaultImageTransformationService implements ImageTransformationSer
       }
     } else {
       // Default format tracking
-      this.formatStatistics['auto']++;
+      this.formatStatistics['auto'] = (this.formatStatistics['auto'] || 0) + 1;
     }
     
     // Track width distribution
@@ -1654,11 +1677,8 @@ export class DefaultImageTransformationService implements ImageTransformationSer
       const widthBucket = Math.floor(options.width / 100) * 100;
       const widthKey = `${widthBucket}-${widthBucket + 99}`;
       
-      if (this.optionStatistics.widthDistribution[widthKey] !== undefined) {
-        this.optionStatistics.widthDistribution[widthKey]++;
-      } else {
-        this.optionStatistics.widthDistribution[widthKey] = 1;
-      }
+      this.optionStatistics.widthDistribution[widthKey] = 
+        (this.optionStatistics.widthDistribution[widthKey] || 0) + 1;
     }
     
     // Track quality distribution
@@ -1667,26 +1687,20 @@ export class DefaultImageTransformationService implements ImageTransformationSer
       const qualityBucket = Math.floor(options.quality / 10) * 10;
       const qualityKey = `${qualityBucket}-${qualityBucket + 9}`;
       
-      if (this.optionStatistics.qualityDistribution[qualityKey] !== undefined) {
-        this.optionStatistics.qualityDistribution[qualityKey]++;
-      } else {
-        this.optionStatistics.qualityDistribution[qualityKey] = 1;
-      }
+      this.optionStatistics.qualityDistribution[qualityKey] = 
+        (this.optionStatistics.qualityDistribution[qualityKey] || 0) + 1;
     }
     
     // Track fit modes
     if (options.fit) {
       const fit = options.fit as string;
-      if (this.optionStatistics.fitModes[fit] !== undefined) {
-        this.optionStatistics.fitModes[fit]++;
-      } else {
-        this.optionStatistics.fitModes[fit] = 1;
-      }
+      this.optionStatistics.fitModes[fit] = 
+        (this.optionStatistics.fitModes[fit] || 0) + 1;
     }
     
     // Track processing time
     const processingTime = endTime - startTime;
-    const currentAvg = this.optionStatistics.avgProcessingTime;
+    const currentAvg = this.optionStatistics.avgProcessingTime || 0;
     
     // Calculate new moving average
     if (currentAvg === 0) {
@@ -1702,7 +1716,8 @@ export class DefaultImageTransformationService implements ImageTransformationSer
         typeof options.width === 'number' && 
         typeof options.height === 'number') {
       const pixels = options.width * options.height;
-      this.optionStatistics.pixelProcessed += pixels;
+      this.optionStatistics.pixelProcessed = 
+        (this.optionStatistics.pixelProcessed || 0) + pixels;
     }
   }
 
