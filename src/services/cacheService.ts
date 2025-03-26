@@ -1857,7 +1857,7 @@ export class DefaultCacheService implements CacheService {
       // Apply cache headers to the response
       const cachedResponse = this.applyCacheHeaders(response.clone(), options, storageResult);
       
-      // Store in cache
+      // Reuse the storeInCacheBackground method to avoid duplicating logic
       await this.storeInCacheBackground(request, cachedResponse, ctx, options);
       
       this.logger.debug('Successfully revalidated cache in background', {
