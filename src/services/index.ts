@@ -15,3 +15,4 @@ export * from './optimizedClientDetectionService';
 export * from './clientDetectionFactory';
 export * from './dependencyInjectionContainer';
 export * from './containerFactory';
+export * from './lifecycleManager';

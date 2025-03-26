@@ -696,6 +696,7 @@ export interface ServiceContainer {
   // Added new services
   detectorService?: ClientDetectionService;
   pathService?: PathService;
+  lifecycleManager?: LifecycleManagerService;
   
   /**
    * Initialize all services in the container
@@ -852,4 +853,115 @@ export interface DIContainer {
    * @returns A new DIContainer instance
    */
   createChildContainer(): DIContainer;
+}
+
+/**
+ * Represents the health status of a service
+ */
+export interface ServiceHealth {
+  serviceName: string;
+  status: 'initializing' | 'initialized' | 'failed' | 'shutting_down' | 'shutdown' | 'unknown';
+  startTime?: number;
+  endTime?: number;
+  durationMs?: number;
+  error?: Error;
+  message?: string;
+  dependencies?: string[];
+}
+
+/**
+ * Contains lifecycle statistics and metrics for all services
+ */
+export interface LifecycleStatistics {
+  applicationStartTime: number;
+  applicationEndTime?: number;
+  totalInitializationTimeMs?: number;
+  totalShutdownTimeMs?: number;
+  serviceHealths: Record<string, ServiceHealth>;
+  initializeOrder: string[];
+  shutdownOrder: string[];
+  services: {
+    total: number;
+    initialized: number;
+    failed: number;
+    shutdown: number;
+  };
+  errors: Array<{
+    serviceName: string;
+    phase: 'initialize' | 'shutdown';
+    error: Error;
+    message: string;
+  }>;
+}
+
+/**
+ * Lifecycle manager service for coordinating service initialization and shutdown
+ */
+export interface LifecycleManagerService {
+  /**
+   * Initialize all services in dependency-based order
+   * 
+   * @param options Optional initialization options
+   * @returns Promise that resolves when initialization is complete
+   */
+  initialize(options?: { 
+    gracefulDegradation?: boolean; 
+    timeout?: number;
+    critical?: string[];
+  }): Promise<LifecycleStatistics>;
+  
+  /**
+   * Shut down all services in reverse dependency order
+   * 
+   * @param options Optional shutdown options
+   * @returns Promise that resolves when shutdown is complete
+   */
+  shutdown(options?: {
+    force?: boolean;
+    timeout?: number;
+  }): Promise<LifecycleStatistics>;
+  
+  /**
+   * Create a dependency graph visualization for service initialization
+   * 
+   * @returns A string representation of the dependency graph
+   */
+  createDependencyGraph(): string;
+  
+  /**
+   * Get current health status of all services
+   * 
+   * @returns Service health statistics
+   */
+  getServiceHealths(): Record<string, ServiceHealth>;
+  
+  /**
+   * Get detailed lifecycle statistics
+   * 
+   * @returns Lifecycle statistics
+   */
+  getStatistics(): LifecycleStatistics;
+  
+  /**
+   * Check if a specific service is healthy
+   * 
+   * @param serviceName The name of the service to check
+   * @returns True if the service is in a healthy state
+   */
+  isServiceHealthy(serviceName: string): boolean;
+  
+  /**
+   * Check if the application as a whole is healthy
+   * 
+   * @param criticalServices Array of service names that must be healthy
+   * @returns True if all critical services are healthy
+   */
+  isApplicationHealthy(criticalServices?: string[]): boolean;
+  
+  /**
+   * Create a health report for services
+   * 
+   * @returns A formatted health report string
+   */
+  createHealthReport(): string;
 }

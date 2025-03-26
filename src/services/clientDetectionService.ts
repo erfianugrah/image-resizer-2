@@ -97,7 +97,8 @@ export class DefaultClientDetectionService implements ClientDetectionService {
     detector.updateConfig({
       cache: {
         enableCache: this.detectorCacheEnabled,
-        maxCacheSize: 1000
+        maxSize: 1000,
+        pruneAmount: 100
       }
     });
     
@@ -213,8 +214,9 @@ export class DefaultClientDetectionService implements ClientDetectionService {
       // Use the detector utility to get client capabilities
       const capabilities = await detector.detect(request, this.detectorCacheEnabled);
       
-      // Track cache hit (if available)
-      if (capabilities.fromCache) {
+      // Track cache hit (if available) - use type assertion since this is an internal property
+      // that may be added by our implementation but isn't in the base interface
+      if ((capabilities as any).fromCache) {
         this.detectionStatistics.cacheHitCount++;
       }
       
@@ -298,7 +300,7 @@ export class DefaultClientDetectionService implements ClientDetectionService {
         deviceClassification: clientInfo.deviceClassification,
         preferredFormats: clientInfo.preferredFormats?.join(','),
         detectionTime: `${detectionTime}ms`,
-        fromCache: capabilities.fromCache || false
+        fromCache: (capabilities as any).fromCache || false
       });
 
       return clientInfo;

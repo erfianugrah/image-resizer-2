@@ -107,83 +107,106 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
     authService,
     logger: mainLogger,
     
-    // Add lifecycle management methods
+    // Add lifecycle management methods (these will be overridden by the lifecycle manager)
     async initialize(): Promise<void> {
-      mainLogger.debug('Initializing service container lifecycle');
-      
-      // Initialize services in dependency order
-      await configurationService.initialize();
-      
-      // Initialize other services that support lifecycle
-      if ('initialize' in loggingService && typeof loggingService.initialize === 'function') {
-        await (loggingService as any).initialize();
+      // This implementation will be replaced by the LifecycleManager
+      // but is provided for backward compatibility
+      if (this.lifecycleManager) {
+        await this.lifecycleManager.initialize();
+      } else {
+        mainLogger.debug('Initializing service container lifecycle (legacy method)');
+        
+        // Initialize services in dependency order
+        await configurationService.initialize();
+        
+        // Initialize other services that support lifecycle
+        if ('initialize' in loggingService && typeof loggingService.initialize === 'function') {
+          await (loggingService as any).initialize();
+        }
+        
+        if ('initialize' in authService && typeof authService.initialize === 'function') {
+          await (authService as any).initialize();
+        }
+        
+        if ('initialize' in storageService && typeof storageService.initialize === 'function') {
+          await (storageService as any).initialize();
+        }
+        
+        if ('initialize' in cacheService && typeof cacheService.initialize === 'function') {
+          await (cacheService as any).initialize();
+        }
+        
+        if ('initialize' in clientDetectionService && typeof clientDetectionService.initialize === 'function') {
+          await (clientDetectionService as any).initialize();
+        }
+        
+        if ('initialize' in debugService && typeof debugService.initialize === 'function') {
+          await (debugService as any).initialize();
+        }
+        
+        if ('initialize' in transformationService && typeof transformationService.initialize === 'function') {
+          await (transformationService as any).initialize();
+        }
+        
+        mainLogger.info('Service container lifecycle initialization complete (legacy method)');
       }
-      
-      if ('initialize' in authService && typeof authService.initialize === 'function') {
-        await (authService as any).initialize();
-      }
-      
-      if ('initialize' in storageService && typeof storageService.initialize === 'function') {
-        await (storageService as any).initialize();
-      }
-      
-      if ('initialize' in cacheService && typeof cacheService.initialize === 'function') {
-        await (cacheService as any).initialize();
-      }
-      
-      if ('initialize' in clientDetectionService && typeof clientDetectionService.initialize === 'function') {
-        await (clientDetectionService as any).initialize();
-      }
-      
-      if ('initialize' in debugService && typeof debugService.initialize === 'function') {
-        await (debugService as any).initialize();
-      }
-      
-      if ('initialize' in transformationService && typeof transformationService.initialize === 'function') {
-        await (transformationService as any).initialize();
-      }
-      
-      mainLogger.info('Service container lifecycle initialization complete');
     },
     
     async shutdown(): Promise<void> {
-      mainLogger.debug('Shutting down service container lifecycle');
-      
-      // Shut down services in reverse dependency order
-      if ('shutdown' in transformationService && typeof transformationService.shutdown === 'function') {
-        await (transformationService as any).shutdown();
+      // This implementation will be replaced by the LifecycleManager
+      // but is provided for backward compatibility
+      if (this.lifecycleManager) {
+        await this.lifecycleManager.shutdown();
+      } else {
+        mainLogger.debug('Shutting down service container lifecycle (legacy method)');
+        
+        // Shut down services in reverse dependency order
+        if ('shutdown' in transformationService && typeof transformationService.shutdown === 'function') {
+          await (transformationService as any).shutdown();
+        }
+        
+        if ('shutdown' in debugService && typeof debugService.shutdown === 'function') {
+          await (debugService as any).shutdown();
+        }
+        
+        if ('shutdown' in clientDetectionService && typeof clientDetectionService.shutdown === 'function') {
+          await (clientDetectionService as any).shutdown();
+        }
+        
+        if ('shutdown' in cacheService && typeof cacheService.shutdown === 'function') {
+          await (cacheService as any).shutdown();
+        }
+        
+        if ('shutdown' in storageService && typeof storageService.shutdown === 'function') {
+          await (storageService as any).shutdown();
+        }
+        
+        if ('shutdown' in authService && typeof authService.shutdown === 'function') {
+          await (authService as any).shutdown();
+        }
+        
+        if ('shutdown' in loggingService && typeof loggingService.shutdown === 'function') {
+          await (loggingService as any).shutdown();
+        }
+        
+        // Shut down configuration service last
+        await configurationService.shutdown();
+        
+        mainLogger.info('Service container lifecycle shutdown complete (legacy method)');
       }
-      
-      if ('shutdown' in debugService && typeof debugService.shutdown === 'function') {
-        await (debugService as any).shutdown();
-      }
-      
-      if ('shutdown' in clientDetectionService && typeof clientDetectionService.shutdown === 'function') {
-        await (clientDetectionService as any).shutdown();
-      }
-      
-      if ('shutdown' in cacheService && typeof cacheService.shutdown === 'function') {
-        await (cacheService as any).shutdown();
-      }
-      
-      if ('shutdown' in storageService && typeof storageService.shutdown === 'function') {
-        await (storageService as any).shutdown();
-      }
-      
-      if ('shutdown' in authService && typeof authService.shutdown === 'function') {
-        await (authService as any).shutdown();
-      }
-      
-      if ('shutdown' in loggingService && typeof loggingService.shutdown === 'function') {
-        await (loggingService as any).shutdown();
-      }
-      
-      // Shut down configuration service last
-      await configurationService.shutdown();
-      
-      mainLogger.info('Service container lifecycle shutdown complete');
     }
   };
+
+  // Add the lifecycle manager if it doesn't exist
+  if (!container.lifecycleManager) {
+    // We need to use dynamic import to avoid circular dependency
+    import('./lifecycleManager').then(({ createLifecycleManager }) => {
+      (container as any).lifecycleManager = createLifecycleManager(container);
+      mainLogger.debug('LifecycleManager added to ServiceContainer');
+    }).catch(error => {
+      mainLogger.warn('Failed to load LifecycleManager', { error: error.message });
+    });
+  }
 
   mainLogger.info('Service container initialized with all services', {
     serviceCount: 8,
@@ -194,7 +217,13 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
   // Initialize service lifecycle if requested
   if (initializeLifecycle) {
     // Use void to ignore the promise - the caller can await the initialize method if needed
-    void container.initialize();
+    setTimeout(() => {
+      if (container.lifecycleManager) {
+        void container.lifecycleManager.initialize();
+      } else {
+        void container.initialize();
+      }
+    }, 0);
   }
 
   return container;

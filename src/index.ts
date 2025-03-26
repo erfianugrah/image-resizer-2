@@ -41,9 +41,17 @@ export default {
     };
 
     // Create service container using the factory
-    // This will automatically select the appropriate container type
-    const services = createContainer(env);
-    const { logger, configurationService, loggingService } = services;
+    // This will automatically select the appropriate container type and add lifecycle manager
+    const services = createContainer(env, {
+      initializeServices: true,
+      gracefulDegradation: true
+    });
+    const { logger, configurationService, loggingService, lifecycleManager } = services;
+    
+    // Log lifecycle information if available
+    if (lifecycleManager) {
+      logger.debug('Lifecycle manager available for coordinated service management');
+    }
     
     // Get configuration via the configuration service
     const config = configurationService.getConfig();
@@ -256,6 +264,57 @@ export default {
       });
       
       return errorResponse;
+    }
+  },
+  
+  // Add shutdown lifecycle hook for cleanup
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    // Create service container with minimal initialization
+    const services = createContainer(env, {
+      initializeServices: false  // Don't initialize since we'll just shut down
+    });
+    
+    const { logger, lifecycleManager } = services;
+    
+    if (event.scheduledTime) {
+      logger.info('Scheduled event received', {
+        scheduledTime: new Date(event.scheduledTime).toISOString()
+      });
+    }
+    
+    // If we have a lifecycle manager, use it for coordinated shutdown
+    if (lifecycleManager) {
+      try {
+        logger.info('Starting coordinated service shutdown');
+        
+        // Perform the shutdown with a timeout and force mode
+        const stats = await lifecycleManager.shutdown({
+          force: true,
+          timeout: 5000  // 5 second timeout for each service
+        });
+        
+        logger.info('Service shutdown completed successfully', {
+          durationMs: stats.totalShutdownTimeMs,
+          servicesShutdown: stats.services.shutdown,
+          totalServices: stats.services.total
+        });
+      } catch (error) {
+        logger.error('Error during service shutdown', {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined
+        });
+      }
+    } else {
+      // Use regular shutdown if lifecycle manager is not available
+      try {
+        logger.info('Starting legacy service shutdown');
+        await services.shutdown();
+        logger.info('Legacy service shutdown completed');
+      } catch (error) {
+        logger.error('Error during legacy service shutdown', {
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
     }
   },
 } satisfies ExportedHandler<Env>;
