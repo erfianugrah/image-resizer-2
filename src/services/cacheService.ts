@@ -624,14 +624,7 @@ export class DefaultCacheService implements CacheService {
                 const path = url.pathname;
                 
                 // Extract options from URL parameters
-                const searchParams = url.searchParams;
-                const options: TransformOptions = {};
-                
-                if (searchParams.has('width')) options.width = parseInt(searchParams.get('width') || '0', 10);
-                if (searchParams.has('height')) options.height = parseInt(searchParams.get('height') || '0', 10);
-                if (searchParams.has('format')) options.format = searchParams.get('format') || undefined;
-                if (searchParams.has('quality')) options.quality = parseInt(searchParams.get('quality') || '0', 10);
-                if (searchParams.has('fit')) options.fit = searchParams.get('fit') || undefined;
+                const extractedOptions = this.extractOptionsFromUrl(url);
                 
                 // Generate tags for this request
                 const tags = this.generateCacheTags(request, {
@@ -640,7 +633,7 @@ export class DefaultCacheService implements CacheService {
                   contentType: clonedResponse.headers.get('Content-Type') || 'application/octet-stream',
                   size: parseInt(clonedResponse.headers.get('Content-Length') || '0', 10) || 0,
                   path
-                }, options);
+                }, extractedOptions);
                 
                 if (tags.length > 0) {
                   this.logger.debug('Adding cache tags to Cache API request', {
@@ -648,15 +641,8 @@ export class DefaultCacheService implements CacheService {
                     sampleTags: tags.slice(0, 3).join(', ') + (tags.length > 3 ? '...' : '')
                   });
                   
-                  // Create a new request with the cache tags in the cf property
-                  // This is the correct way to apply cache tags for Cloudflare Cache API
-                  const cfData = request.cf || {};
-                  requestWithTags = new Request(request, {
-                    cf: { 
-                      ...cfData,
-                      cacheTags: tags 
-                    }
-                  });
+                  // Apply tags to request
+                  requestWithTags = this.applyTagsToRequest(request, tags);
                 }
               } catch (tagsError) {
                 // If tag generation fails, log but continue with the original request
@@ -966,6 +952,51 @@ export class DefaultCacheService implements CacheService {
         }
       });
     }
+  }
+
+  /**
+   * Extract transform options from URL parameters
+   * 
+   * @param url URL to extract parameters from
+   * @returns TransformOptions object with parsed parameters
+   * @private
+   */
+  private extractOptionsFromUrl(url: URL): TransformOptions {
+    const searchParams = url.searchParams;
+    const options: TransformOptions = {};
+    
+    // Extract basic parameters from the URL
+    if (searchParams.has('width')) options.width = parseInt(searchParams.get('width') || '0', 10);
+    if (searchParams.has('height')) options.height = parseInt(searchParams.get('height') || '0', 10);
+    if (searchParams.has('format')) options.format = searchParams.get('format') || undefined;
+    if (searchParams.has('quality')) options.quality = parseInt(searchParams.get('quality') || '0', 10);
+    if (searchParams.has('fit')) options.fit = searchParams.get('fit') || undefined;
+    if (searchParams.has('gravity')) options.gravity = searchParams.get('gravity') || undefined;
+    
+    return options;
+  }
+
+  /**
+   * Apply cache tags to a request for Cloudflare's Cache API
+   * 
+   * @param request Original request
+   * @param tags Array of cache tags to apply
+   * @returns A new request with cache tags in CF object
+   * @private
+   */
+  private applyTagsToRequest(request: Request, tags: string[]): Request {
+    if (!tags.length) {
+      return request;
+    }
+    
+    // Create a new request with the cache tags in the cf property
+    const cfData = request.cf || {};
+    return new Request(request, {
+      cf: {
+        ...cfData,
+        cacheTags: tags
+      }
+    });
   }
 
   /**
@@ -1472,7 +1503,7 @@ export class DefaultCacheService implements CacheService {
           cacheTags = this.generateCacheTags(dummyRequest, dummyStorageResult, options);
           
           if (cacheTags.length > 0) {
-            this.logger.debug('Generated cache tags for Cloudflare fetch', {
+            this.logger.debug('Generated cache tags for Cloudflare fetch API', {
               tagCount: cacheTags.length,
               sampleTags: cacheTags.slice(0, 3).join(', ') + (cacheTags.length > 3 ? '...' : '')
             });
@@ -1926,14 +1957,7 @@ export class DefaultCacheService implements CacheService {
             const path = url.pathname;
             
             // Extract options from URL parameters
-            const searchParams = url.searchParams;
-            const extractedOptions: TransformOptions = {};
-            
-            if (searchParams.has('width')) extractedOptions.width = parseInt(searchParams.get('width') || '0', 10);
-            if (searchParams.has('height')) extractedOptions.height = parseInt(searchParams.get('height') || '0', 10);
-            if (searchParams.has('format')) extractedOptions.format = searchParams.get('format') || undefined;
-            if (searchParams.has('quality')) extractedOptions.quality = parseInt(searchParams.get('quality') || '0', 10);
-            if (searchParams.has('fit')) extractedOptions.fit = searchParams.get('fit') || undefined;
+            const extractedOptions = this.extractOptionsFromUrl(url);
             
             // Merge with passed options if available
             const mergedOptions = options ? { ...extractedOptions, ...options } : extractedOptions;
@@ -1953,15 +1977,8 @@ export class DefaultCacheService implements CacheService {
                 sampleTags: tags.slice(0, 3).join(', ') + (tags.length > 3 ? '...' : '')
               });
               
-              // Create a new request with the cache tags in the cf property
-              // This is the correct way to apply cache tags for Cloudflare Cache API
-              const cfData = request.cf || {};
-              requestWithTags = new Request(request, {
-                cf: { 
-                  ...cfData,
-                  cacheTags: tags 
-                }
-              });
+              // Apply tags to request
+              requestWithTags = this.applyTagsToRequest(request, tags);
             }
           } catch (tagsError) {
             // If tag generation fails, log but continue with the original request
