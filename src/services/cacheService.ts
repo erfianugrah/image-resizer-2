@@ -64,6 +64,60 @@ export class DefaultCacheService implements CacheService {
   }
   
   /**
+   * Standardized error handling for cache service operations
+   * 
+   * @param error The error that occurred
+   * @param context The context in which the error occurred
+   * @param request Optional request for adding URL to error details
+   * @param defaultCode Default error code to use if not available
+   * @returns A properly wrapped CacheServiceError
+   * @private
+   */
+  private handleError(
+    error: unknown, 
+    context: string,
+    request?: Request,
+    defaultCode: string = 'CACHE_SERVICE_ERROR'
+  ): CacheServiceError {
+    // If it's already a CacheServiceError, just add request URL to error details if needed
+    if (isCacheServiceError(error)) {
+      // Add request URL to error details if not already there
+      if (error.details && request && isRequest(request)) {
+        error.details = {
+          ...error.details,
+          url: error.details.url || request.url
+        };
+      }
+      return error;
+    }
+    
+    // Handle special error cases
+    const errorMessage = isError(error) ? error.message : String(error);
+    
+    // Check for quota exceeded errors
+    if (errorMessage.includes('quota') || errorMessage.includes('storage limit')) {
+      return new CacheQuotaExceededError(`Cache quota exceeded in ${context}`, {
+        details: {
+          originalError: errorMessage,
+          url: request && isRequest(request) ? request.url : 'unknown'
+        }
+      });
+    }
+    
+    // For any other errors, wrap in a general CacheServiceError
+    return new CacheServiceError(`${context} failed: ${errorMessage}`, {
+      code: defaultCode,
+      status: 500,
+      details: {
+        originalError: errorMessage,
+        url: request && isRequest(request) ? request.url : 'unknown',
+        context
+      },
+      retryable: true // Most cache operations can be retried
+    });
+  }
+  
+  /**
    * Get the retry configuration from service settings
    * @returns Retry configuration options
    */
@@ -361,22 +415,16 @@ export class DefaultCacheService implements CacheService {
 
       return newResponse;
     } catch (error: unknown) {
-      // If it's already a CacheServiceError, re-throw it
-      if (isCacheServiceError(error)) {
-        throw error;
-      }
+      // Create error context with relevant details
+      const errorContext = {
+        responseStatus: response?.status,
+        contentType: response?.headers?.get('Content-Type') || 'unknown',
+        hasOptions: !!options && Object.keys(options).length > 0,
+        hasStorageResult: !!storageResult
+      };
       
-      // Otherwise, wrap the error in a CacheServiceError
-      const errorMessage = isError(error) ? error.message : String(error);
-      throw new CacheServiceError(`Failed to apply cache headers: ${errorMessage}`, {
-        code: 'CACHE_HEADERS_ERROR',
-        status: 500,
-        details: {
-          originalError: errorMessage,
-          responseStatus: response?.status,
-          contentType: response?.headers?.get('Content-Type') || 'unknown'
-        }
-      });
+      // Use our standardized error handler
+      throw this.handleError(error, 'Apply cache headers', undefined, 'CACHE_HEADERS_ERROR');
     }
   }
   
@@ -639,66 +687,32 @@ export class DefaultCacheService implements CacheService {
           // before we store it in the cache, so no need to add it again here
           return cachedResponse;
         } catch (cacheError) {
-          // Check for quota exceeded errors
-          const errorMessage = cacheError instanceof Error ? cacheError.message : String(cacheError);
-          if (errorMessage.includes('quota') || errorMessage.includes('storage limit')) {
-            throw new CacheQuotaExceededError('Cache storage quota exceeded', {
-              details: {
-                originalError: errorMessage,
-                url: request.url,
-                contentLength: responseClone.headers.get('Content-Length')
-              }
-            });
-          }
+          // Use specialized error handlers for different error types
+          const contentLength = responseClone.headers.get('Content-Length');
+          const errorContext = {
+            url: request.url,
+            status: responseClone.status,
+            contentLength
+          };
           
-          // Other cache write errors
-          throw new CacheWriteError(`Failed to write to cache: ${errorMessage}`, {
-            details: {
-              originalError: errorMessage,
-              url: request.url,
-              status: responseClone.status
-            }
+          // Create a specific CacheWriteError with additional context
+          const error = new CacheWriteError(`Failed to write to cache`, {
+            originalError: cacheError instanceof Error ? cacheError.message : String(cacheError),
+            ...errorContext
           });
+          
+          // Let the error handler process it further and detect specific error types
+          throw this.handleError(error, 'Cache write operation', request, 'CACHE_WRITE_ERROR');
         }
       };
 
-      // Get resilience options by combining retry and circuit breaker config
-      const resilienceOptions = {
-        ...this.getRetryConfig(),
-        ...this.getCircuitBreakerConfig()
-      };
-      
-      // Execute the cache operation with retry and circuit breaker patterns
-      return await withResilience(
+      // Use our executeCacheOperation helper for better error handling
+      return await this.executeCacheOperation(
         cacheOperation,
-        this.cacheWriteCircuitBreaker,
-        resilienceOptions
+        request,
+        'Cache API operation',
+        this.cacheWriteCircuitBreaker
       );
-    } catch (error: unknown) {
-      // If it's already a CacheServiceError, re-throw it
-      if (isCacheServiceError(error)) {
-        // Add request URL to error details if not already there
-        if (error.details && isRequest(request)) {
-          error.details = {
-            ...error.details,
-            url: error.details.url || request.url
-          };
-        }
-        throw error;
-      }
-      
-      // Otherwise, wrap the error in a CacheServiceError
-      const errorMessage = isError(error) ? error.message : String(error);
-      throw new CacheServiceError(`Cache API operation failed: ${errorMessage}`, {
-        code: 'CACHE_API_ERROR',
-        status: 500,
-        details: {
-          originalError: errorMessage,
-          url: isRequest(request) ? request.url : 'unknown',
-          responseStatus: isResponse(response) ? response.status : 'unknown'
-        },
-        retryable: true // Most cache operations can be retried
-      });
     }
   }
 
@@ -1357,31 +1371,33 @@ export class DefaultCacheService implements CacheService {
       
       return tags;
     } catch (error: unknown) {
-      // If it's already a CacheTagGenerationError, re-throw it
+      // Create specific context for cache tag generation errors
+      const errorContext = {
+        requestUrl: isRequest(request) ? request.url : 'unknown',
+        storageResultAvailable: !!storageResult,
+        optionsCount: Object.keys(options).length
+      };
+      
+      // If it's already specifically a CacheTagGenerationError, ensure it has complete context
       if (isCacheTagGenerationError(error)) {
+        if (error.details) {
+          error.details = {
+            ...error.details,
+            ...errorContext
+          };
+        }
         throw error;
       }
       
-      // If it's a different CacheServiceError, wrap it in a CacheTagGenerationError
-      if (isCacheServiceError(error)) {
-        // Create a new details object to avoid type issues
-        const errorDetails = error.details ? Object.entries(error.details).reduce((acc, [key, value]) => {
-          acc[key] = value;
-          return acc;
-        }, {} as Record<string, any>) : undefined;
-        
-        throw new CacheTagGenerationError(`Failed to generate cache tags: ${error.message}`, {
-          details: errorDetails
-        });
-      }
+      // Use our error handler, but always wrap in CacheTagGenerationError
+      const processedError = this.handleError(error, 'Generate cache tags', request, 'CACHE_TAG_GENERATION_ERROR');
       
-      // Otherwise, wrap the error in a CacheTagGenerationError
-      const errorMessage = isError(error) ? error.message : String(error);
-      throw new CacheTagGenerationError(`Failed to generate cache tags: ${errorMessage}`, {
+      // Convert any CacheServiceError to a specific CacheTagGenerationError
+      const message = `Failed to generate cache tags: ${processedError.message}`;
+      throw new CacheTagGenerationError(message, { 
         details: {
-          originalError: errorMessage,
-          requestUrl: isRequest(request) ? request.url : 'unknown',
-          storageResultAvailable: !!storageResult
+          ...processedError.details,
+          ...errorContext
         }
       });
     }
@@ -1592,22 +1608,24 @@ export class DefaultCacheService implements CacheService {
       
       return result;
     } catch (error: unknown) {
-      // If it's already a CacheServiceError, re-throw it
-      if (isCacheServiceError(error)) {
-        throw error;
+      // Create additional context specific to Cloudflare cache configuration
+      const errorContext = {
+        imagePath: imagePath || 'unknown',
+        hasOptions: !!options && Object.keys(options).length > 0
+      };
+      
+      // Use our standardized error handler
+      const wrappedError = this.handleError(error, 'Apply Cloudflare cache configuration', undefined, 'CF_CACHE_CONFIG_ERROR');
+      
+      // Add Cloudflare-specific context to the error details
+      if (wrappedError.details) {
+        wrappedError.details = {
+          ...wrappedError.details,
+          ...errorContext
+        };
       }
       
-      // Otherwise, wrap the error in a CacheServiceError
-      const errorMessage = isError(error) ? error.message : String(error);
-      throw new CacheServiceError(`Failed to apply Cloudflare cache configuration: ${errorMessage}`, {
-        code: 'CF_CACHE_CONFIG_ERROR',
-        status: 500,
-        details: {
-          originalError: errorMessage,
-          imagePath: imagePath || 'unknown'
-        },
-        retryable: true // Configuration errors might be transient
-      });
+      throw wrappedError;
     }
   }
   
@@ -1906,6 +1924,103 @@ export class DefaultCacheService implements CacheService {
    * @returns Request with cache tags applied if enabled
    * @private
    */
+  /**
+   * Prepare a request with cache tags if enabled
+   * 
+   * @param request Original request
+   * @param response Response to be cached
+   * @param pathOverride Optional path override
+   * @param options Optional transformation options
+   * @returns Request with cache tags applied if enabled
+   * @private
+   */
+  private prepareTaggedRequest(
+    request: Request,
+    response: Response,
+    pathOverride?: string,
+    options?: TransformOptions
+  ): Request {
+    const config = this.configService.getConfig();
+    
+    // If cache tags are not enabled, return the original request
+    if (!config.cache.cacheTags?.enabled) {
+      return request;
+    }
+    
+    try {
+      const url = new URL(request.url);
+      const path = pathOverride || url.pathname;
+      
+      // Extract options from URL parameters
+      const extractedOptions = this.extractOptionsFromUrl(url);
+      
+      // Merge with passed options if available
+      const mergedOptions = options ? { ...extractedOptions, ...options } : extractedOptions;
+      
+      // Generate tags for this request
+      const tags = this.generateCacheTags(request, {
+        response: new Response(''), // Dummy response
+        sourceType: 'remote',
+        contentType: response.headers.get('Content-Type') || 'application/octet-stream',
+        size: parseInt(response.headers.get('Content-Length') || '0', 10) || 0,
+        path
+      }, mergedOptions);
+      
+      if (tags.length > 0) {
+        this.logger.debug('Adding cache tags to request', {
+          tagCount: tags.length,
+          sampleTags: tags.slice(0, 3).join(', ') + (tags.length > 3 ? '...' : '')
+        });
+        
+        // Apply tags to request
+        return this.applyTagsToRequest(request, tags);
+      }
+    } catch (tagsError) {
+      // If tag generation fails, log but continue with the original request
+      this.logger.warn('Failed to generate cache tags for request', {
+        error: tagsError instanceof Error ? tagsError.message : String(tagsError),
+        url: request.url
+      });
+    }
+    
+    return request;
+  }
+
+  /**
+   * Execute a cache operation with proper error handling
+   * 
+   * @param operation The cache operation to perform
+   * @param request The original request
+   * @param operationName Name of the operation for logs and errors
+   * @param circuitBreaker The circuit breaker state to use
+   * @returns Result of the operation
+   * @private
+   */
+  private async executeCacheOperation<T>(
+    operation: () => Promise<T>,
+    request: Request,
+    operationName: string,
+    circuitBreaker: CircuitBreakerState
+  ): Promise<T> {
+    try {
+      // Get resilience options by combining retry and circuit breaker config
+      const resilienceOptions = {
+        ...this.getRetryConfig(),
+        ...this.getCircuitBreakerConfig()
+      };
+      
+      // Execute the operation with resilience patterns
+      return await withResilience(
+        operation,
+        circuitBreaker,
+        resilienceOptions
+      );
+    } catch (error) {
+      // Handle operation errors
+      throw this.handleError(error, operationName, request);
+    }
+  }
+
   private prepareTaggedRequest(
     request: Request,
     response: Response,
