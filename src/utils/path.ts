@@ -213,7 +213,9 @@ export function parseQueryOptions(
   // Parameters that should be parsed as strings
   const stringParams = [
     'fit', 'format', 'gravity', 'metadata', 'background',
-    'derivative', 'origin-auth', 'aspect', 'focal', 'platform', 'content', 'device'
+    'derivative', 'origin-auth', 'aspect', 'focal', 'platform', 'content', 'device',
+    'f', // Custom format size parameter
+    'r', 'p' // Short form parameters for aspect ratio and positioning
   ];
   
   // Parameters that can be boolean or numeric
@@ -336,6 +338,75 @@ export function parseQueryOptions(
       logger.breadcrumb('Failed to parse draw parameter as JSON');
       // If not valid JSON, skip this parameter
     }
+  }
+  
+  // Handle custom format size parameter 'f'
+  if (searchParams.has('f') && !options.width) {
+    const formatSize = searchParams.get('f') || '';
+    // Map predefined size codes to pixel widths
+    const sizeMap: Record<string, number> = {
+      'xxu': 40,
+      'xu': 80,
+      'u': 160,
+      'xxxs': 300,
+      'xxs': 400,
+      'xs': 500,
+      's': 600,
+      'm': 700,
+      'l': 750,
+      'xl': 900,
+      'xxl': 1100,
+      'xxxl': 1400,
+      'sg': 1600,
+      'g': 2000,
+      'xg': 3000,
+      'xxg': 4000
+    };
+    
+    if (sizeMap[formatSize]) {
+      options.width = sizeMap[formatSize];
+      logger.breadcrumb('Applied custom format size', undefined, {
+        formatCode: formatSize,
+        width: options.width
+      });
+    }
+    
+    // Clean up the 'f' parameter as we've translated it to width
+    delete options.f;
+  }
+  
+  // Handle short form aspect ratio parameter 'r' (e.g., r=16:9)
+  if (searchParams.has('r') && !options.aspect) {
+    const aspectRatio = searchParams.get('r') || '';
+    if (aspectRatio.includes(':') || aspectRatio.includes('-')) {
+      // Convert to the standard aspect format
+      options.aspect = aspectRatio;
+      logger.breadcrumb('Applied compact aspect ratio parameter', undefined, {
+        r: aspectRatio,
+        aspect: options.aspect
+      });
+    }
+    // Clean up the short parameter as we've translated it
+    delete options.r;
+  }
+  
+  // Handle short form positioning parameter 'p' (e.g., p=0.7,0.5)
+  if (searchParams.has('p') && !options.focal) {
+    const position = searchParams.get('p') || '';
+    if (position.includes(',')) {
+      // Check if it's a valid x,y format (two numbers separated by comma)
+      const [x, y] = position.split(',').map(v => parseFloat(v));
+      if (!isNaN(x) && !isNaN(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+        options.focal = position;
+        logger.breadcrumb('Applied compact positioning parameter', undefined, {
+          p: position,
+          focal: options.focal,
+          x, y
+        });
+      }
+    }
+    // Clean up the short parameter as we've translated it
+    delete options.p;
   }
   
   logger.breadcrumb('Completed parsing query options', undefined, {

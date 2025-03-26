@@ -305,12 +305,18 @@ export function createLazyServiceContainer(env: Env): ServiceContainer {
         transformationLogger,
         undefined, // Will set client detection service later
         realServices.configurationService!,
-        realServices.cacheService!
+        realServices.cacheService!,
+        undefined // Will set metadata service later if available
       );
       
       // Connect client detection if already initialized
       if (realServices.clientDetectionService) {
         transformService.setClientDetectionService(realServices.clientDetectionService);
+      }
+      
+      // Connect metadata service if already initialized
+      if (realServices.metadataService) {
+        transformService.setMetadataService(realServices.metadataService);
       }
       
       return transformService;
@@ -390,6 +396,11 @@ export function createLazyServiceContainer(env: Env): ServiceContainer {
         // Special handling for interdependent services
         if (prop === 'clientDetectionService' && realServices.transformationService) {
           realServices.transformationService.setClientDetectionService(service);
+        }
+        
+        // Connect metadata service to transformation service
+        if (prop === 'metadataService' && realServices.transformationService) {
+          realServices.transformationService.setMetadataService(service);
         }
         
         // Log service initialization if logger exists

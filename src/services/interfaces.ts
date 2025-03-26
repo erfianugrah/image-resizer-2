@@ -817,6 +817,7 @@ export interface MetadataProcessingOptions {
   allowExpansion?: boolean;
   preserveFocalPoint?: boolean;
   qualityFactor?: number;
+  width?: number | string; // Explicitly requested width parameter
 }
 
 /**

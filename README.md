@@ -35,6 +35,7 @@ This service enhances your Cloudflare Workers setup with advanced image handling
 - **Comprehensive Logging**: Advanced logging system with configurable levels and conditional logging
 - **Breadcrumb Tracing**: End-to-end request tracing with performance metrics for diagnostics
 - **Interceptor Pattern**: Special handling for large images to prevent timeouts
+- **Smart Transformations**: Automatic metadata fetching for smart cropping, aspect ratio transformations, and focal point handling
 - **Akamai Compatibility**: Support for Akamai Image Manager URL parameters for seamless migration, including advanced features like blur, watermarking, mirror/flip, and conditional transformations
 - **Service-Oriented Architecture**: Modular design with lazy service initialization and clear interfaces
 - **Client Detection**: Advanced browser and device capability detection with request-scoped caching
@@ -147,6 +148,32 @@ Below are examples using a sample image (13MB+ original size) through our image 
 
 Demo URL: [https://images.erfi.dev/Granna_1.JPG](https://images.erfi.dev/Granna_1.JPG)
 
+### Compact Parameter Examples
+
+#### Using Aspect Ratio (r=) Parameter
+
+![Aspect Ratio with r parameter](https://images.erfi.dev/Granna_1.JPG?r=1:1&width=400)
+
+Demo URL: [https://images.erfi.dev/Granna_1.JPG?r=1:1&width=400](https://images.erfi.dev/Granna_1.JPG?r=1:1&width=400)
+
+#### Using Focal Point (p=) Parameter
+
+![Focal Point with p parameter](https://images.erfi.dev/Granna_1.JPG?r=16:9&p=0.3,0.7&width=600)
+
+Demo URL: [https://images.erfi.dev/Granna_1.JPG?r=16:9&p=0.3,0.7&width=600](https://images.erfi.dev/Granna_1.JPG?r=16:9&p=0.3,0.7&width=600)
+
+#### Using Size Code (f=) Parameter
+
+![Size code with f parameter](https://images.erfi.dev/Granna_1.JPG?f=m)
+
+Demo URL: [https://images.erfi.dev/Granna_1.JPG?f=m](https://images.erfi.dev/Granna_1.JPG?f=m)
+
+#### Compact Parameters in im= Format
+
+![Compact parameters in im value](https://images.erfi.dev/Granna_1.JPG?im=r=4:3,p=0.5,0.4,f=l)
+
+Demo URL: [https://images.erfi.dev/Granna_1.JPG?im=r=4:3,p=0.5,0.4,f=l](https://images.erfi.dev/Granna_1.JPG?im=r=4:3,p=0.5,0.4,f=l)
+
 ### With Width Parameter
 
 ![Width 400px](https://images.erfi.dev/Granna_1.JPG?width=400)
@@ -194,6 +221,12 @@ Demo URL: [https://images.erfi.dev/Granna_1.JPG?width=400&brightness=10&contrast
 ![Focus Point](https://images.erfi.dev/Granna_1.JPG?width=400&height=400&fit=crop&gravity=auto)
 
 Demo URL: [https://images.erfi.dev/Granna_1.JPG?width=400&height=400&fit=crop&gravity=auto](https://images.erfi.dev/Granna_1.JPG?width=400&height=400&fit=crop&gravity=auto)
+
+### Smart Transformation with Aspect Ratio
+
+![Smart Transformation](https://images.erfi.dev/Granna_1.JPG?smart=true&aspect=1:1&width=400)
+
+Demo URL: [https://images.erfi.dev/Granna_1.JPG?smart=true&aspect=1:1&width=400](https://images.erfi.dev/Granna_1.JPG?smart=true&aspect=1:1&width=400)
 
 ### Background Color with Padding
 
@@ -439,6 +472,40 @@ See [Path Transformations](docs/storage/path-transforms.md) for more details.
 - `contrast`: Contrast adjustment (-100 to 100)
 - `saturation`: Saturation adjustment (-100 to 100, -100=grayscale)
 - `blur`: Blur effect (0.5-100.0)
+- `smart`: Enable smart transformations that automatically fetch and use image metadata
+- `aspect`: Desired aspect ratio in format `width:height` (automatically crops to this ratio)
+- `focal`: Custom focal point in format `x,y` with values from 0-1 (for smart cropping)
+
+### Compact Parameter Options
+
+For URL brevity and improved readability, the following compact parameters are supported:
+
+- `r=16:9`: Shorthand for `aspect=16:9` (sets aspect ratio)
+- `p=0.5,0.5`: Shorthand for `focal=0.5,0.5` (sets focal point for cropping)
+- `f=m`: Shorthand for `width=700` using size codes (see size code table below)
+
+These compact parameters can be used in standard URL parameters and within Akamai compatibility `im=` parameters (e.g., `im=AspectCrop=(1,1),r=16:9,p=0.5,0.5,f=m`)
+
+#### Size Code Table
+
+| Size Code | Width (px) | Description |
+|-----------|------------|-------------|
+| `xxu`     | 40         | Extra extra ultra small |
+| `xu`      | 80         | Extra ultra small |
+| `u`       | 160        | Ultra small |
+| `xxxs`    | 300        | Triple extra small |
+| `xxs`     | 400        | Double extra small |
+| `xs`      | 500        | Extra small |
+| `s`       | 600        | Small |
+| `m`       | 700        | Medium |
+| `l`       | 750        | Large |
+| `xl`      | 900        | Extra large |
+| `xxl`     | 1100       | Double extra large |
+| `xxxl`    | 1400       | Triple extra large |
+| `sg`      | 1600       | Small giant |
+| `g`       | 2000       | Giant |
+| `xg`      | 3000       | Extra giant |
+| `xxg`     | 4000       | Double extra giant |
 
 For a complete list, see the [Transformation Guide](docs/TRANSFORMATION.md).
 

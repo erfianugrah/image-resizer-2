@@ -107,7 +107,8 @@ export class DefaultImageTransformationService implements ImageTransformationSer
         contentType: options.content as string,
         deviceType: options.device as 'mobile' | 'tablet' | 'desktop',
         allowExpansion: options.allowExpansion || false,
-        preserveFocalPoint: true
+        preserveFocalPoint: true,
+        width: options.width // Pass through the requested width
       };
       
       // Extract custom focal point if provided
@@ -178,10 +179,106 @@ export class DefaultImageTransformationService implements ImageTransformationSer
         // Set allowExpansion flag if specified
         if (allowExpansion !== undefined) {
           updatedOptions.allowExpansion = allowExpansion;
+          
+          // When allowExpansion is true, use 'pad' fit mode to add padding
+          // instead of cropping the image
+          if (allowExpansion) {
+            updatedOptions.fit = 'pad';
+            
+            // Ensure background color is set or use transparent as default
+            if (!updatedOptions.background) {
+              updatedOptions.background = options.background || 'transparent';
+            }
+            
+            // Calculate target dimensions based on the desired aspect ratio
+            // Extract the target aspect ratio from the options
+            let targetRatioWidth = 1;
+            let targetRatioHeight = 1;
+            
+            // Check if aspect ratio was provided in options
+            if (options.aspect) {
+              try {
+                // Handle both formats: "16:9" and "16-9"
+                const aspectStr = options.aspect.toString().replace('-', ':');
+                const [w, h] = aspectStr.split(':').map(v => parseFloat(v));
+                
+                if (!isNaN(w) && !isNaN(h) && w > 0 && h > 0) {
+                  targetRatioWidth = w;
+                  targetRatioHeight = h;
+                }
+              } catch (error) {
+                this.logger.warn('Invalid aspect ratio format', { aspect: options.aspect });
+              }
+            }
+            
+            // Calculate target dimensions for the padding container
+            const targetRatio = targetRatioWidth / targetRatioHeight;
+            const originalRatio = width / height;
+            
+            // Calculate the dimensions of the containing box with padding
+            let containerWidth: number;
+            let containerHeight: number;
+            
+            // Check if a specific width was explicitly requested in the original options
+            // This takes priority over the calculated dimensions
+            if (options.width && typeof options.width === 'number') {
+              // User explicitly requested a width, use it and calculate height based on target ratio
+              containerWidth = options.width;
+              containerHeight = Math.ceil(containerWidth / targetRatio);
+              
+              this.logger.debug('Using explicitly requested width for container dimensions', {
+                requestedWidth: options.width,
+                calculatedHeight: containerHeight,
+                targetRatio
+              });
+            } else {
+              // No explicit width request, calculate container dimensions based on original image
+              // Calculate a container that has the target aspect ratio
+              // but is large enough to contain the entire original image
+              if (originalRatio > targetRatio) {
+                // Original is wider than target - adjust container height
+                containerWidth = width;
+                containerHeight = Math.ceil(width / targetRatio);
+              } else {
+                // Original is taller than target - adjust container width
+                containerHeight = height;
+                containerWidth = Math.ceil(height * targetRatio);
+              }
+              
+              this.logger.debug('Calculated container dimensions from original image', {
+                originalWidth: width,
+                originalHeight: height,
+                containerWidth,
+                containerHeight,
+                originalRatio,
+                targetRatio
+              });
+            }
+            
+            // Use these container dimensions as the explicit width/height
+            updatedOptions.width = containerWidth;
+            updatedOptions.height = containerHeight;
+            
+            this.logger.debug('Calculated padding container dimensions', {
+              originalWidth: width,
+              originalHeight: height,
+              originalRatio,
+              targetRatio,
+              containerWidth,
+              containerHeight,
+              paddingType: originalRatio > targetRatio ? 'vertical' : 'horizontal',
+              paddingAmount: originalRatio > targetRatio ? 
+                `${containerHeight - height}px vertical` : 
+                `${containerWidth - width}px horizontal`
+            });
+          } else {
+            // When allowExpansion is false, use 'cover' fit mode for cropping
+            updatedOptions.fit = 'cover';
+          }
+        } else {
+          // Default to cover if allowExpansion isn't specified
+          updatedOptions.fit = 'cover';
         }
-        
-        // Set fit to cover for aspect cropping
-        updatedOptions.fit = 'cover';
         
         // Set gravity to coordinates for precise focal point
         updatedOptions.gravity = { x: hoffset, y: voffset };
@@ -191,7 +288,11 @@ export class DefaultImageTransformationService implements ImageTransformationSer
           height,
           hoffset,
           voffset,
+          allowExpansion,
           fit: updatedOptions.fit,
+          outputWidth: updatedOptions.width,
+          outputHeight: updatedOptions.height,
+          background: updatedOptions.background,
           gravity: JSON.stringify(updatedOptions.gravity)
         });
       }
@@ -704,7 +805,22 @@ export class DefaultImageTransformationService implements ImageTransformationSer
         fit: transformOptions.fit,
         format: transformOptions.format,
         quality: transformOptions.quality,
+        background: transformOptions.background,
+        allowExpansion: transformOptions.allowExpansion,
         imageSourceSize: storageResult.size ? Math.round(storageResult.size / 1024) + 'KB' : 'unknown'
+      });
+      
+      // Log more detailed transformation options for debugging
+      this.logger.info('Detailed image transformation options', {
+        width: transformOptions.width,
+        height: transformOptions.height,
+        fit: transformOptions.fit,
+        background: transformOptions.background,
+        allowExpansion: transformOptions.allowExpansion,
+        format: transformOptions.format,
+        quality: transformOptions.quality,
+        smartAspectRatio: transformOptions.aspect,
+        cfImage: JSON.stringify(fetchOptionsWithCache.cf?.image || {})
       });
       
       const fetchStart = Date.now();
@@ -1061,7 +1177,8 @@ export class DefaultImageTransformationService implements ImageTransformationSer
         // Set up metadata processing options
         const processingOptions: MetadataProcessingOptions = {
           preserveFocalPoint: true,
-          allowExpansion: options.allowExpansion || false
+          allowExpansion: options.allowExpansion || false,
+          width: options.width // Pass through the requested width
         };
         
         // Add content type and platform information if available

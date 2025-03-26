@@ -884,10 +884,35 @@ function parseAspectCropParameter(params: string): TransformOptions {
       allowExpansion = allowExpansionMatch[1].toLowerCase() === 'true';
     }
     
+    // Check for imwidth parameter within the AspectCrop params
+    const imwidthMatch = params.match(/imwidth=(\d+)/i);
+    if (imwidthMatch && imwidthMatch.length >= 2) {
+      const width = parseInt(imwidthMatch[1], 10);
+      if (!isNaN(width)) {
+        cfParams.width = width;
+        logger.debug('Extracted imwidth from AspectCrop params', { width });
+      }
+    }
+    
+    // Also check for direct width parameter within the AspectCrop params
+    const widthMatch = params.match(/width=(\d+)/i);
+    if (widthMatch && widthMatch.length >= 2) {
+      const width = parseInt(widthMatch[1], 10);
+      if (!isNaN(width)) {
+        cfParams.width = width;
+        logger.debug('Extracted width from AspectCrop params', { width });
+        logger.breadcrumb('Found width in AspectCrop parameters', undefined, {
+          width,
+          originalParams: params
+        });
+      }
+    }
+    
     logger.debug('Extracted positions and expansion options', { 
       xPosition, 
       yPosition, 
-      allowExpansion 
+      allowExpansion,
+      width: cfParams.width
     });
     
     // Instead of directly setting width and height with hardcoded values,
@@ -944,10 +969,208 @@ function parseAspectCropParameter(params: string): TransformOptions {
 export function translateAkamaiParams(url: URL, config?: any): TransformOptions {
   const cfParams: TransformOptions = {};
   
+  // Size code mapping for both 'f' and 'imwidth' parameters
+  const sizeMap: Record<string, number> = {
+    'xxu': 40,
+    'xu': 80,
+    'u': 160,
+    'xxxs': 300,
+    'xxs': 400,
+    'xs': 500,
+    's': 600,
+    'm': 700,
+    'l': 750,
+    'xl': 900,
+    'xxl': 1100,
+    'xxxl': 1400,
+    'sg': 1600,
+    'g': 2000,
+    'xg': 3000,
+    'xxg': 4000
+  };
+
+  // First check for explicit width parameter (highest priority)
+  const widthParam = url.searchParams.get('width');
+  if (widthParam) {
+    const numWidth = parseInt(widthParam, 10);
+    if (!isNaN(numWidth)) {
+      cfParams.width = numWidth;
+      logger.debug('Applied explicit width parameter', {
+        width: cfParams.width
+      });
+    }
+  } else {
+    // Check for custom format size parameter 'f' (second priority)
+    const formatSize = url.searchParams.get('f');
+    if (formatSize) {
+      if (sizeMap[formatSize]) {
+        cfParams.width = sizeMap[formatSize];
+        logger.debug('Applied custom format size parameter', {
+          formatCode: formatSize,
+          width: cfParams.width
+        });
+      }
+    } else {
+      // Check for Akamai imwidth parameter that may contain size codes (lowest priority)
+      const imwidthParam = url.searchParams.get('imwidth');
+      if (imwidthParam) {
+        // First check if it's a size code
+        if (sizeMap[imwidthParam]) {
+          cfParams.width = sizeMap[imwidthParam];
+          logger.debug('Applied size code from imwidth parameter', {
+            formatCode: imwidthParam,
+            width: cfParams.width
+          });
+        } else {
+          // Otherwise parse as number
+          const numWidth = parseInt(imwidthParam, 10);
+          if (!isNaN(numWidth)) {
+            cfParams.width = numWidth;
+            logger.debug('Applied numeric imwidth parameter', {
+              imwidth: numWidth
+            });
+          }
+        }
+      }
+    }
+  }
+  
   // Check for the newer im= parameter format first
   const imParameter = url.searchParams.get('im');
   if (imParameter) {
     logger.debug('Processing Akamai im= parameter format', { imParameter });
+    logger.breadcrumb('Processing im= parameter', undefined, { parameter: imParameter });
+    
+    // Unified approach for extracting compact parameters from im= parameter
+    const compactParams = ['f=', 'r=', 'p='];
+    const hasCompactParams = compactParams.some(param => imParameter.includes(param));
+    
+    if (hasCompactParams) {
+      logger.debug('Detected compact parameters inside im= parameter', { imParameter });
+      logger.breadcrumb('Found compact parameters in im= value', undefined, { parameters: compactParams.filter(p => imParameter.includes(p)) });
+      
+      // Extract f= parameter (format/size code) if present in im= parameter
+      if (imParameter.includes('f=')) {
+        // Use a more comprehensive regex pattern that handles edge cases better
+        // Look for f= followed by any characters that aren't a comma, closing parentheses, or whitespace
+        const fMatch = imParameter.match(/f=([^,\)\s]+)/);
+        if (fMatch && fMatch[1]) {
+          const formatSize = fMatch[1];
+          // Map predefined size codes to pixel widths
+          const sizeMap: Record<string, number> = {
+            'xxu': 40,
+            'xu': 80,
+            'u': 160,
+            'xxxs': 300,
+            'xxs': 400,
+            'xs': 500,
+            's': 600,
+            'm': 700,
+            'l': 750,
+            'xl': 900,
+            'xxl': 1100,
+            'xxxl': 1400,
+            'sg': 1600,
+            'g': 2000,
+            'xg': 3000,
+            'xxg': 4000
+          };
+          
+          if (sizeMap[formatSize]) {
+            cfParams.width = sizeMap[formatSize];
+            logger.debug('Extracted f parameter from im= value', { 
+              formatCode: formatSize, 
+              width: cfParams.width 
+            });
+            logger.breadcrumb('Applied size code from im= parameter', undefined, {
+              code: formatSize, 
+              width: cfParams.width
+            });
+          } else {
+            // Check if it's a numeric width
+            const numWidth = parseInt(formatSize, 10);
+            if (!isNaN(numWidth) && numWidth > 0) {
+              cfParams.width = numWidth;
+              logger.debug('Extracted f parameter as numeric width from im= value', { 
+                width: cfParams.width 
+              });
+              logger.breadcrumb('Applied numeric width from f= parameter', undefined, {
+                originalValue: formatSize,
+                width: numWidth
+              });
+            }
+          }
+        }
+      }
+      
+      // Extract r= parameter (aspect ratio) if present in im= parameter
+      if (imParameter.includes('r=')) {
+        // More robust pattern for extracting aspect ratio parameter
+        const match = imParameter.match(/r=([^,\)\s]+)/);
+        if (match && match[1]) {
+          const aspectRatio = match[1];
+          if (aspectRatio.includes(':') || aspectRatio.includes('-')) {
+            // Convert to the standard aspect format
+            cfParams.aspect = aspectRatio;
+            logger.debug('Extracted r parameter from im= value', { aspect: aspectRatio });
+            logger.breadcrumb('Applied aspect ratio from im= parameter', undefined, {
+              aspect: aspectRatio
+            });
+          }
+        }
+      }
+      
+      // Extract p= parameter (positioning) if present in im= parameter
+      if (imParameter.includes('p=')) {
+        // Special handling for positioning parameter that contains a comma inside its value
+        // We need to be careful not to split at that comma
+        const match = imParameter.match(/p=([0-9.]+,[0-9.]+)/);
+        if (match && match[1]) {
+          const position = match[1];
+          if (position.includes(',')) {
+            const [x, y] = position.split(',').map(v => parseFloat(v));
+            if (!isNaN(x) && !isNaN(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+              cfParams.focal = position;
+              logger.debug('Extracted p parameter from im= value', { focal: position });
+              logger.breadcrumb('Applied positioning from im= parameter', undefined, {
+                focal: position,
+                x, y
+              });
+            }
+          }
+        }
+      }
+    }
+    
+    // Check for Mirror parameter and set flip accordingly
+    if (imParameter.includes('Mirror=horizontal') || imParameter.includes('Mirror=h')) {
+      cfParams.flip = 'h';
+      logger.debug('Setting horizontal mirror/flip from im= parameter');
+    } else if (imParameter.includes('Mirror=vertical') || imParameter.includes('Mirror=v')) {
+      cfParams.flip = 'v';
+      logger.debug('Setting vertical mirror/flip from im= parameter');
+    } else if (imParameter.includes('Mirror=both') || imParameter.includes('Mirror=hv') || imParameter.includes('Mirror=vh')) {
+      cfParams.flip = 'hv';
+      logger.debug('Setting both horizontal and vertical mirror/flip from im= parameter');
+    }
+    
+    // Direct check for width parameter in im= value
+    if (imParameter.includes('width=') && !cfParams.width) {
+      const widthMatch = imParameter.match(/width=(\d+)/i);
+      if (widthMatch && widthMatch.length >= 2) {
+        const width = parseInt(widthMatch[1], 10);
+        if (!isNaN(width) && width > 0) {
+          cfParams.width = width;
+          logger.debug('Extracted direct width parameter from im= value', { width });
+          logger.breadcrumb('Applied width from im= parameter', undefined, {
+            width,
+            pattern: 'direct match'
+          });
+        }
+      }
+    }
+    
+    // Still process the parameter normally in case it contains other transformations
     const parsedParams = parseImParameter(imParameter);
     
     // Merge the parsed parameters into our Cloudflare parameters
@@ -2087,6 +2310,79 @@ export function convertToCloudflareUrl(url: URL): URL {
   // Create a new URL object to avoid modifying the original
   const cfUrl = new URL(url.toString());
   
+  // Process compact parameters first before Akamai translation
+  // Handle r=16:9 (aspect ratio) and p=0.7,0.5 (positioning)
+  if (cfUrl.searchParams.has('r')) {
+    const aspectRatio = cfUrl.searchParams.get('r') || '';
+    if (aspectRatio.includes(':') || aspectRatio.includes('-')) {
+      // Convert to the Akamai parameter format for AspectCrop
+      const formattedRatio = aspectRatio.replace('-', ':');
+      // Parse the width and height
+      const [aspectWidth, aspectHeight] = formattedRatio.split(':').map(val => parseFloat(val));
+      const aspectCrop = `width:${aspectWidth},height:${aspectHeight}`;
+      
+      // If we also have positioning, add it to the aspectCrop string
+      if (cfUrl.searchParams.has('p')) {
+        const position = cfUrl.searchParams.get('p') || '';
+        if (position.includes(',')) {
+          const [x, y] = position.split(',').map(v => parseFloat(v));
+          if (!isNaN(x) && !isNaN(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+            const aspectCropWithPosition = `${aspectCrop},hoffset:${x},voffset:${y}`;
+            cfUrl.searchParams.set('im.aspectCrop', aspectCropWithPosition);
+            logger.debug('Applied combined compact parameters r and p', {
+              aspectRatio: formattedRatio,
+              position,
+              akamaiParam: aspectCropWithPosition
+            });
+          } else {
+            // Just use the aspect ratio
+            cfUrl.searchParams.set('im.aspectCrop', aspectCrop);
+            logger.debug('Applied compact aspect ratio parameter r', {
+              aspectRatio: formattedRatio,
+              akamaiParam: aspectCrop
+            });
+          }
+        } else {
+          // Just use the aspect ratio
+          cfUrl.searchParams.set('im.aspectCrop', aspectCrop);
+          logger.debug('Applied compact aspect ratio parameter r', {
+            aspectRatio: formattedRatio,
+            akamaiParam: aspectCrop
+          });
+        }
+        
+        // Remove the processed compact parameters
+        cfUrl.searchParams.delete('r');
+        cfUrl.searchParams.delete('p');
+      } else {
+        // Only aspect ratio, no positioning
+        cfUrl.searchParams.set('im.aspectCrop', aspectCrop);
+        cfUrl.searchParams.delete('r');
+        logger.debug('Applied compact aspect ratio parameter r', {
+          aspectRatio: formattedRatio,
+          akamaiParam: aspectCrop
+        });
+      }
+    }
+  }
+  // Handle standalone p parameter (if no r parameter was present)
+  else if (cfUrl.searchParams.has('p') && !cfUrl.searchParams.has('im.aspectCrop')) {
+    const position = cfUrl.searchParams.get('p') || '';
+    if (position.includes(',')) {
+      const [x, y] = position.split(',').map(v => parseFloat(v));
+      if (!isNaN(x) && !isNaN(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+        // Use with default 1:1 aspect
+        const aspectCrop = `width:1,height:1,hoffset:${x},voffset:${y}`;
+        cfUrl.searchParams.set('im.aspectCrop', aspectCrop);
+        cfUrl.searchParams.delete('p');
+        logger.debug('Applied compact positioning parameter p with default 1:1 aspect', {
+          position,
+          akamaiParam: aspectCrop
+        });
+      }
+    }
+  }
+  
   // First check for path-based parameters
   logger.debug('Checking for path-based parameters', { pathname: url.pathname });
   const parseStart = Date.now();
@@ -2151,10 +2447,10 @@ export function convertToCloudflareUrl(url: URL): URL {
     allParams: Object.keys(cfParams).join(',')
   });
   
-  // Remove all Akamai parameters
+  // Remove all Akamai parameters and custom format parameters
   const removedParams: string[] = [];
   for (const key of Array.from(cfUrl.searchParams.keys())) {
-    if (key.startsWith('im.')) {
+    if (key.startsWith('im.') || key === 'f' || key === 'imwidth' || key === 'im' || key === 'r' || key === 'p') {
       cfUrl.searchParams.delete(key);
       removedParams.push(key);
     }

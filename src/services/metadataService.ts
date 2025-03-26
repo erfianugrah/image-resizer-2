@@ -297,7 +297,7 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
       
       // First, try using Cloudflare's recommended approach - create a URL specifically for metadata
       // Make sure format=json is the FIRST parameter to ensure it's not ignored
-      let metadataUrl = new URL(imageUrl);
+      const metadataUrl = new URL(imageUrl);
       
       // Clear any existing parameters to ensure format=json is applied first
       const existingParams = new URLSearchParams(metadataUrl.search);
@@ -1225,7 +1225,22 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
           // Without allowExpansion, crop to achieve the target ratio
           // while preserving as much of the original image as possible
           
-          if (originalRatio > targetRatio) {
+          // Check if a specific width was explicitly requested in the options
+          const requestedWidth = options.width !== undefined ? parseInt(String(options.width), 10) : null;
+          
+          if (requestedWidth !== null && !isNaN(requestedWidth) && requestedWidth > 0) {
+            // User explicitly requested a width, use it and calculate height based on target ratio
+            newWidth = requestedWidth;
+            newHeight = Math.round(requestedWidth / targetRatio);
+            
+            this.logger.debug('Using explicitly requested width for aspect crop', {
+              requestedWidth,
+              calculatedHeight: newHeight,
+              targetRatio,
+              originalWidth,
+              originalHeight
+            });
+          } else if (originalRatio > targetRatio) {
             // Original is wider than target - preserve height, adjust width
             // This crops the sides of the image (left and right)
             newHeight = originalHeight;
