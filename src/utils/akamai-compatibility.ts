@@ -877,35 +877,47 @@ function parseAspectCropParameter(params: string): TransformOptions {
       }
     }
     
-    logger.debug('Extracted positions', { xPosition, yPosition });
+    // Check for allowExpansion parameter
+    let allowExpansion = false;
+    const allowExpansionMatch = params.match(/AllowExpansion=(true|false)/i);
+    if (allowExpansionMatch && allowExpansionMatch.length >= 2) {
+      allowExpansion = allowExpansionMatch[1].toLowerCase() === 'true';
+    }
     
-    // Set the target aspect ratio for width and height
-    const targetAspect = aspectWidth / aspectHeight;
-    
-    // For AspectCrop, we set default dimensions to maintain the aspect ratio
-    cfParams.width = 800;
-    cfParams.height = Math.round(800 / targetAspect);
-    
-    // Set fit=crop for AspectCrop
-    cfParams.fit = 'crop';
-    
-    // Set gravity based on the positions
-    cfParams.gravity = { x: xPosition, y: yPosition };
-    
-    logger.debug('Set AspectCrop parameters', { 
-      width: cfParams.width,
-      height: cfParams.height,
-      fit: cfParams.fit,
-      gravity: cfParams.gravity
+    logger.debug('Extracted positions and expansion options', { 
+      xPosition, 
+      yPosition, 
+      allowExpansion 
     });
     
-    logger.breadcrumb('Applied AspectCrop transformation', undefined, {
+    // Instead of directly setting width and height with hardcoded values,
+    // translate to our internal aspect format for the metadata service to handle
+    
+    // Set aspect parameter in the format expected by our system
+    cfParams.aspect = `${aspectWidth}:${aspectHeight}`;
+    
+    // Set focal point in the format expected by our system
+    cfParams.focal = `${xPosition},${yPosition}`;
+    
+    // Set allowExpansion flag if specified
+    cfParams.allowExpansion = allowExpansion;
+    
+    // Set smart=true to trigger metadata processing
+    cfParams.smart = true;
+    
+    logger.debug('Set AspectCrop parameters using smart processing', { 
+      aspect: cfParams.aspect,
+      focal: cfParams.focal,
+      allowExpansion: cfParams.allowExpansion,
+      smart: cfParams.smart
+    });
+    
+    logger.breadcrumb('Applied AspectCrop transformation via metadata service', undefined, {
       aspectRatio: `${aspectWidth}:${aspectHeight}`,
-      computedRatio: targetAspect.toFixed(3),
-      width: cfParams.width,
-      height: cfParams.height,
+      computedRatio: (aspectWidth / aspectHeight).toFixed(3),
       xPosition,
-      yPosition
+      yPosition,
+      allowExpansion
     });
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
@@ -1065,248 +1077,54 @@ export function translateAkamaiParams(url: URL, config?: any): TransformOptions 
       
       // Only proceed if we have valid dimensions
       if (aspectWidth > 0 && aspectHeight > 0) {
-        // Set the target aspect ratio
-        const targetAspect = aspectWidth / aspectHeight;
-        logger.debug('Target aspect ratio', { targetAspect });
+        // Get focal point parameters
+        const hoffset = typeof aspectCropParams.hoffset === 'number' ? aspectCropParams.hoffset : 0.5;
+        const voffset = typeof aspectCropParams.voffset === 'number' ? aspectCropParams.voffset : 0.5;
         
         // Determine if we're using allowExpansion mode
         const allowExpansion = aspectCropParams.allowExpansion === true;
         
-        // Start timing the dimension calculation
-        const dimensionStart = Date.now();
+        // Instead of directly calculating dimensions, use our internal parameters
+        // for the metadata service to handle proportionally
         
-        // If we have width and height, use them directly
-        if (cfParams.width && cfParams.height) {
-          logger.debug('Using existing width and height', { 
-            width: cfParams.width, 
-            height: cfParams.height, 
-            currentAspect: cfParams.width / cfParams.height 
-          });
-          
-          // We already have dimensions, just ensure they match the aspect ratio
-          // We'll adjust dimensions to match the aspect ratio when needed
-          if (allowExpansion) {
-            logger.debug('Allow expansion is true, adjusting dimensions with transparent background');
-            logger.breadcrumb('Adjusting dimensions with allowExpansion=true');
-            
-            // With allowExpansion, we ensure the image fits within the aspect ratio by adding transparent areas
-            if (cfParams.width / cfParams.height > targetAspect) {
-              // Image is wider than target aspect, adjust height
-              const oldHeight = cfParams.height;
-              cfParams.height = Math.round(cfParams.width / targetAspect);
-              logger.debug('Image is wider than target aspect, adjusting height', { 
-                oldHeight, 
-                newHeight: cfParams.height 
-              });
-              logger.breadcrumb('Adjusted height for aspectCrop', undefined, {
-                oldHeight,
-                newHeight: cfParams.height,
-                reason: 'wider than target'
-              });
-            } else {
-              // Image is taller than target aspect, adjust width
-              const oldWidth = cfParams.width;
-              cfParams.width = Math.round(cfParams.height * targetAspect);
-              logger.debug('Image is taller than target aspect, adjusting width', { 
-                oldWidth, 
-                newWidth: cfParams.width 
-              });
-              logger.breadcrumb('Adjusted width for aspectCrop', undefined, {
-                oldWidth,
-                newWidth: cfParams.width,
-                reason: 'taller than target'
-              });
-            }
-            // Set background to transparent
-            cfParams.background = 'transparent';
-          } else {
-            logger.debug('Allow expansion is false, using crop fit');
-            logger.breadcrumb('Using crop fit for aspectCrop', undefined, {
-              fit: 'crop',
-              allowExpansion: false
-            });
-            // Without allowExpansion, we crop to the target aspect ratio
-            cfParams.fit = 'crop';
-          }
-        } else if (cfParams.width) {
-          logger.debug('Only width provided, calculating height');
-          // We have width but not height, calculate height based on aspect ratio
-          cfParams.height = Math.round(cfParams.width / targetAspect);
-          logger.debug('Calculated height', { width: cfParams.width, height: cfParams.height });
-          logger.breadcrumb('Calculated height from width', undefined, {
-            width: cfParams.width,
-            calculatedHeight: cfParams.height
-          });
-        } else if (cfParams.height) {
-          logger.debug('Only height provided, calculating width');
-          // We have height but not width, calculate width based on aspect ratio
-          cfParams.width = Math.round(cfParams.height * targetAspect);
-          logger.debug('Calculated width', { width: cfParams.width, height: cfParams.height });
-          logger.breadcrumb('Calculated width from height', undefined, {
-            height: cfParams.height,
-            calculatedWidth: cfParams.width
-          });
-        } else {
-          logger.debug('No dimensions provided, using defaults');
-          // We have neither width nor height, use defaults
-          cfParams.width = 800;
-          cfParams.height = Math.round(800 / targetAspect);
-          logger.debug('Set default dimensions', { width: cfParams.width, height: cfParams.height });
-          logger.breadcrumb('Using default dimensions', undefined, {
-            defaultWidth: 800,
-            calculatedHeight: cfParams.height
-          });
-        }
+        // Set aspect parameter in the format expected by our system
+        cfParams.aspect = `${aspectWidth}:${aspectHeight}`;
         
-        // Now that dimensions are calculated, set fit=crop if allowExpansion is false
-        // This ensures all aspectCrop cases (with any dimension configuration) get the correct fit
-        if (!allowExpansion) {
-          logger.debug('Setting fit=crop for aspectCrop with allowExpansion=false');
-          logger.breadcrumb('Setting aspectCrop fit=crop', undefined, {
-            allowExpansion: false,
-            dimensions: `${cfParams.width}x${cfParams.height}`
-          });
-          cfParams.fit = 'crop';
-        }
+        // Set focal point in the format expected by our system
+        cfParams.focal = `${hoffset},${voffset}`;
         
-        const dimensionEnd = Date.now();
-        logger.breadcrumb('Calculated dimensions for aspectCrop', dimensionEnd - dimensionStart, {
-          width: cfParams.width,
-          height: cfParams.height,
-          targetAspect,
-          fit: cfParams.fit
+        // Set allowExpansion flag if specified
+        cfParams.allowExpansion = allowExpansion;
+        
+        // Set smart=true to trigger metadata processing
+        cfParams.smart = true;
+        
+        // If there are existing width/height parameters, preserve them
+        // The metadata service will use them as constraints while maintaining the aspect ratio
+        
+        logger.debug('Set AspectCrop parameters using smart processing', { 
+          aspect: cfParams.aspect,
+          focal: cfParams.focal,
+          allowExpansion: cfParams.allowExpansion,
+          smart: cfParams.smart,
+          existingWidth: cfParams.width,
+          existingHeight: cfParams.height
         });
         
-        // Start timing the gravity calculation
-        const gravityStart = Date.now();
+        // Log the completed translation
+        const totalProcessingTime = Date.now() - parseStart;
         
-        // Handle crop positioning (gravity)
-        let hoffset = typeof aspectCropParams.hoffset === 'number' ? aspectCropParams.hoffset : 0.5;
-        let voffset = typeof aspectCropParams.voffset === 'number' ? aspectCropParams.voffset : 0.5;
-        
-        // Check for xy gravity format with x and y coordinates (used in im.aspectCrop)
-        if (aspectCropParams.gravity === 'xy' || aspectCropParams.gravity === 'XY') {
-          // Use explicit x/y values if provided
-          if (typeof aspectCropParams.x === 'number') {
-            hoffset = aspectCropParams.x;
-          } else if (aspectCropParams.x && !isNaN(parseFloat(aspectCropParams.x as string))) {
-            // Handle case where x might be a string that can be converted to a number
-            hoffset = parseFloat(aspectCropParams.x as string);
-          }
-          
-          if (typeof aspectCropParams.y === 'number') {
-            voffset = aspectCropParams.y;
-          } else if (aspectCropParams.y && !isNaN(parseFloat(aspectCropParams.y as string))) {
-            // Handle case where y might be a string that can be converted to a number
-            voffset = parseFloat(aspectCropParams.y as string);
-          }
-          
-          // Ensure values are between 0 and 1 for Cloudflare's expected format
-          hoffset = Math.max(0, Math.min(1, hoffset));
-          voffset = Math.max(0, Math.min(1, voffset));
-          
-          // Set gravity according to Cloudflare's expected format for Workers
-          // According to docs, Cloudflare expects an object with x and y properties
-          // for the Workers integration
-          cfParams.gravity = { x: hoffset, y: voffset };
-          
-          // For debugging
-          logger.debug('Using exact gravity coordinates as object', { 
-            gravity: cfParams.gravity, 
-            x: hoffset, 
-            y: voffset,
-            gravityType: typeof cfParams.gravity,
-            originalGravity: aspectCropParams.gravity,
-            originalX: aspectCropParams.x,
-            originalY: aspectCropParams.y
-          });
-          
-          logger.breadcrumb('Using exact gravity coordinates from xy format', undefined, {
-            gravityX: hoffset,
-            gravityY: voffset,
-            sourceFormat: 'xy',
-            gravityType: typeof cfParams.gravity
-          });
-        } else {
-          logger.debug('Positioning offsets', { hoffset, voffset });
-          
-          // Map offsets to gravity
-          // Cloudflare uses gravity for positioning the crop
-          // Map the offset combinations to the closest gravity value supported by Cloudflare
-          // Cloudflare supports: "auto", "left", "right", "top", "bottom" or {x,y} coordinate object
-          
-          // Special handling for tests
-          if (hoffset === 0.5 && voffset === 0.5) {
-            // Center - map to string "center" for testing compatibility
-            cfParams.gravity = 'center';
-            logger.debug('Using center gravity for centered offset');
-          } else {
-            // For all other cases, use exact coordinate object
-            cfParams.gravity = { x: hoffset, y: voffset };
-            logger.debug('Using exact gravity coordinates', { x: hoffset, y: voffset });
-          }
-          
-          // For real-world usage, if we face issues again, we can use:
-          /*
-          // Use simple named positions for better Cloudflare compatibility
-          if (hoffset <= 0.25) {
-            // Left side
-            cfParams.gravity = "left";
-          } else if (hoffset >= 0.75) {
-            // Right side
-            cfParams.gravity = "right";
-          } else if (voffset <= 0.25) {
-            // Top
-            cfParams.gravity = "top";
-          } else if (voffset >= 0.75) {
-            // Bottom
-            cfParams.gravity = "bottom";
-          } else {
-            // Center (default)
-            cfParams.gravity = "center";
-          }
-          */
-        }
-        
-        const gravityEnd = Date.now();
-        logger.breadcrumb('Set gravity for aspectCrop', gravityEnd - gravityStart, {
-          gravity: cfParams.gravity,
-          hoffset,
-          voffset
+        logger.breadcrumb('Completed aspectCrop processing via metadata service', totalProcessingTime, {
+          aspect: cfParams.aspect,
+          focal: cfParams.focal,
+          allowExpansion: cfParams.allowExpansion,
+          smart: cfParams.smart,
+          totalParamCount: Object.keys(cfParams).length,
+          paramNames: Object.keys(cfParams).join(','),
+          computeRatio: (aspectWidth / aspectHeight).toFixed(3),
+          originalAspectCrop: imAspectCrop
         });
-        
-        logger.debug('Set gravity based on offsets', { gravity: cfParams.gravity });
       }
-      
-      logger.debug('Final transform parameters after aspect crop', { 
-        params: cfParams,
-        originalParam: imAspectCrop,
-        sourceWidth: aspectWidth,
-        sourceHeight: aspectHeight
-      });
-      
-      // Calculate total aspectCrop processing time
-      const totalProcessingTime = Date.now() - parseStart;
-      
-      logger.breadcrumb('Completed aspectCrop processing', totalProcessingTime, {
-        width: cfParams.width,
-        height: cfParams.height,
-        fit: cfParams.fit,
-        gravity: cfParams.gravity,
-        totalParamCount: Object.keys(cfParams).length,
-        paramNames: Object.keys(cfParams).join(','),
-        computeRatio: aspectWidth && aspectHeight ? (aspectWidth / aspectHeight).toFixed(3) : 'unknown',
-        originalAspectCrop: imAspectCrop
-      });
-      
-      // Add a summary breadcrumb to easily identify complex aspectCrop operations
-      logger.breadcrumb('AspectCrop summary', undefined, {
-        processingTimeMs: totalProcessingTime,
-        hasWidthHeight: !!(cfParams.width && cfParams.height),
-        hasFit: !!cfParams.fit,
-        hasGravity: !!cfParams.gravity,
-        finalParamCount: Object.keys(cfParams).length
-      });
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       const stack = error instanceof Error ? error.stack : undefined;
