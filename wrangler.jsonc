@@ -234,7 +234,7 @@
    * Smart Placement for optimal performance
    */
 	"placement": {
-		"mode": "smart"
+		"mode": "off"
 	},
 	/**
    * R2 Binding for image storage
@@ -633,7 +633,7 @@
 				"DEBUG": "true",
 				"REMOTE_URL": "https://25f21f141824546aa72c74451a11b419.r2.cloudflarestorage.com/images-weur/",
 				"FALLBACK_URL": "https://cdn.erfianugrah.com",
-				"STORAGE_PRIORITY": "r2,remote", // Default storage priority order
+				"STORAGE_PRIORITY": "remote", // Default storage priority order
 				"ENABLE_AKAMAI_COMPATIBILITY": "true", // Enabled in production
 				"ENABLE_AKAMAI_ADVANCED_FEATURES": "true", // Enable advanced Akamai features in production
 				"LOGGING_LEVEL": "DEBUG",

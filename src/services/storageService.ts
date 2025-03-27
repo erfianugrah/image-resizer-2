@@ -1134,8 +1134,54 @@ export class DefaultStorageService implements StorageService {
             });
           }
         } else if (config.storage.remoteAuth.type === 'bearer') {
-          // TODO: Implement bearer token auth
-          this.logger.warn('Bearer token auth not implemented yet');
+          // Implement bearer token authentication
+          const tokenHeaderName = config.storage.remoteAuth.tokenHeaderName || 'Authorization';
+          let token: string | undefined;
+          
+          // Try to get token from environment variable if tokenHeaderName looks like an env var reference
+          if (tokenHeaderName.startsWith('$') && tokenHeaderName.length > 1) {
+            const envVarName = tokenHeaderName.substring(1);
+            const envRecord = env as unknown as Record<string, string | undefined>;
+            token = envRecord[envVarName];
+            
+            if (!token) {
+              this.logger.error('Bearer token not found in environment', {
+                envVar: envVarName,
+                url: finalUrl
+              });
+              
+              // Continue without authentication if in permissive mode
+              if (config.storage.auth?.securityLevel !== 'permissive') {
+                return null;
+              }
+            }
+          } 
+          // Otherwise use the token secret from config
+          else if (config.storage.remoteAuth.tokenSecret) {
+            token = config.storage.remoteAuth.tokenSecret;
+          } else {
+            this.logger.error('Bearer token configuration missing', {
+              url: finalUrl
+            });
+            
+            // Continue without authentication if in permissive mode
+            if (config.storage.auth?.securityLevel !== 'permissive') {
+              return null;
+            }
+          }
+          
+          // Add the Authorization header
+          if (token && fetchOptions.headers && typeof fetchOptions.headers === 'object') {
+            this.logger.debug('Added bearer token authentication', {
+              url: finalUrl,
+              headerName: tokenHeaderName.startsWith('$') ? 'Authorization' : tokenHeaderName
+            });
+            
+            const headerName = tokenHeaderName.startsWith('$') ? 'Authorization' : tokenHeaderName;
+            const headerValue = headerName === 'Authorization' ? `Bearer ${token}` : token;
+            
+            (fetchOptions.headers as Record<string, string>)[headerName] = headerValue;
+          }
         } else if (config.storage.remoteAuth.type === 'header') {
           // Add custom headers
           if (config.storage.remoteAuth.headers) {
@@ -1146,8 +1192,63 @@ export class DefaultStorageService implements StorageService {
             });
           }
         } else if (config.storage.remoteAuth.type === 'query') {
-          // TODO: Add signed URL query params
-          this.logger.warn('Query auth not implemented yet');
+          // Handle query parameter authentication
+          if (config.storage.remoteAuth.signedUrlExpiration) {
+            // Parse the URL to add query parameters
+            const urlObj = new URL(finalUrl);
+            
+            // Add basic signature parameters
+            const timestamp = Math.floor(Date.now() / 1000);
+            const expiration = timestamp + (config.storage.remoteAuth.signedUrlExpiration || 3600);
+            
+            urlObj.searchParams.set('expires', expiration.toString());
+            
+            // Add token if available
+            if (config.storage.remoteAuth.tokenSecret) {
+              urlObj.searchParams.set('token', config.storage.remoteAuth.tokenSecret);
+            }
+            
+            // Save original URL before changing
+            const originalUrl = finalUrl;
+            // Create a new reference for the updated URL
+            const updatedUrl = urlObj.toString();
+            // Update the URL for fetching
+            const signedUrl = updatedUrl;
+            
+            this.logger.debug('Added query parameters for authentication', {
+              originalUrl,
+              signedUrl,
+              expiresAt: new Date(expiration * 1000).toISOString()
+            });
+            
+            // Fetch using the signed URL
+            const response = await fetch(signedUrl, fetchOptions);
+            
+            if (!response.ok) {
+              this.logger.warn('Remote fetch failed with signed URL', { 
+                url: signedUrl, 
+                status: response.status, 
+                statusText: response.statusText 
+              });
+              return null;
+            }
+            
+            // Clone the response to ensure we can access its body multiple times
+            const clonedResponse = response.clone();
+            
+            return {
+              response: clonedResponse,
+              sourceType: 'remote',
+              contentType: response.headers.get('Content-Type'),
+              size: parseInt(response.headers.get('Content-Length') || '0', 10) || null,
+              originalUrl: signedUrl,
+              path
+            };
+          } else {
+            this.logger.warn('Query auth specified but no signedUrlExpiration provided', {
+              url: finalUrl
+            });
+          }
         }
         
         // Set cache TTL for authenticated requests
@@ -1447,8 +1548,54 @@ export class DefaultStorageService implements StorageService {
             });
           }
         } else if (config.storage.fallbackAuth.type === 'bearer') {
-          // TODO: Implement bearer token auth
-          this.logger.warn('Bearer token auth not implemented yet');
+          // Implement bearer token authentication
+          const tokenHeaderName = config.storage.fallbackAuth.tokenHeaderName || 'Authorization';
+          let token: string | undefined;
+          
+          // Try to get token from environment variable if tokenHeaderName looks like an env var reference
+          if (tokenHeaderName.startsWith('$') && tokenHeaderName.length > 1) {
+            const envVarName = tokenHeaderName.substring(1);
+            const envRecord = env as unknown as Record<string, string | undefined>;
+            token = envRecord[envVarName];
+            
+            if (!token) {
+              this.logger.error('Bearer token not found in environment', {
+                envVar: envVarName,
+                url: finalUrl
+              });
+              
+              // Continue without authentication if in permissive mode
+              if (config.storage.auth?.securityLevel !== 'permissive') {
+                return null;
+              }
+            }
+          } 
+          // Otherwise use the token secret from config
+          else if (config.storage.fallbackAuth.tokenSecret) {
+            token = config.storage.fallbackAuth.tokenSecret;
+          } else {
+            this.logger.error('Bearer token configuration missing', {
+              url: finalUrl
+            });
+            
+            // Continue without authentication if in permissive mode
+            if (config.storage.auth?.securityLevel !== 'permissive') {
+              return null;
+            }
+          }
+          
+          // Add the Authorization header
+          if (token && fetchOptions.headers && typeof fetchOptions.headers === 'object') {
+            this.logger.debug('Added bearer token authentication', {
+              url: finalUrl,
+              headerName: tokenHeaderName.startsWith('$') ? 'Authorization' : tokenHeaderName
+            });
+            
+            const headerName = tokenHeaderName.startsWith('$') ? 'Authorization' : tokenHeaderName;
+            const headerValue = headerName === 'Authorization' ? `Bearer ${token}` : token;
+            
+            (fetchOptions.headers as Record<string, string>)[headerName] = headerValue;
+          }
         } else if (config.storage.fallbackAuth.type === 'header') {
           // Add custom headers
           if (config.storage.fallbackAuth.headers) {
@@ -1459,8 +1606,63 @@ export class DefaultStorageService implements StorageService {
             });
           }
         } else if (config.storage.fallbackAuth.type === 'query') {
-          // TODO: Add signed URL query params
-          this.logger.warn('Query auth not implemented yet');
+          // Handle query parameter authentication
+          if (config.storage.fallbackAuth.signedUrlExpiration) {
+            // Parse the URL to add query parameters
+            const urlObj = new URL(finalUrl);
+            
+            // Add basic signature parameters
+            const timestamp = Math.floor(Date.now() / 1000);
+            const expiration = timestamp + (config.storage.fallbackAuth.signedUrlExpiration || 3600);
+            
+            urlObj.searchParams.set('expires', expiration.toString());
+            
+            // Add token if available
+            if (config.storage.fallbackAuth.tokenSecret) {
+              urlObj.searchParams.set('token', config.storage.fallbackAuth.tokenSecret);
+            }
+            
+            // Save original URL before changing
+            const originalUrl = finalUrl;
+            // Create a new reference for the updated URL
+            const updatedUrl = urlObj.toString();
+            // Update the URL for fetching
+            const signedUrl = updatedUrl;
+            
+            this.logger.debug('Added query parameters for authentication', {
+              originalUrl,
+              signedUrl,
+              expiresAt: new Date(expiration * 1000).toISOString()
+            });
+            
+            // Fetch using the signed URL
+            const response = await fetch(signedUrl, fetchOptions);
+            
+            if (!response.ok) {
+              this.logger.warn('Fallback fetch failed with signed URL', { 
+                url: signedUrl, 
+                status: response.status, 
+                statusText: response.statusText 
+              });
+              return null;
+            }
+            
+            // Clone the response to ensure we can access its body multiple times
+            const clonedResponse = response.clone();
+            
+            return {
+              response: clonedResponse,
+              sourceType: 'fallback',
+              contentType: response.headers.get('Content-Type'),
+              size: parseInt(response.headers.get('Content-Length') || '0', 10) || null,
+              originalUrl: signedUrl,
+              path
+            };
+          } else {
+            this.logger.warn('Query auth specified but no signedUrlExpiration provided', {
+              url: finalUrl
+            });
+          }
         }
         
         // Set cache TTL for authenticated requests
