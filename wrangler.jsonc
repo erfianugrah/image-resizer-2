@@ -207,23 +207,23 @@
 		/* Remote URL Auth Configuration */
 		"REMOTE_AUTH_ENABLED": "true",
 		"REMOTE_AUTH_TYPE": "aws-s3", // Options: aws-s3, bearer, header, query
-		"REMOTE_AUTH_REGION": "us-east-1", // For S3/GCS auth
+		// "REMOTE_AUTH_REGION": "us-east-1", // For S3/GCS auth
 		"REMOTE_AUTH_SERVICE": "s3", // "s3" for AWS/R2, "storage" for GCS
 		"REMOTE_AUTH_ACCESS_KEY_VAR": "AWS_ACCESS_KEY_ID", // Env var name for access key
 		"REMOTE_AUTH_SECRET_KEY_VAR": "AWS_SECRET_ACCESS_KEY", // Env var name for secret key
 		/* Fallback URL Auth Configuration */
-		"FALLBACK_AUTH_ENABLED": "false", // Enable auth for fallback URL
-		"FALLBACK_AUTH_TYPE": "bearer", // Options: aws-s3, bearer, header, query
+		// "FALLBACK_AUTH_ENABLED": "false", // Enable auth for fallback URL
+		// "FALLBACK_AUTH_TYPE": "bearer", // Options: aws-s3, bearer, header, query
 		/* Complete fallback auth settings (used when FALLBACK_AUTH_ENABLED=true) */
-		"FALLBACK_AUTH_REGION": "us-east-1", // Region for S3/GCS auth
-		"FALLBACK_AUTH_SERVICE": "s3", // "s3" for AWS/R2, "storage" for GCS
-		"FALLBACK_AUTH_ACCESS_KEY_VAR": "FALLBACK_AWS_ACCESS_KEY", // Env var name for fallback access key
-		"FALLBACK_AUTH_SECRET_KEY_VAR": "FALLBACK_AWS_SECRET_KEY", // Env var name for fallback secret key
-		"FALLBACK_AUTH_TOKEN_HEADER": "Authorization", // Header for bearer auth
-		"FALLBACK_AUTH_CUSTOM_HEADERS": {}, // Custom headers for header auth
+		// "FALLBACK_AUTH_REGION": "us-east-1", // Region for S3/GCS auth
+		// "FALLBACK_AUTH_SERVICE": "s3", // "s3" for AWS/R2, "storage" for GCS
+		// "FALLBACK_AUTH_ACCESS_KEY_VAR": "FALLBACK_AWS_ACCESS_KEY", // Env var name for fallback access key
+		// "FALLBACK_AUTH_SECRET_KEY_VAR": "FALLBACK_AWS_SECRET_KEY", // Env var name for fallback secret key
+		// "FALLBACK_AUTH_TOKEN_HEADER": "Authorization", // Header for bearer auth
+		// "FALLBACK_AUTH_CUSTOM_HEADERS": {}, // Custom headers for header auth
 		/* AWS/S3/GCS Credentials - use Wrangler secrets for production */
-		"AWS_ACCESS_KEY_ID": "", // Your S3/GCS access key
-		"AWS_SECRET_ACCESS_KEY": "", // Your S3/GCS secret key
+		// "AWS_ACCESS_KEY_ID": "", // Your S3/GCS access key
+		// "AWS_SECRET_ACCESS_KEY": "", // Your S3/GCS secret key
 		/* Token Auth Settings - only needed for bearer/query auth types */
 		"AUTH_TOKEN_HEADER_NAME": "Authorization", // Header name for bearer tokens
 		"AUTH_TOKEN_PARAM_NAME": "token", // URL param name for signed URLs
@@ -631,9 +631,9 @@
 			"vars": {
 				"ENVIRONMENT": "production",
 				"DEBUG": "true",
-				"REMOTE_URL": "https://cdn.erfianugrah.com",
+				"REMOTE_URL": "https://25f21f141824546aa72c74451a11b419.r2.cloudflarestorage.com/images-weur/",
 				"FALLBACK_URL": "https://cdn.erfianugrah.com",
-				"STORAGE_PRIORITY": "remote,fallback", // Default storage priority order
+				"STORAGE_PRIORITY": "remote", // Default storage priority order
 				"ENABLE_AKAMAI_COMPATIBILITY": "true", // Enabled in production
 				"ENABLE_AKAMAI_ADVANCED_FEATURES": "true", // Enable advanced Akamai features in production
 				"LOGGING_LEVEL": "DEBUG",
@@ -786,31 +786,31 @@
 	         * Note: Global auth is disabled but remote-specific auth is enabled
 	         */
 				/* Global Auth Settings */
-				"AUTH_ENABLED": "false", // Global auth is disabled in production
+				"AUTH_ENABLED": "true", // Global auth is disabled in production
 				"AUTH_SECURITY_LEVEL": "strict", // strict: fail if auth fails (more secure)
 				"AUTH_CACHE_TTL": "86400", // 1 day TTL for authenticated requests
 				"AUTH_USE_ORIGIN_AUTH": "true", // Use Cloudflare's origin-auth feature
 				"AUTH_SHARE_PUBLICLY": "true", // Allow Cloudflare to cache authenticated content
 				/* Remote URL Auth Configuration */
 				"REMOTE_AUTH_ENABLED": "true", // Enable auth specifically for remote URL
-				"REMOTE_AUTH_TYPE": "aws-s3", // AWS S3/R2/GCS compatible authentication
-				"REMOTE_AUTH_REGION": "us-east-1",
+				"REMOTE_AUTH_TYPE": "r2", // AWS S3/R2/GCS compatible authentication
+				// "REMOTE_AUTH_REGION": "us-east-1",
 				"REMOTE_AUTH_SERVICE": "s3", // "s3" for AWS/R2, "storage" for GCS
 				"REMOTE_AUTH_ACCESS_KEY_VAR": "AWS_ACCESS_KEY_ID",
 				"REMOTE_AUTH_SECRET_KEY_VAR": "AWS_SECRET_ACCESS_KEY",
 				/* Fallback URL Auth Configuration */
-				"FALLBACK_AUTH_ENABLED": "false", // Auth disabled for fallback URL
-				"FALLBACK_AUTH_TYPE": "bearer", // Not used when disabled
-				/* Complete fallback auth settings (used when FALLBACK_AUTH_ENABLED=true) */
-				"FALLBACK_AUTH_REGION": "us-east-1", // Region for S3/GCS auth
-				"FALLBACK_AUTH_SERVICE": "s3", // "s3" for AWS/R2, "storage" for GCS
-				"FALLBACK_AUTH_ACCESS_KEY_VAR": "FALLBACK_AWS_ACCESS_KEY", // Env var for fallback access key
-				"FALLBACK_AUTH_SECRET_KEY_VAR": "FALLBACK_AWS_SECRET_KEY", // Env var for fallback secret key
-				"FALLBACK_AUTH_TOKEN_HEADER": "Authorization", // Header for bearer auth
-				"FALLBACK_AUTH_CUSTOM_HEADERS": {}, // Custom headers for header auth
+				// "FALLBACK_AUTH_ENABLED": "false", // Auth disabled for fallback URL
+				// "FALLBACK_AUTH_TYPE": "bearer", // Not used when disabled
+				// /* Complete fallback auth settings (used when FALLBACK_AUTH_ENABLED=true) */
+				// "FALLBACK_AUTH_REGION": "us-east-1", // Region for S3/GCS auth
+				// "FALLBACK_AUTH_SERVICE": "s3", // "s3" for AWS/R2, "storage" for GCS
+				// "FALLBACK_AUTH_ACCESS_KEY_VAR": "FALLBACK_AWS_ACCESS_KEY", // Env var for fallback access key
+				// "FALLBACK_AUTH_SECRET_KEY_VAR": "FALLBACK_AWS_SECRET_KEY", // Env var for fallback secret key
+				// "FALLBACK_AUTH_TOKEN_HEADER": "Authorization", // Header for bearer auth
+				// "FALLBACK_AUTH_CUSTOM_HEADERS": {}, // Custom headers for header auth
 				/* AWS/S3/GCS Credentials - MUST use Wrangler secrets in production */
-				"AWS_ACCESS_KEY_ID": "", // IMPORTANT: Set with `wrangler secret put AWS_ACCESS_KEY_ID`
-				"AWS_SECRET_ACCESS_KEY": "", // IMPORTANT: Set with `wrangler secret put AWS_SECRET_ACCESS_KEY`
+				// "AWS_ACCESS_KEY_ID": "", // IMPORTANT: Set with `wrangler secret put AWS_ACCESS_KEY_ID`
+				// "AWS_SECRET_ACCESS_KEY": "", // IMPORTANT: Set with `wrangler secret put AWS_SECRET_ACCESS_KEY`
 				/* Token Auth Settings */
 				"AUTH_TOKEN_HEADER_NAME": "Authorization",
 				"AUTH_TOKEN_PARAM_NAME": "token",
