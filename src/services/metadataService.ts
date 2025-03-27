@@ -19,6 +19,110 @@ import {
 } from './interfaces';
 
 /**
+ * RequestCoalescer - Manages in-flight requests to prevent duplicates
+ * Uses a Map to track in-flight requests and prevent redundant operations
+ */
+class RequestCoalescer<T> {
+  private inFlightRequests = new Map<string, Promise<T>>();
+  private expiryTimers = new Map<string, number>();
+  private maxConcurrentRequests: number;
+  private requestTimeout: number;
+  private logger: Logger;
+
+  constructor(logger: Logger, maxConcurrent = 100, timeoutMs = 5000) {
+    this.logger = logger;
+    this.maxConcurrentRequests = maxConcurrent;
+    this.requestTimeout = timeoutMs;
+  }
+
+  /**
+   * Get result for a key, coalescing concurrent requests
+   * @param key Unique key for the request
+   * @param fetchFn The function that performs the actual fetch
+   * @returns Promise with the fetch result
+   */
+  async getOrCreate(key: string, fetchFn: () => Promise<T>): Promise<T> {
+    // Check if there's already a request in flight
+    if (this.inFlightRequests.has(key)) {
+      this.logger.debug('Coalescing metadata request', { 
+        key, 
+        inflight: this.inFlightRequests.size 
+      });
+      return this.inFlightRequests.get(key)!;
+    }
+
+    // Safety: If we're at max capacity, don't coalesce to prevent memory issues
+    if (this.inFlightRequests.size >= this.maxConcurrentRequests) {
+      this.logger.warn('Coalescer at capacity, executing request directly', { 
+        capacity: this.maxConcurrentRequests,
+        key
+      });
+      return fetchFn();
+    }
+
+    // Create a new fetch promise with built-in cleanup
+    const promise = this.createManagedPromise(key, fetchFn);
+    this.inFlightRequests.set(key, promise);
+    
+    // Set a safety timeout to prevent hanging references
+    const timeout = setTimeout(() => {
+      if (this.inFlightRequests.has(key)) {
+        this.logger.warn('Coalesced request timed out', { 
+          key, 
+          timeoutMs: this.requestTimeout 
+        });
+        this.cleanup(key);
+      }
+    }, this.requestTimeout);
+    
+    // Store timeout ID (using number for compatibility with CF Workers)
+    this.expiryTimers.set(key, timeout as unknown as number);
+    
+    return promise;
+  }
+
+  /**
+   * Creates a managed promise that handles its own cleanup
+   */
+  private async createManagedPromise(key: string, fetchFn: () => Promise<T>): Promise<T> {
+    try {
+      const result = await fetchFn();
+      this.cleanup(key);
+      return result;
+    } catch (error) {
+      this.logger.error('Coalesced request failed', { 
+        key, 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+      this.cleanup(key);
+      throw error;
+    }
+  }
+
+  /**
+   * Clean up resources for a completed request
+   */
+  private cleanup(key: string): void {
+    this.inFlightRequests.delete(key);
+    
+    if (this.expiryTimers.has(key)) {
+      clearTimeout(this.expiryTimers.get(key)!);
+      this.expiryTimers.delete(key);
+    }
+  }
+
+  /**
+   * Get current stats about coalescer
+   */
+  getStats(): { inFlight: number, capacity: number } {
+    return {
+      inFlight: this.inFlightRequests.size,
+      capacity: this.maxConcurrentRequests
+    };
+  }
+}
+
+/**
  * Platform-specific aspect ratios
  */
 const PLATFORM_ASPECT_RATIOS: Record<string, { width: number; height: number }> = {
@@ -50,6 +154,7 @@ const DEVICE_WIDTH_CONSTRAINTS: Record<string, number> = {
  */
 export class DefaultMetadataFetchingService implements MetadataFetchingService {
   private cacheMap: Map<string, ImageMetadata> = new Map();
+  private requestCoalescer: RequestCoalescer<ImageMetadata>;
   
   /**
    * Create a new DefaultMetadataFetchingService
@@ -66,6 +171,10 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
     private configurationService: ConfigurationService
   ) {
     this.logger.debug('Metadata Fetching Service created');
+    
+    // Initialize the request coalescer with reasonable defaults
+    // 5-second timeout is enough for metadata fetches, and 50 concurrent max should be plenty
+    this.requestCoalescer = new RequestCoalescer<ImageMetadata>(this.logger, 50, 5000);
   }
   
   /**
@@ -73,7 +182,14 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
    */
   async initialize(): Promise<void> {
     this.logger.debug('Initializing Metadata Fetching Service');
-    // No special initialization needed yet
+    
+    const stats = this.requestCoalescer.getStats();
+    this.logger.debug('Metadata request coalescer initialized', {
+      maxConcurrent: stats.capacity,
+      inFlight: stats.inFlight,
+      cacheSize: this.cacheMap.size
+    });
+    
     this.logger.info('Metadata Fetching Service initialized');
   }
   
@@ -82,6 +198,16 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
    */
   async shutdown(): Promise<void> {
     this.logger.debug('Shutting down Metadata Fetching Service');
+    
+    // Log stats before shutdown
+    const coalesceStats = this.requestCoalescer.getStats();
+    this.logger.info('Metadata service request coalescer stats', {
+      inFlightRequests: coalesceStats.inFlight,
+      capacity: coalesceStats.capacity,
+      cacheSize: this.cacheMap.size
+    });
+    
+    // Clear cache
     this.cacheMap.clear();
     this.logger.info('Metadata Fetching Service shut down');
   }
@@ -101,8 +227,6 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
     env: Env,
     request: Request
   ): Promise<ImageMetadata> {
-    // Declare a variable to store storage fetch results for later use
-    let storageResult: any = null;
     const startTime = Date.now();
     this.logger.debug('Fetching image metadata', { imagePath });
     
@@ -118,6 +242,27 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
       });
       return cachedMetadata;
     }
+    
+    // Use the request coalescer to handle concurrent requests for the same metadata
+    return this.requestCoalescer.getOrCreate(cacheKey, () => {
+      return this.actuallyFetchMetadata(imagePath, cacheKey, config, env, request, startTime);
+    });
+  }
+  
+  /**
+   * Internal method that actually performs the metadata fetch
+   * This is used by the request coalescer to avoid duplicate fetches
+   */
+  private async actuallyFetchMetadata(
+    imagePath: string,
+    cacheKey: string,
+    config: ImageResizerConfig,
+    env: Env,
+    request: Request,
+    startTime: number
+  ): Promise<ImageMetadata> {
+    // Declare a variable to store storage fetch results for later use
+    let storageResult: any = null;
     
     try {
       // Initialize empty metadata structure
@@ -318,8 +463,16 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
       });
       
       try {
-        // Fetch with format=json parameter (Cloudflare standard)
-        const metadataResponse = await fetch(metadataUrl.toString());
+        // Use Cloudflare's cf object to directly request metadata
+      // This won't trigger recursion since it's handled by Cloudflare's image pipeline
+      const fetchOptions = {
+        cf: {
+          image: {
+            format: 'json' as const // Use const assertion to fix TypeScript type
+          }
+        }
+      };
+      const metadataResponse = await fetch(metadataUrl.toString(), fetchOptions);
         
         // Check that the response is OK and is actually JSON
         const contentType = metadataResponse.headers.get('content-type') || '';
