@@ -25,7 +25,7 @@
 		"ENVIRONMENT": "development",
 		"DEBUG": "true",
 		"REMOTE_URL": "https://example.com/images",
-		"FALLBACK_URL": "https://placehold.co",
+		"FALLBACK_URL": "https://placehold.com",
 		"STORAGE_PRIORITY": "r2,remote,fallback", // Default storage priority order
 		"ENABLE_AKAMAI_COMPATIBILITY": "true", // Enable Akamai compatibility in development
 		"ENABLE_AKAMAI_ADVANCED_FEATURES": "true", // Enable advanced Akamai features
@@ -234,7 +234,7 @@
    * Smart Placement for optimal performance
    */
 	"placement": {
-		"mode": "off"
+		"mode": "smart"
 	},
 	/**
    * R2 Binding for image storage
@@ -256,7 +256,7 @@
 				"ENVIRONMENT": "development",
 				"DEBUG": "true",
 				"REMOTE_URL": "https://example.com/images",
-				"FALLBACK_URL": "https://placehold.co",
+				"FALLBACK_URL": "https://placehold.com",
 				"STORAGE_PRIORITY": "r2,remote,fallback",
 				"ENABLE_AKAMAI_COMPATIBILITY": "true",
 				"ENABLE_AKAMAI_ADVANCED_FEATURES": "true",
@@ -441,7 +441,7 @@
 				"ENVIRONMENT": "staging",
 				"DEBUG": "true",
 				"REMOTE_URL": "https://example.com/images",
-				"FALLBACK_URL": "https://placehold.co",
+				"FALLBACK_URL": "https://placehold.com",
 				"STORAGE_PRIORITY": "r2,remote,fallback", // Default storage priority order
 				"ENABLE_AKAMAI_COMPATIBILITY": "true", // Enable in staging for testing
 				"ENABLE_AKAMAI_ADVANCED_FEATURES": "true", // Enable advanced Akamai features in staging
@@ -786,7 +786,7 @@
 	         * Note: Global auth is disabled but remote-specific auth is enabled
 	         */
 				/* Global Auth Settings */
-				"AUTH_ENABLED": "false", // Global auth is disabled in production
+				"AUTH_ENABLED": "true", // Global auth is disabled in production
 				"AUTH_SECURITY_LEVEL": "strict", // strict: fail if auth fails (more secure)
 				"AUTH_CACHE_TTL": "86400", // 1 day TTL for authenticated requests
 				"AUTH_USE_ORIGIN_AUTH": "true", // Use Cloudflare's origin-auth feature

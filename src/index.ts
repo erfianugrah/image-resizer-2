@@ -14,15 +14,18 @@ import { setLogger as setAkamaiLogger } from "./utils/akamai-compatibility";
 // Debug logger is now handled through DebugService
 import { setConfig as setDetectorConfig } from "./utils/detector";
 import { createContainer } from "./services/containerFactory";
-import { createRequestPerformanceMonitor, initializePerformanceBaseline } from "./utils/performance-integrations";
+import {
+  createRequestPerformanceMonitor,
+  initializePerformanceBaseline,
+} from "./utils/performance-integrations";
 import {
   addAkamaiCompatibilityHeader,
   handleAkamaiCompatibility,
   handleDebugReport,
   handleImageRequest,
-  handleRootPath,
   handlePerformanceReport,
   handlePerformanceReset,
+  handleRootPath,
 } from "./handlers";
 
 export default {
@@ -45,21 +48,28 @@ export default {
     // This will automatically select the appropriate container type and add lifecycle manager
     const services = createContainer(env, {
       initializeServices: true,
-      gracefulDegradation: true
+      gracefulDegradation: true,
     });
-    const { logger, configurationService, loggingService, lifecycleManager } = services;
-    
+    const { logger, configurationService, loggingService, lifecycleManager } =
+      services;
+
     // Log lifecycle information if available
     if (lifecycleManager) {
-      logger.debug('Lifecycle manager available for coordinated service management');
+      logger.debug(
+        "Lifecycle manager available for coordinated service management",
+      );
     }
-    
+
     // Get configuration via the configuration service
     const config = configurationService.getConfig();
-    
+
     // Initialize performance monitoring
     const performanceBaseline = initializePerformanceBaseline(config, logger);
-    const performanceMonitor = createRequestPerformanceMonitor(metrics, logger, performanceBaseline);
+    const performanceMonitor = createRequestPerformanceMonitor(
+      metrics,
+      logger,
+      performanceBaseline,
+    );
 
     // Log initialization with configured logger
     logger.info(
@@ -105,29 +115,43 @@ export default {
     let url = new URL(request.url);
 
     try {
-      performanceMonitor.startOperation('total');
-      
+      performanceMonitor.startOperation("total");
+
       // Check for root path
       const rootResponse = handleRootPath(request);
       if (rootResponse) {
-        performanceMonitor.endOperation('total', { type: 'root_path' });
-        performanceMonitor.endRequest({ status: rootResponse.status, type: 'root_path' });
+        performanceMonitor.endOperation("total", { type: "root_path" });
+        performanceMonitor.endRequest({
+          status: rootResponse.status,
+          type: "root_path",
+        });
         return rootResponse;
       }
-      
+
       // Check for performance report request
-      const performanceResponse = await handlePerformanceReport(request, services);
+      const performanceResponse = await handlePerformanceReport(
+        request,
+        services,
+      );
       if (performanceResponse) {
-        performanceMonitor.endOperation('total', { type: 'performance_report' });
-        performanceMonitor.endRequest({ status: performanceResponse.status, type: 'performance_report' });
+        performanceMonitor.endOperation("total", {
+          type: "performance_report",
+        });
+        performanceMonitor.endRequest({
+          status: performanceResponse.status,
+          type: "performance_report",
+        });
         return performanceResponse;
       }
-      
+
       // Check for performance reset request
       const resetResponse = await handlePerformanceReset(request, services);
       if (resetResponse) {
-        performanceMonitor.endOperation('total', { type: 'performance_reset' });
-        performanceMonitor.endRequest({ status: resetResponse.status, type: 'performance_reset' });
+        performanceMonitor.endOperation("total", { type: "performance_reset" });
+        performanceMonitor.endRequest({
+          status: resetResponse.status,
+          type: "performance_reset",
+        });
         return resetResponse;
       }
 
@@ -140,82 +164,97 @@ export default {
         logger,
       );
       if (debugResponse) {
-        performanceMonitor.endOperation('total', { type: 'debug_report' });
-        performanceMonitor.endRequest({ status: debugResponse.status, type: 'debug_report' });
+        performanceMonitor.endOperation("total", { type: "debug_report" });
+        performanceMonitor.endRequest({
+          status: debugResponse.status,
+          type: "debug_report",
+        });
         return debugResponse;
       }
-      
+
       // Check for metadata-driven transformation request (path starts with /smart/)
-      if (url.pathname.startsWith('/smart/')) {
+      if (url.pathname.startsWith("/smart/")) {
         try {
           // Import the metadata handler dynamically to avoid circular dependencies
-          const { handleMetadataTransformation } = await import('./handlers/metadataHandler');
-          
-          performanceMonitor.startOperation('metadata_transform');
-          logger.debug('Handling metadata-driven transformation', { path: url.pathname });
-          
-          const metadataResponse = await handleMetadataTransformation(request, env, services);
-          
-          performanceMonitor.endOperation('metadata_transform', {
+          const { handleMetadataTransformation } = await import(
+            "./handlers/metadataHandler"
+          );
+
+          performanceMonitor.startOperation("metadata_transform");
+          logger.debug("Handling metadata-driven transformation", {
+            path: url.pathname,
+          });
+
+          const metadataResponse = await handleMetadataTransformation(
+            request,
+            env,
+            services,
+          );
+
+          performanceMonitor.endOperation("metadata_transform", {
             status: metadataResponse.status,
-            contentType: metadataResponse.headers.get('content-type')
+            contentType: metadataResponse.headers.get("content-type"),
           });
-          
-          performanceMonitor.endOperation('total', { type: 'metadata_transform' });
-          performanceMonitor.endRequest({ 
-            status: metadataResponse.status, 
-            type: 'metadata_transform',
-            contentType: metadataResponse.headers.get('content-type')
+
+          performanceMonitor.endOperation("total", {
+            type: "metadata_transform",
           });
-          
+          performanceMonitor.endRequest({
+            status: metadataResponse.status,
+            type: "metadata_transform",
+            contentType: metadataResponse.headers.get("content-type"),
+          });
+
           return metadataResponse;
         } catch (error) {
-          logger.error('Error in metadata transformation handler', {
+          logger.error("Error in metadata transformation handler", {
             error: error instanceof Error ? error.message : String(error),
-            path: url.pathname
+            path: url.pathname,
           });
-          
+
           // Let the request continue to be handled by the standard image handler
-          logger.warn('Falling back to standard image handler after metadata handler error');
+          logger.warn(
+            "Falling back to standard image handler after metadata handler error",
+          );
         }
       }
 
       // Handle Akamai compatibility if applicable
-      performanceMonitor.startOperation('akamai_compat');
+      performanceMonitor.startOperation("akamai_compat");
       const isAkamai = isAkamaiFormat(url);
       url = handleAkamaiCompatibility(request, url, services);
-      performanceMonitor.endOperation('akamai_compat', { used: isAkamai });
+      performanceMonitor.endOperation("akamai_compat", { used: isAkamai });
 
       // Process the image transformation request
-      performanceMonitor.startOperation('image_request');
+      performanceMonitor.startOperation("image_request");
       let finalResponse = await handleImageRequest(
         request,
         url,
         services,
         metrics,
       );
-      performanceMonitor.endOperation('image_request', { 
+      performanceMonitor.endOperation("image_request", {
         status: finalResponse.status,
-        contentType: finalResponse.headers.get('content-type')
+        contentType: finalResponse.headers.get("content-type"),
       });
 
       // Add Akamai compatibility header if enabled and used
       if (isAkamai) {
-        performanceMonitor.startOperation('add_akamai_header');
+        performanceMonitor.startOperation("add_akamai_header");
         finalResponse = addAkamaiCompatibilityHeader(
           finalResponse,
           isAkamai,
           services,
         );
-        performanceMonitor.endOperation('add_akamai_header');
+        performanceMonitor.endOperation("add_akamai_header");
       }
 
       // End the overall request timing
-      performanceMonitor.endOperation('total');
-      performanceMonitor.endRequest({ 
+      performanceMonitor.endOperation("total");
+      performanceMonitor.endRequest({
         status: finalResponse.status,
-        contentType: finalResponse.headers.get('content-type'),
-        contentLength: finalResponse.headers.get('content-length')
+        contentType: finalResponse.headers.get("content-type"),
+        contentLength: finalResponse.headers.get("content-length"),
       });
 
       return finalResponse;
@@ -238,26 +277,30 @@ export default {
       // Track error with performance monitoring
       try {
         // First try to end the total operation if it was started
-        performanceMonitor.endOperation('total', { error: true });
+        performanceMonitor.endOperation("total", { error: true });
       } catch (endError) {
         // Ignore errors from ending the operation - it may not have been started
       }
-      
-      performanceMonitor.startOperation('error_handling');
-      
+
+      performanceMonitor.startOperation("error_handling");
+
       // Record error type in peformance data
-      const errorType = error instanceof Error ? error.constructor.name : "Unknown";
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
+      const errorType = error instanceof Error
+        ? error.constructor.name
+        : "Unknown";
+      const errorMessage = error instanceof Error
+        ? error.message
+        : String(error);
+
       // Get performance metrics
       performanceMonitor.updateMetrics();
-      const storageTimeMs = performanceMonitor.getOperationTime('storage');
-      const transformTimeMs = performanceMonitor.getOperationTime('transform');
-      
+      const storageTimeMs = performanceMonitor.getOperationTime("storage");
+      const transformTimeMs = performanceMonitor.getOperationTime("transform");
+
       // End performance timing for error handling
-      const totalDuration = performanceMonitor.endOperation('error_handling', {
+      const totalDuration = performanceMonitor.endOperation("error_handling", {
         errorType,
-        errorMessage
+        errorMessage,
       });
 
       logger.breadcrumb("Request error metrics", totalDuration, {
@@ -268,7 +311,7 @@ export default {
 
       // Create appropriate error response
       let errorResponse: Response;
-      
+
       // Return a formatted error response
       if (error instanceof AppError) {
         logger.debug("Returning error response for known error type", {
@@ -291,66 +334,70 @@ export default {
         );
         errorResponse = createErrorResponse(transformError);
       }
-      
+
       // Record final error metrics
       performanceMonitor.endRequest({
         status: errorResponse.status,
         errorType,
-        errorMessage
+        errorMessage,
       });
-      
+
       return errorResponse;
     }
   },
-  
+
   // Add shutdown lifecycle hook for cleanup
-  async scheduled(controller: any, env: Env, ctx: ExecutionContext): Promise<void> {
+  async scheduled(
+    controller: any,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<void> {
     // Map controller to event for compatibility with our code
     const event = controller as unknown as ScheduledEvent;
     // Create service container with minimal initialization
     const services = createContainer(env, {
-      initializeServices: false  // Don't initialize since we'll just shut down
+      initializeServices: false, // Don't initialize since we'll just shut down
     });
-    
+
     const { logger, lifecycleManager } = services;
-    
+
     if (event.scheduledTime) {
-      logger.info('Scheduled event received', {
-        scheduledTime: new Date(event.scheduledTime).toISOString()
+      logger.info("Scheduled event received", {
+        scheduledTime: new Date(event.scheduledTime).toISOString(),
       });
     }
-    
+
     // If we have a lifecycle manager, use it for coordinated shutdown
     if (lifecycleManager) {
       try {
-        logger.info('Starting coordinated service shutdown');
-        
+        logger.info("Starting coordinated service shutdown");
+
         // Perform the shutdown with a timeout and force mode
         const stats = await lifecycleManager.shutdown({
           force: true,
-          timeout: 5000  // 5 second timeout for each service
+          timeout: 5000, // 5 second timeout for each service
         });
-        
-        logger.info('Service shutdown completed successfully', {
+
+        logger.info("Service shutdown completed successfully", {
           durationMs: stats.totalShutdownTimeMs,
           servicesShutdown: stats.services.shutdown,
-          totalServices: stats.services.total
+          totalServices: stats.services.total,
         });
       } catch (error) {
-        logger.error('Error during service shutdown', {
+        logger.error("Error during service shutdown", {
           error: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined
+          stack: error instanceof Error ? error.stack : undefined,
         });
       }
     } else {
       // Use regular shutdown if lifecycle manager is not available
       try {
-        logger.info('Starting legacy service shutdown');
+        logger.info("Starting legacy service shutdown");
         await services.shutdown();
-        logger.info('Legacy service shutdown completed');
+        logger.info("Legacy service shutdown completed");
       } catch (error) {
-        logger.error('Error during legacy service shutdown', {
-          error: error instanceof Error ? error.message : String(error)
+        logger.error("Error during legacy service shutdown", {
+          error: error instanceof Error ? error.message : String(error),
         });
       }
     }

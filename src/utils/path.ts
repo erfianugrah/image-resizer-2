@@ -36,199 +36,235 @@ export function parseImagePath(pathname: string): {
   // Use default console log until we can dynamically import the logger
   // This avoids circular dependencies during initialization
   const logger = {
-    breadcrumb: (step: string, duration?: number, data?: Record<string, unknown>) => {
+    breadcrumb: (
+      step: string,
+      duration?: number,
+      data?: Record<string, unknown>,
+    ) => {
       console.log(`[INFO] 🔶 BREADCRUMB: ${step}`, data || '');
-    }
+    },
   };
 
   logger.breadcrumb('Parsing image path', undefined, { pathname });
-  
+
   // Default result
   const result = {
     imagePath: '',
-    options: {}
+    options: {},
   };
-  
+
   // Check if pathname is empty
   if (!pathname || pathname === '/') {
     logger.breadcrumb('Empty pathname, returning empty result');
     return result;
   }
-  
+
   // Split pathname into segments
   const segments = pathname.split('/').filter(Boolean);
-  
+
   // Check if there are any segments
   if (segments.length === 0) {
     logger.breadcrumb('No path segments found');
     return result;
   }
-  
+
   // Process options in the path
   // We'll look for options prefixed with underscore, like:
   // /images/_width=300/_quality=80/example.jpg
-  
+
   const optionSegments: string[] = [];
   const pathSegments: string[] = [];
-  
-  segments.forEach(segment => {
+
+  segments.forEach((segment) => {
     if (segment.startsWith('_') && segment.includes('=')) {
       optionSegments.push(segment);
     } else {
       pathSegments.push(segment);
     }
   });
-  
+
   // Parse options into a key-value object
   const options: Record<string, string> = {};
-  
-  optionSegments.forEach(segment => {
+
+  optionSegments.forEach((segment) => {
     // Remove the leading underscore
     const optionText = segment.substring(1);
-    
+
     // Split by the first equals sign
     const equalsIndex = optionText.indexOf('=');
-    
+
     if (equalsIndex > 0) {
       const key = optionText.substring(0, equalsIndex);
       const value = optionText.substring(equalsIndex + 1);
-      
+
       options[key] = value;
     }
   });
-  
+
   // Reconstruct the image path
   const imagePath = '/' + pathSegments.join('/');
-  
-  logger.breadcrumb('Finished parsing image path', undefined, { 
-    imagePath, 
-    optionsCount: Object.keys(options).length 
+
+  logger.breadcrumb('Finished parsing image path', undefined, {
+    imagePath,
+    optionsCount: Object.keys(options).length,
   });
-  
+
   return {
     imagePath,
-    options
+    options,
   };
 }
 
 /**
  * Extract derivative name from path and provide a modified path without the derivative
- * 
+ *
  * For example, if the path is /image/product/file.jpg,
- * and the derivative is specified as "product", it will return 
+ * and the derivative is specified as "product", it will return
  * { derivative: "product", modifiedPath: "/image/file.jpg" }
  */
 export function extractDerivative(
   pathname: string,
-  derivatives: string[]
+  derivatives: string[],
 ): { derivative: string; modifiedPath: string } | null {
   // Use default console log until we can dynamically import the logger
   // This avoids circular dependencies during initialization
   const logger = {
-    breadcrumb: (step: string, duration?: number, data?: Record<string, unknown>) => {
+    breadcrumb: (
+      step: string,
+      duration?: number,
+      data?: Record<string, unknown>,
+    ) => {
       console.log(`[INFO] 🔶 BREADCRUMB: ${step}`, data || '');
-    }
+    },
   };
 
-  logger.breadcrumb('Extracting derivative from path', undefined, { 
-    pathname, 
-    availableDerivatives: derivatives?.length || 0 
+  logger.breadcrumb('Extracting derivative from path', undefined, {
+    pathname,
+    availableDerivatives: derivatives?.length || 0,
   });
-  
+
   // Default result
   if (!pathname || !derivatives || derivatives.length === 0) {
     logger.breadcrumb('No path or derivatives provided');
     return null;
   }
-  
+
   // Split pathname into segments
   const segments = pathname.split('/').filter(Boolean);
-  
+
   // Check each segment against the list of derivatives
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
-    
+
     // Check if this segment matches any of our derivatives
     if (derivatives.includes(segment)) {
       // Create modified path without the derivative segment
       const pathSegments = [...segments];
       pathSegments.splice(i, 1);
       const modifiedPath = '/' + pathSegments.join('/');
-      
-      logger.breadcrumb('Found derivative in path', undefined, { 
+
+      logger.breadcrumb('Found derivative in path', undefined, {
         derivative: segment,
         originalPath: pathname,
-        modifiedPath
+        modifiedPath,
       });
-      
-      return { 
-        derivative: segment, 
-        modifiedPath
+
+      return {
+        derivative: segment,
+        modifiedPath,
       };
     }
   }
-  
+
   logger.breadcrumb('No derivative found in path');
   return null;
 }
 
 /**
  * Parse query parameters for image options
- * 
+ *
  * Extracts and normalizes parameters for Cloudflare Image Resizing from URL query parameters.
  * Handles all supported Cloudflare Worker image transformation options.
- * 
+ *
  * @see https://developers.cloudflare.com/images/image-resizing/resize-with-workers/
  * @param searchParams - URLSearchParams object containing the query parameters
  * @returns Record with parsed and normalized transformation options
  */
 export function parseQueryOptions(
-  searchParams: URLSearchParams
+  searchParams: URLSearchParams,
 ): Record<string, unknown> {
   // Use default console log until we can dynamically import the logger
   // This avoids circular dependencies during initialization
   const logger = {
-    breadcrumb: (step: string, duration?: number, data?: Record<string, unknown>) => {
+    breadcrumb: (
+      step: string,
+      duration?: number,
+      data?: Record<string, unknown>,
+    ) => {
       console.log(`[INFO] 🔶 BREADCRUMB: ${step}`, data || '');
-    }
+    },
   };
 
   logger.breadcrumb('Parsing query options', undefined, {
-    paramCount: Array.from(searchParams.keys()).length
+    paramCount: Array.from(searchParams.keys()).length,
   });
-  
+
   const options: Record<string, unknown> = {};
-  
+
   // Define parameter categories for systematic processing
-  
+
   // Parameters that can be 'auto' or numeric
   const autoOrNumericParams = ['width', 'height', 'quality'];
-  
+
   // Parameters that should be parsed as numbers
   const numericParams = [
-    'blur', 'brightness', 'contrast', 'dpr', 'gamma', 
-    'rotate', 'saturation', 'sharpen'
+    'blur',
+    'brightness',
+    'contrast',
+    'dpr',
+    'gamma',
+    'rotate',
+    'saturation',
+    'sharpen',
   ];
-  
+
   // Parameters that should be parsed as strings
   const stringParams = [
-    'fit', 'format', 'gravity', 'metadata', 'background',
-    'derivative', 'origin-auth', 'aspect', 'focal', 'platform', 'content', 'device',
+    'fit',
+    'format',
+    'gravity',
+    'metadata',
+    'background',
+    'derivative',
+    'origin-auth',
+    'aspect',
+    'focal',
+    'platform',
+    'content',
+    'device',
     'f', // Custom format size parameter
-    'r', 'p' // Short form parameters for aspect ratio and positioning
+    'r',
+    'p', // Short form parameters for aspect ratio and positioning
   ];
-  
+
   // Parameters that can be boolean or numeric
   const booleanOrNumericParams = ['trim', 'strip', 'sharpen'];
-  
+
   // Parameters that accept string values or can be parsed as boolean
   const stringOrBooleanParams = ['flip'];
-  
+
   // Parameters that are boolean only
-  const booleanParams = ['anim', 'strip', 'flop', 'smart', 'allowExpansion'];
-  
+  const booleanParams = [
+    'anim',
+    'strip',
+    'flop',
+    '_needsImageInfo',
+    'smart',
+    'allowExpansion',
+  ];
+
   // Process 'auto' or numeric parameters
-  autoOrNumericParams.forEach(param => {
+  autoOrNumericParams.forEach((param) => {
     if (searchParams.has(param)) {
       const paramValue = searchParams.get(param) || '';
       if (paramValue.toLowerCase() === 'auto') {
@@ -241,29 +277,33 @@ export function parseQueryOptions(
         if (!isNaN(numValue)) {
           options[param] = numValue;
           if (param === 'width') {
-            logger.breadcrumb(`Setting ${param}`, undefined, { [param]: numValue });
+            logger.breadcrumb(`Setting ${param}`, undefined, {
+              [param]: numValue,
+            });
           }
         }
       }
     }
   });
-  
+
   // Process numeric parameters
-  numericParams.forEach(param => {
+  numericParams.forEach((param) => {
     if (searchParams.has(param)) {
       const paramValue = searchParams.get(param) || '';
       const numValue = parseFloat(paramValue);
       if (!isNaN(numValue)) {
         options[param] = numValue;
         if (param === 'blur') {
-          logger.breadcrumb(`Setting ${param}`, undefined, { [param]: numValue });
+          logger.breadcrumb(`Setting ${param}`, undefined, {
+            [param]: numValue,
+          });
         }
       }
     }
   });
-  
+
   // Process string parameters
-  stringParams.forEach(param => {
+  stringParams.forEach((param) => {
     if (searchParams.has(param)) {
       const value = searchParams.get(param) || '';
       if (value) {
@@ -271,9 +311,9 @@ export function parseQueryOptions(
       }
     }
   });
-  
+
   // Process boolean or numeric parameters
-  booleanOrNumericParams.forEach(param => {
+  booleanOrNumericParams.forEach((param) => {
     if (searchParams.has(param)) {
       const value = searchParams.get(param) || '';
       if (value.toLowerCase() === 'true') {
@@ -288,20 +328,20 @@ export function parseQueryOptions(
       }
     }
   });
-  
+
   // Process boolean parameters
-  booleanParams.forEach(param => {
+  booleanParams.forEach((param) => {
     if (searchParams.has(param)) {
       const value = searchParams.get(param) || '';
       options[param] = value.toLowerCase() !== 'false';
     }
   });
-  
+
   // Process string or boolean parameters
-  stringOrBooleanParams.forEach(param => {
+  stringOrBooleanParams.forEach((param) => {
     if (searchParams.has(param)) {
       const value = searchParams.get(param) || '';
-      
+
       // For flip parameter, special handling to allow string values
       if (param === 'flip') {
         const lowerValue = value.toLowerCase();
@@ -309,20 +349,28 @@ export function parseQueryOptions(
           options[param] = true;
         } else if (lowerValue === 'false') {
           options[param] = false;
-        } else if (['h', 'v', 'hv', 'horizontal', 'vertical', 'both'].includes(lowerValue)) {
+        } else if (
+          ['h', 'v', 'hv', 'horizontal', 'vertical', 'both'].includes(
+            lowerValue,
+          )
+        ) {
           // Pass through valid string values
           options[param] = lowerValue;
         } else if (lowerValue) {
           // Default invalid values to 'h' (horizontal)
           options[param] = 'h';
-          logger.breadcrumb(`Converted invalid ${param} value to h`, undefined, {
-            originalValue: lowerValue
-          });
+          logger.breadcrumb(
+            `Converted invalid ${param} value to h`,
+            undefined,
+            {
+              originalValue: lowerValue,
+            },
+          );
         }
       }
     }
   });
-  
+
   // Handle special case for draw (overlays/watermarks)
   if (searchParams.has('draw')) {
     try {
@@ -331,15 +379,15 @@ export function parseQueryOptions(
       const drawData = JSON.parse(drawValue);
       const drawArray = Array.isArray(drawData) ? drawData : [drawData];
       options.draw = drawArray;
-      logger.breadcrumb('Parsed draw parameter', undefined, { 
-        drawItems: drawArray.length
+      logger.breadcrumb('Parsed draw parameter', undefined, {
+        drawItems: drawArray.length,
       });
     } catch (e) {
       logger.breadcrumb('Failed to parse draw parameter as JSON');
       // If not valid JSON, skip this parameter
     }
   }
-  
+
   // Handle custom format size parameter 'f'
   if (searchParams.has('f') && !options.width) {
     const formatSize = searchParams.get('f') || '';
@@ -360,21 +408,21 @@ export function parseQueryOptions(
       'sg': 1600,
       'g': 2000,
       'xg': 3000,
-      'xxg': 4000
+      'xxg': 4000,
     };
-    
+
     if (sizeMap[formatSize]) {
       options.width = sizeMap[formatSize];
       logger.breadcrumb('Applied custom format size', undefined, {
         formatCode: formatSize,
-        width: options.width
+        width: options.width,
       });
     }
-    
+
     // Clean up the 'f' parameter as we've translated it to width
     delete options.f;
   }
-  
+
   // Handle short form aspect ratio parameter 'r' (e.g., r=16:9)
   if (searchParams.has('r') && !options.aspect) {
     const aspectRatio = searchParams.get('r') || '';
@@ -383,32 +431,33 @@ export function parseQueryOptions(
       options.aspect = aspectRatio;
       logger.breadcrumb('Applied compact aspect ratio parameter', undefined, {
         r: aspectRatio,
-        aspect: options.aspect
+        aspect: options.aspect,
       });
     }
     // Clean up the short parameter as we've translated it
     delete options.r;
   }
-  
+
   // Handle short form positioning parameter 'p' (e.g., p=0.7,0.5)
   if (searchParams.has('p') && !options.focal) {
     const position = searchParams.get('p') || '';
     if (position.includes(',')) {
       // Check if it's a valid x,y format (two numbers separated by comma)
-      const [x, y] = position.split(',').map(v => parseFloat(v));
+      const [x, y] = position.split(',').map((v) => parseFloat(v));
       if (!isNaN(x) && !isNaN(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1) {
         options.focal = position;
         logger.breadcrumb('Applied compact positioning parameter', undefined, {
           p: position,
           focal: options.focal,
-          x, y
+          x,
+          y,
         });
       }
     }
     // Clean up the short parameter as we've translated it
     delete options.p;
   }
-  
+
   logger.breadcrumb('Completed parsing query options', undefined, {
     optionCount: Object.keys(options).length,
     hasWidth: options.width !== undefined,
@@ -416,82 +465,89 @@ export function parseQueryOptions(
     hasFormat: options.format !== undefined,
     hasBlur: options.blur !== undefined,
     hasFlip: options.flip !== undefined,
-    flipValue: options.flip !== undefined ? 
-      (typeof options.flip === 'string' ? options.flip : String(options.flip)) : 'undefined'
+    flipValue: options.flip !== undefined
+      ? (typeof options.flip === 'string' ? options.flip : String(options.flip))
+      : 'undefined',
   });
-  
+
   return options;
 }
 
 /**
  * Apply path transformations to the image path
- * 
+ *
  * This helps with path normalization when images are stored with different
  * directory structures.
  */
 export function applyPathTransforms(
   imagePath: string,
-  pathTransforms: PathTransforms
+  pathTransforms: PathTransforms,
 ): string {
   // Use default console log until we can dynamically import the logger
   // This avoids circular dependencies during initialization
   const logger = {
-    breadcrumb: (step: string, duration?: number, data?: Record<string, unknown>) => {
+    breadcrumb: (
+      step: string,
+      duration?: number,
+      data?: Record<string, unknown>,
+    ) => {
       console.log(`[INFO] 🔶 BREADCRUMB: ${step}`, data || '');
-    }
+    },
   };
 
-  logger.breadcrumb('Applying path transforms', undefined, { 
+  logger.breadcrumb('Applying path transforms', undefined, {
     imagePath,
-    transformCount: Object.keys(pathTransforms).length 
+    transformCount: Object.keys(pathTransforms).length,
   });
-  
+
   // Check if path matches any transform segment
   const segments = imagePath.split('/').filter(Boolean);
-  
+
   if (segments.length === 0) {
     logger.breadcrumb('No path segments to transform');
     return imagePath;
   }
-  
+
   // Check if the first segment matches any transform
   const firstSegment = segments[0];
   const transform = pathTransforms[firstSegment];
-  
+
   if (!transform) {
-    logger.breadcrumb('No matching transform found for segment', undefined, { segment: firstSegment });
+    logger.breadcrumb('No matching transform found for segment', undefined, {
+      segment: firstSegment,
+    });
     return imagePath;
   }
-  
+
   // Apply the transformation
   let newPath: string;
-  
+
   if (transform.removePrefix) {
     // Remove the prefix segment
     newPath = '/' + segments.slice(1).join('/');
-    logger.breadcrumb('Removed prefix segment', undefined, { 
+    logger.breadcrumb('Removed prefix segment', undefined, {
       prefix: firstSegment,
       originalPath: imagePath,
-      transformedPath: newPath
+      transformedPath: newPath,
     });
   } else {
     newPath = imagePath;
     logger.breadcrumb('Keeping original path', undefined, { path: imagePath });
   }
-  
+
   // Add a new prefix if specified
   if (transform.prefix && transform.prefix.length > 0) {
     newPath = '/' + transform.prefix + newPath;
-    logger.breadcrumb('Added new prefix', undefined, { 
+    logger.breadcrumb('Added new prefix', undefined, {
       prefix: transform.prefix,
-      finalPath: newPath
+      finalPath: newPath,
     });
   }
-  
+
   logger.breadcrumb('Path transformation complete', undefined, {
     originalPath: imagePath,
-    transformedPath: newPath
+    transformedPath: newPath,
   });
-  
+
   return newPath;
 }
