@@ -39,6 +39,20 @@ interface CacheTagsConfig {
 }
 
 /**
+ * Cache tier configuration for tiered caching strategy
+ */
+interface CacheTierConfig {
+  name: string;
+  ttlMultiplier: number;
+  priority: number;
+  contentTypes?: string[];
+  pathPatterns?: string[];
+  minSize?: number;
+  maxSize?: number;
+  frequentlyAccessed?: boolean;
+}
+
+/**
  * Configuration for the Client Detector framework
  */
 export interface DetectorConfig {
@@ -190,6 +204,7 @@ export interface ImageResizerConfig {
       clientViewport?: string;
       deviceType?: string;
     };
+    performanceTracking?: boolean; // Enable performance tracking
   };
   
   // Logging settings
@@ -198,6 +213,25 @@ export interface ImageResizerConfig {
     includeTimestamp: boolean;
     enableStructuredLogs: boolean;
     enableBreadcrumbs?: boolean; // Enable breadcrumbs for e2e tracing
+    enableCacheMetrics?: boolean; // Enable cache hit/miss metrics
+    usePino?: boolean; // Use Pino logger instead of custom logger
+    prettyPrint?: boolean; // Use pretty printing for Pino logs (development)
+    colorize?: boolean; // Colorize Pino logs
+  };
+  
+  // Performance optimization settings
+  performance?: {
+    optimizedLogging?: boolean; // Enable optimized logging
+    lazyServiceInitialization?: boolean; // Enable lazy service initialization
+    parallelStorageOperations?: boolean; // Enable parallel storage operations
+    responseOptimization?: boolean; // Enable response optimization
+    optimizedClientDetection?: boolean; // Enable optimized client detection with request caching
+    optimizedCaching?: boolean; // Enable optimized caching with tiered strategies
+    optimizedMetadataFetching?: boolean; // Enable optimized metadata fetching with caching
+    baselineEnabled?: boolean; // Enable performance baseline tracking
+    maxBaselineSamples?: number; // Maximum samples to store per operation
+    reportingEnabled?: boolean; // Enable performance reporting
+    timeoutMs?: number; // Timeout for parallel operations
   };
   
   // Cache settings
@@ -228,6 +262,80 @@ export interface ImageResizerConfig {
     cacheability: boolean;
     bypassParams?: string[];   // Query parameters that trigger cache bypass
     cacheTags?: CacheTagsConfig;
+    
+    // New stale-while-revalidate settings
+    enableStaleWhileRevalidate?: boolean;  // Enable stale-while-revalidate caching pattern
+    staleWhileRevalidatePercentage?: number; // Percentage of main TTL to use for stale time (default: 50)
+    
+    // New background caching settings
+    enableBackgroundCaching?: boolean; // Enable non-blocking background caching
+    
+    // Minimum and maximum TTL limits
+    minTtl?: number;  // Minimum TTL in seconds for any cached resource
+    maxTtl?: number;  // Maximum TTL in seconds for any cached resource
+    
+    // Path-based TTL overrides
+    pathBasedTtl?: Record<string, number>; // Map of path patterns to specific TTLs
+    
+    // Enhanced immutable content settings
+    immutableContent?: {
+      enabled: boolean;
+      contentTypes?: string[];     // Content types that should be considered immutable
+      paths?: string[];            // Path patterns that should be considered immutable
+      derivatives?: string[];      // Derivatives that should be considered immutable
+    };
+    
+    // Enhanced cache bypass mechanisms
+    bypassPaths?: string[];        // Path patterns that should always bypass cache
+    bypassInDevelopment?: boolean; // Always bypass cache in development environment
+    bypassForAdmin?: boolean;      // Bypass cache for admin users (based on headers)
+    bypassFormats?: string[];      // Image formats that should bypass cache (e.g., beta formats)
+    versionBypass?: boolean;       // Support ?v=timestamp for versioned caching
+    
+    // CDN-specific directives
+    cdnDirectives?: {
+      enabled: boolean;
+      noTransform?: boolean;        // Add no-transform directive to prevent CDN modification
+      staleIfError?: boolean;       // Add stale-if-error directive for high availability
+      staleIfErrorTime?: number;    // TTL for stale-if-error directive
+    };
+    
+    // Vary header controls for proper cache differentiation
+    varyOnClientHints?: boolean;   // Add Vary headers for client hints
+    varyOnUserAgent?: boolean;     // Add Vary: User-Agent header
+    varyOnSaveData?: boolean;      // Add Vary: Save-Data header
+    useMultipleCacheTagHeaders?: boolean; // Use multiple cache tag header formats (Cache-Tag, Cloudflare-CDN-Cache-Control)
+    
+    // Resource hints for performance optimization
+    enableResourceHints?: boolean;
+    resourceHints?: {
+      preconnect?: string[];       // Domains to add preconnect hints for
+      preloadPatterns?: Record<string, string[]>; // Path patterns to resource mappings
+    };
+    
+    // Enhanced cache metrics
+    enableCacheMetrics?: boolean;  // Enable cache metrics collection
+    
+    // Cache tier strategy for optimized caching
+    tiers?: CacheTierConfig[];
+    bypassThreshold?: number; // Score threshold for cache bypass decisions (0-100)
+    maxAccessPatterns?: number; // Maximum number of access patterns to track
+    
+    // Retry settings for retryable cache operations
+    retry?: {
+      maxAttempts?: number;       // Maximum number of retry attempts (default: 3)
+      initialDelayMs?: number;    // Initial delay before retry in milliseconds (default: 200)
+      maxDelayMs?: number;        // Maximum retry delay in milliseconds (default: 2000)
+      backoffFactor?: number;     // Exponential backoff factor (default: 2)
+      jitterFactor?: number;      // Random jitter factor for delay (0-1, default: 0.1)
+    };
+    
+    // Circuit breaker settings to prevent overloading systems
+    circuitBreaker?: {
+      failureThreshold?: number;  // Number of failures before opening circuit (default: 5)
+      resetTimeoutMs?: number;    // Time before attempting reset in milliseconds (default: 30000)
+      successThreshold?: number;  // Consecutive successes needed to close circuit (default: 2)
+    };
   };
   
   // Responsive settings
@@ -244,6 +352,31 @@ export interface ImageResizerConfig {
     deviceDetection?: {
       mobileRegex?: string;
       tabletRegex?: string;
+    };
+  };
+  
+  // Metadata processing settings
+  metadata?: {
+    enabled: boolean;                         // Enable metadata processing features
+    cacheTtl?: number;                        // TTL for cached metadata (seconds)
+    allowClientSpecifiedTargets?: boolean;    // Allow clients to specify target aspect ratios
+    platformPresets?: Record<string, {        // Platform-specific presets
+      aspectRatio: { width: number, height: number },
+      focalPoint?: { x: number, y: number },
+      dimensions?: { width?: number, height?: number },
+      format?: string,
+      quality?: number
+    }>;
+    contentTypePresets?: Record<string, {     // Content-type specific presets
+      focalPoint: { x: number, y: number }
+    }>;
+    defaultQuality?: number;                  // Default quality setting
+    maxCacheItems?: number;                   // Maximum number of items to store in memory cache
+    headerNames?: {                           // Custom header names
+      targetPlatform?: string,                // Header name for specifying target platform
+      targetAspect?: string,                  // Header name for specifying target aspect ratio
+      contentType?: string,                   // Header name for specifying content type
+      focalPoint?: string                     // Header name for specifying focal point
     };
   };
   
@@ -305,6 +438,21 @@ export interface ImageResizerConfig {
         secretKeyEnvVar?: string;       // For AWS S3/GCS auth
       }>;
     };
+    // Retry settings for retryable storage operations
+    retry?: {
+      maxAttempts?: number;       // Maximum number of retry attempts (default: 3)
+      initialDelayMs?: number;    // Initial delay before retry in milliseconds (default: 200)
+      maxDelayMs?: number;        // Maximum retry delay in milliseconds (default: 2000)
+      backoffFactor?: number;     // Exponential backoff factor (default: 2)
+      jitterFactor?: number;      // Random jitter factor for delay (0-1, default: 0.1)
+    };
+    
+    // Circuit breaker settings to prevent overloading systems
+    circuitBreaker?: {
+      failureThreshold?: number;  // Number of failures before opening circuit (default: 5)
+      resetTimeoutMs?: number;    // Time before attempting reset in milliseconds (default: 30000)
+      successThreshold?: number;  // Consecutive successes needed to close circuit (default: 2)
+    };
   };
   
   // Template derivatives for common transformations
@@ -335,6 +483,64 @@ export const defaultConfig: ImageResizerConfig = {
   features: {
     enableAkamaiCompatibility: false,
     enableAkamaiAdvancedFeatures: false
+  },
+  
+  // Default performance settings
+  performance: {
+    optimizedLogging: true,
+    lazyServiceInitialization: false,
+    parallelStorageOperations: false,
+    responseOptimization: true,
+    optimizedClientDetection: true,
+    optimizedMetadataFetching: true,
+    baselineEnabled: true,
+    maxBaselineSamples: 100,
+    reportingEnabled: true,
+    timeoutMs: 5000
+  },
+  
+  // Default metadata settings
+  metadata: {
+    enabled: true,
+    cacheTtl: 3600,
+    allowClientSpecifiedTargets: true,
+    maxCacheItems: 1000,
+    defaultQuality: 80,
+    headerNames: {
+      targetPlatform: 'X-Target-Platform',
+      targetAspect: 'X-Target-Aspect',
+      contentType: 'X-Content-Type',
+      focalPoint: 'X-Focal-Point'
+    },
+    platformPresets: {
+      twitter: {
+        aspectRatio: { width: 16, height: 9 },
+        dimensions: { width: 1200 }
+      },
+      facebook: {
+        aspectRatio: { width: 1.91, height: 1 },
+        dimensions: { width: 1200 }
+      },
+      instagram: {
+        aspectRatio: { width: 1, height: 1 },
+        dimensions: { width: 1080 }
+      },
+      pinterest: {
+        aspectRatio: { width: 2, height: 3 },
+        dimensions: { width: 1000 }
+      }
+    },
+    contentTypePresets: {
+      portrait: {
+        focalPoint: { x: 0.5, y: 0.33 }
+      },
+      landscape: {
+        focalPoint: { x: 0.5, y: 0.4 }
+      },
+      product: {
+        focalPoint: { x: 0.5, y: 0.5 }
+      }
+    }
   },
   
   // Default detector configuration
@@ -482,7 +688,99 @@ export const defaultConfig: ImageResizerConfig = {
       "500-599": 10     // 10 seconds for server errors
     },
     cacheability: true,
-    bypassParams: ['nocache'],
+    bypassParams: ['nocache', 'refresh', 'force-refresh'],
+    
+    // Enhanced caching settings
+    enableStaleWhileRevalidate: true,
+    staleWhileRevalidatePercentage: 50,
+    enableBackgroundCaching: true,
+    minTtl: 60,  // Minimum TTL is 1 minute
+    maxTtl: 2592000, // Maximum TTL is 30 days
+    
+    // Path-based TTL configuration
+    pathBasedTtl: {
+      '/news/': 3600,         // 1 hour for news content
+      '/blog/': 21600,        // 6 hours for blog content
+      '/static/': 2592000,    // 30 days for static content
+      '/assets/': 2592000,    // 30 days for assets
+      '/icons/': 2592000,     // 30 days for icons
+      '/avatars/': 604800,    // 7 days for avatars
+      '/products/': 43200,    // 12 hours for product images
+      '/banners/': 86400      // 1 day for banners
+    },
+    
+    // Immutable content configuration
+    immutableContent: {
+      enabled: true,
+      contentTypes: [
+        'image/svg+xml',
+        'font/woff2',
+        'font/woff',
+        'font/ttf',
+        'application/font'
+      ],
+      paths: [
+        '/static/',
+        '/assets/',
+        '/dist/',
+        '/icons/',
+        '/logos/'
+      ],
+      derivatives: [
+        'icon',
+        'logo',
+        'favicon'
+      ]
+    },
+    
+    // Enhanced cache bypass mechanisms
+    bypassPaths: [
+      '/admin/',
+      '/preview/',
+      '/draft/',
+      '/temp/',
+      '/test/'
+    ],
+    bypassInDevelopment: true,
+    bypassForAdmin: true,
+    bypassFormats: ['avif-beta', 'webp-dev', 'test-format'],
+    versionBypass: true,
+    
+    // CDN-specific directives
+    cdnDirectives: {
+      enabled: true,
+      noTransform: true,
+      staleIfError: true,
+      staleIfErrorTime: 86400 // 1 day
+    },
+    
+    // Vary header controls
+    varyOnClientHints: true,
+    varyOnUserAgent: true,
+    varyOnSaveData: true,
+    useMultipleCacheTagHeaders: true,
+    
+    // Resource hints
+    enableResourceHints: true,
+    resourceHints: {
+      preconnect: [
+        'https://cdn.example.com',
+        'https://fonts.googleapis.com'
+      ],
+      preloadPatterns: {
+        '/products/': [
+          '/assets/common/product-badge.png',
+          '/assets/common/rating-stars.svg'
+        ],
+        '/profile/': [
+          '/assets/common/default-avatar.png'
+        ]
+      }
+    },
+    
+    // Enable cache metrics
+    enableCacheMetrics: true,
+    
     cacheTags: {
       enabled: true,
       prefix: 'img-',
@@ -493,10 +791,16 @@ export const defaultConfig: ImageResizerConfig = {
       // Static custom tags to always include
       customTags: [],
       // Path-based tags for categorization
-      pathBasedTags: {},
+      pathBasedTags: {
+        '/products/': ['product', 'catalog'],
+        '/blog/': ['blog', 'content'],
+        '/news/': ['news', 'content'],
+        '/profile/': ['profile', 'avatar'],
+        '/static/': ['static', 'assets']
+      },
       // Metadata header parsing for tags
       parseMetadataHeaders: {
-        enabled: false,
+        enabled: true,
         headerPrefixes: ['x-meta-', 'x-amz-meta-', 'x-goog-meta-'],
         excludeHeaders: ['credentials', 'token', 'key', 'auth', 'password', 'secret'],
         includeContentType: true,
@@ -507,6 +811,22 @@ export const defaultConfig: ImageResizerConfig = {
         invalidCharsPattern: '[^a-zA-Z0-9-_/.]',
         replacementChar: '-'
       }
+    },
+    
+    // Retry settings
+    retry: {
+      maxAttempts: 3,
+      initialDelayMs: 200,
+      maxDelayMs: 2000,
+      backoffFactor: 2,
+      jitterFactor: 0.1
+    },
+    
+    // Circuit breaker settings
+    circuitBreaker: {
+      failureThreshold: 5,
+      resetTimeoutMs: 30000,
+      successThreshold: 2
     }
   },
   
@@ -565,6 +885,20 @@ export const defaultConfig: ImageResizerConfig = {
       sharePublicly: false,
       securityLevel: 'strict',
       cacheTtl: 3600
+    },
+    // Add default retry configuration
+    retry: {
+      maxAttempts: 3,
+      initialDelayMs: 200,
+      maxDelayMs: 2000,
+      backoffFactor: 2,
+      jitterFactor: 0.1
+    },
+    // Add default circuit breaker configuration
+    circuitBreaker: {
+      failureThreshold: 5,
+      resetTimeoutMs: 30000,
+      successThreshold: 2
     }
   },
   
@@ -737,13 +1071,72 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
         "500-599": 5      // 5 seconds for server errors
       },
       cacheability: true,
+      bypassParams: ['nocache', 'refresh', 'force-refresh', 'dev'],
+      
+      // Development-specific settings
+      enableStaleWhileRevalidate: true,
+      staleWhileRevalidatePercentage: 50,
+      enableBackgroundCaching: true,
+      minTtl: 5,  // Very short minimum TTL for development
+      maxTtl: 300, // Maximum TTL is 5 minutes in development
+      
+      // Always bypass cache in development by default
+      bypassInDevelopment: true,
+      
+      // Resource hints disabled in dev to avoid performance impact on frequent changes
+      enableResourceHints: false,
+      
+      // Development-specific cache tags
       cacheTags: {
         enabled: true,
         prefix: 'img-dev-',
         includeImageDimensions: true,
         includeFormat: true,
         includeQuality: true,
-        includeDerivative: true
+        includeDerivative: true,
+        // Path-based tags
+        pathBasedTags: {
+          '/products/': ['product', 'catalog', 'dev'],
+          '/blog/': ['blog', 'content', 'dev'],
+          '/test/': ['test', 'dev']
+        },
+        parseMetadataHeaders: {
+          enabled: true,
+          headerPrefixes: ['x-meta-', 'x-amz-meta-', 'x-goog-meta-'],
+          excludeHeaders: ['credentials', 'token', 'key', 'auth', 'password', 'secret'],
+          includeContentType: true,
+          includeCacheControl: true
+        }
+      },
+      
+      // CDN directives enabled for testing
+      cdnDirectives: {
+        enabled: true,
+        noTransform: true,
+        staleIfError: true,
+        staleIfErrorTime: 300 // 5 minutes
+      },
+      
+      // Vary headers for testing
+      varyOnClientHints: true,
+      varyOnUserAgent: true,
+      varyOnSaveData: true,
+      
+      // Enhanced metrics for development
+      enableCacheMetrics: true,
+      
+      // Development resilience settings (less aggressive)
+      retry: {
+        maxAttempts: 2,       // Fewer retries in development
+        initialDelayMs: 100,  // Shorter delays in development
+        maxDelayMs: 500,
+        backoffFactor: 2,
+        jitterFactor: 0.1
+      },
+      circuitBreaker: {
+        failureThreshold: 3,    // Lower threshold to test circuit breaker
+        resetTimeoutMs: 10000,  // 10 seconds reset timeout in development
+        successThreshold: 1     // Only 1 success needed in development
       }
     },
     responsive: {
@@ -792,6 +1185,20 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
         sharePublicly: true,
         cacheTtl: 60, // Short TTL for development
         securityLevel: 'permissive' // More permissive in development
+      },
+      // Development-specific retry configuration
+      retry: {
+        maxAttempts: 2, // Fewer retries in development
+        initialDelayMs: 100, // Shorter initial delay in development
+        maxDelayMs: 1000, // Shorter max delay in development
+        backoffFactor: 2,
+        jitterFactor: 0.1
+      },
+      // Development-specific circuit breaker configuration
+      circuitBreaker: {
+        failureThreshold: 3, // Lower threshold for development to test circuit breaker
+        resetTimeoutMs: 10000, // Shorter reset timeout for development (10 seconds)
+        successThreshold: 1 // Only one success needed to reset in development
       }
     }
   },
@@ -1106,13 +1513,139 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
         "500-599": 10     // 10 seconds for server errors
       },
       cacheability: true,
+      bypassParams: ['nocache', 'refresh'], // Limited bypass params in production
+      
+      // Production cache optimization settings
+      enableStaleWhileRevalidate: true,
+      staleWhileRevalidatePercentage: 50,
+      enableBackgroundCaching: true,
+      minTtl: 60,    // Minimum 1 minute TTL
+      maxTtl: 2592000, // Maximum 30 days TTL
+      
+      // Production path-based TTL configuration - longer caching in production
+      pathBasedTtl: {
+        '/news/': 14400,       // 4 hours for news content
+        '/blog/': 86400,       // 24 hours for blog content
+        '/static/': 2592000,   // 30 days for static content
+        '/assets/': 2592000,   // 30 days for assets
+        '/icons/': 2592000,    // 30 days for icons
+        '/avatars/': 1209600,  // 14 days for avatars
+        '/products/': 86400,   // 24 hours for product images
+        '/banners/': 172800    // 2 days for banners
+      },
+      
+      // Immutable content optimizations
+      immutableContent: {
+        enabled: true,
+        contentTypes: [
+          'image/svg+xml',
+          'font/woff2',
+          'font/woff',
+          'font/ttf',
+          'application/font'
+        ],
+        paths: [
+          '/static/',
+          '/assets/',
+          '/dist/',
+          '/icons/',
+          '/logos/'
+        ],
+        derivatives: [
+          'icon',
+          'logo',
+          'favicon'
+        ]
+      },
+      
+      // Limited bypass paths in production
+      bypassPaths: [
+        '/admin/',  // Only admin tools bypass cache
+        '/preview/' // Preview content bypasses cache
+      ],
+      bypassInDevelopment: false, // Don't bypass in production
+      bypassForAdmin: true,      // Still bypass for admin users
+      bypassFormats: [],         // No formats bypass in production
+      versionBypass: true,       // Support versioned cache
+      
+      // CDN directives optimized for production
+      cdnDirectives: {
+        enabled: true,
+        noTransform: true,
+        staleIfError: true,
+        staleIfErrorTime: 86400 // 1 day
+      },
+      
+      // Vary headers for different clients
+      varyOnClientHints: true,
+      varyOnUserAgent: false,    // Don't vary on User-Agent in production (too high cardinality)
+      varyOnSaveData: true,      // But do vary on Save-Data
+      useMultipleCacheTagHeaders: true,
+      
+      // Resource hints enabled in production
+      enableResourceHints: true,
+      resourceHints: {
+        preconnect: [
+          'https://cdn.example.com',
+          'https://fonts.googleapis.com'
+        ],
+        preloadPatterns: {
+          '/products/': [
+            '/assets/common/product-badge.png',
+            '/assets/common/rating-stars.svg'
+          ],
+          '/profile/': [
+            '/assets/common/default-avatar.png'
+          ]
+        }
+      },
+      
+      // Enable cache metrics
+      enableCacheMetrics: true,
+      
+      // Production cache tag configuration
       cacheTags: {
         enabled: true,
         prefix: 'img-prod-',
         includeImageDimensions: true,
         includeFormat: true,
         includeQuality: true,
-        includeDerivative: true
+        includeDerivative: true,
+        // Path-based tags for production
+        pathBasedTags: {
+          '/products/': ['product', 'catalog'],
+          '/blog/': ['blog', 'content'],
+          '/news/': ['news', 'content'],
+          '/profile/': ['profile', 'avatar'],
+          '/static/': ['static', 'assets']
+        },
+        // Enable metadata parsing in production for better cache control
+        parseMetadataHeaders: {
+          enabled: true,
+          headerPrefixes: ['x-meta-', 'x-amz-meta-', 'x-goog-meta-'],
+          excludeHeaders: ['credentials', 'token', 'key', 'auth', 'password', 'secret'],
+          includeContentType: true,
+          includeCacheControl: true
+        },
+        pathNormalization: {
+          leadingSlashPattern: '^/+',
+          invalidCharsPattern: '[^a-zA-Z0-9-_/.]',
+          replacementChar: '-'
+        }
+      },
+      
+      // Production resilience settings (more aggressive)
+      retry: {
+        maxAttempts: 3,
+        initialDelayMs: 200,
+        maxDelayMs: 2000,
+        backoffFactor: 2,
+        jitterFactor: 0.1
+      },
+      circuitBreaker: {
+        failureThreshold: 10,   // Higher threshold in production
+        resetTimeoutMs: 60000,  // 1 minute reset timeout in production
+        successThreshold: 3     // Need more successes in production
       }
     },
     responsive: {
@@ -1569,6 +2102,18 @@ export function getConfig(env: Env): ImageResizerConfig {
   
   if (env.LOGGING_BREADCRUMBS_ENABLED) {
     config.logging.enableBreadcrumbs = env.LOGGING_BREADCRUMBS_ENABLED === 'true';
+  }
+  
+  if (env.LOGGING_USE_PINO) {
+    config.logging.usePino = env.LOGGING_USE_PINO === 'true';
+  }
+  
+  if (env.LOGGING_PRETTY_PRINT) {
+    config.logging.prettyPrint = env.LOGGING_PRETTY_PRINT === 'true';
+  }
+  
+  if (env.LOGGING_COLORIZE) {
+    config.logging.colorize = env.LOGGING_COLORIZE === 'true';
   }
   
   // Apply feature flag settings

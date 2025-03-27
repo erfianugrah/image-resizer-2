@@ -209,6 +209,49 @@ The most straightforward way to specify transformations:
 https://example.com/images/photo.jpg?width=800&height=600&quality=80
 ```
 
+### Compact Parameters
+
+For improved URL readability and brevity, you can use these compact parameter formats:
+
+| Compact Format | Equivalent Standard Format | Description |
+|---------------|---------------------------|-------------|
+| `r=16:9`      | `aspect=16:9`            | Sets aspect ratio (width:height) |
+| `p=0.5,0.6`   | `focal=0.5,0.6`          | Sets focal point (x,y coordinates from 0-1) |
+| `f=m`         | `width=700`              | Sets image width using size codes |
+
+Example:
+```
+https://example.com/images/photo.jpg?r=16:9&p=0.3,0.7&f=xl
+```
+
+The `f=` parameter accepts standard size codes that map to specific pixel widths:
+
+| Size Code | Width (px) | Description |
+|-----------|------------|-------------|
+| `xxu`     | 40         | Extra extra ultra small |
+| `xu`      | 80         | Extra ultra small |
+| `u`       | 160        | Ultra small |
+| `xxxs`    | 300        | Triple extra small |
+| `xxs`     | 400        | Double extra small |
+| `xs`      | 500        | Extra small |
+| `s`       | 600        | Small |
+| `m`       | 700        | Medium |
+| `l`       | 750        | Large |
+| `xl`      | 900        | Extra large |
+| `xxl`     | 1100       | Double extra large |
+| `xxxl`    | 1400       | Triple extra large |
+| `sg`      | 1600       | Small giant |
+| `g`       | 2000       | Giant |
+| `xg`      | 3000       | Extra giant |
+| `xxg`     | 4000       | Double extra giant |
+
+Compact parameters can also be used inside the `im=` parameter in Akamai compatibility mode:
+
+```
+https://example.com/images/photo.jpg?im=r=4:3,p=0.5,0.4,f=l
+https://example.com/images/photo.jpg?im=AspectCrop=(1,1),f=m,xPosition=.5,yPosition=.5
+```
+
 ### Path Parameters
 
 Parameters can be specified in the path using the underscore prefix format:
@@ -398,6 +441,23 @@ Image Resizer 2 supports Akamai Image Manager URL parameters for seamless migrat
 | `im.format` | format | `im.format=webp` |
 | `im.rotate` | rotate | `im.rotate=90` |
 | `im.grayscale` | saturation | `im.grayscale=true` |
+
+### Compact Parameters in Akamai Mode
+
+You can use compact parameters both as direct URL parameters and inside the `im=` parameter:
+
+```
+// Using standard compact parameters
+https://example.com/images/photo.jpg?r=16:9&p=0.5,0.5&f=m
+
+// Using compact parameters inside im= parameter
+https://example.com/images/photo.jpg?im=r=16:9,p=0.5,0.5,f=m
+
+// Mixing with Akamai AspectCrop
+https://example.com/images/photo.jpg?im=AspectCrop=(1,1),f=m,width=800
+```
+
+This provides a more concise way to specify common transformations while maintaining compatibility with the Akamai parameter format.
 
 ### Advanced Akamai Features
 

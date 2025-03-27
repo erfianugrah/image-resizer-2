@@ -24,18 +24,27 @@ This service enhances your Cloudflare Workers setup with advanced image handling
 ## Features
 
 - **Image Transformation**: Leverages Cloudflare's Image Resizing service via the `cf.image` object
-- **Multiple Storage Options**: Supports R2, remote URLs, and fallbacks with a priority system
+- **Multiple Storage Options**: Supports R2, remote URLs, and fallbacks with a priority system and parallel fetching
 - **Responsive Images**: Automatically adjusts sizes based on client hints and device detection
-- **Caching**: Implements both Cloudflare and Cache API caching strategies with flexible cache tag support
+- **Caching**: Implements tiered caching strategies with intelligent TTL calculations and cache tag support
 - **Debug Headers**: Provides detailed debugging information in response headers
 - **Derivatives**: Template-based transformations for common use cases
 - **Path Templates**: Maps URL path segments to derivative templates
 - **Path Transformations**: Normalizes directory structures for flexible storage
 - **Authenticated Origins**: Access images from origins that require authentication (bearer tokens, custom headers, signed URLs, or AWS/GCS signatures)
-- **Comprehensive Logging**: Advanced logging system with configurable levels and structured output
+- **Comprehensive Logging**: Advanced logging system with configurable levels and conditional logging
 - **Breadcrumb Tracing**: End-to-end request tracing with performance metrics for diagnostics
 - **Interceptor Pattern**: Special handling for large images to prevent timeouts
+- **Smart Transformations**: Automatic metadata fetching for smart cropping, aspect ratio transformations, and focal point handling
 - **Akamai Compatibility**: Support for Akamai Image Manager URL parameters for seamless migration, including advanced features like blur, watermarking, mirror/flip, and conditional transformations
+- **Service-Oriented Architecture**: Modular design with lazy service initialization and clear interfaces
+- **Client Detection**: Advanced browser and device capability detection with request-scoped caching
+- **Interactive Debug Reports**: Enhanced HTML debug reports with visualizations and performance metrics
+- **Centralized Configuration**: Unified configuration service with environment-specific settings and feature flags
+- **Performance Optimization**: Comprehensive optimizations for reduced cold start time and improved response times
+
+## Project Components
+- **image-resizer**: Transforms image URLs to use Cloudflare's Image Resizing
 
 ## Live Demo Examples
 
@@ -46,6 +55,32 @@ Below are examples using a sample image (13MB+ original size) through our image 
 ![Original Image with Auto Parameters](https://images.erfi.dev/Granna_1.JPG)
 
 Demo URL: [https://images.erfi.dev/Granna_1.JPG](https://images.erfi.dev/Granna_1.JPG)
+
+### Compact Parameter Examples
+
+#### Using Aspect Ratio (r=) Parameter
+
+![Aspect Ratio with r parameter](https://images.erfi.dev/Granna_1.JPG?r=1:1&width=400)
+
+Demo URL: [https://images.erfi.dev/Granna_1.JPG?r=1:1&width=400](https://images.erfi.dev/Granna_1.JPG?r=1:1&width=400)
+
+#### Using Focal Point (p=) Parameter
+
+![Focal Point with p parameter](https://images.erfi.dev/Granna_1.JPG?r=16:9&p=0.3,0.7&width=600)
+
+Demo URL: [https://images.erfi.dev/Granna_1.JPG?r=16:9&p=0.3,0.7&width=600](https://images.erfi.dev/Granna_1.JPG?r=16:9&p=0.3,0.7&width=600)
+
+#### Using Size Code (f=) Parameter
+
+![Size code with f parameter](https://images.erfi.dev/Granna_1.JPG?f=m)
+
+Demo URL: [https://images.erfi.dev/Granna_1.JPG?f=m](https://images.erfi.dev/Granna_1.JPG?f=m)
+
+#### Compact Parameters in im= Format
+
+![Compact parameters in im value](https://images.erfi.dev/Granna_1.JPG?im=r=4:3,p=0.5,0.4,f=l)
+
+Demo URL: [https://images.erfi.dev/Granna_1.JPG?im=r=4:3,p=0.5,0.4,f=l](https://images.erfi.dev/Granna_1.JPG?im=r=4:3,p=0.5,0.4,f=l)
 
 ### With Width Parameter
 
@@ -95,6 +130,12 @@ Demo URL: [https://images.erfi.dev/Granna_1.JPG?width=400&brightness=10&contrast
 
 Demo URL: [https://images.erfi.dev/Granna_1.JPG?width=400&height=400&fit=crop&gravity=auto](https://images.erfi.dev/Granna_1.JPG?width=400&height=400&fit=crop&gravity=auto)
 
+### Smart Transformation with Aspect Ratio
+
+![Smart Transformation](https://images.erfi.dev/Granna_1.JPG?smart=true&aspect=1:1&width=400)
+
+Demo URL: [https://images.erfi.dev/Granna_1.JPG?smart=true&aspect=1:1&width=400](https://images.erfi.dev/Granna_1.JPG?smart=true&aspect=1:1&width=400)
+
 ### Background Color with Padding
 
 ![Background Color](https://images.erfi.dev/Granna_1.JPG?width=400&height=400&fit=pad&background=lightblue)
@@ -121,10 +162,17 @@ Debug Header Example: Add `?debug=true` to any image URL
 
 ### Akamai Compatibility Examples
 
-#### Basic Akamai Parameters
+The Image Resizer supports two Akamai Image Manager parameter formats:
+
+#### Dot Notation Format (im.X)
 ![Akamai Resize](https://images.erfi.dev/Granna_1.JPG?im.resize=width:400,height:300,mode:fit&im.quality=80)
 
 Demo URL: [https://images.erfi.dev/Granna_1.JPG?im.resize=width:400,height:300,mode:fit&im.quality=80](https://images.erfi.dev/Granna_1.JPG?im.resize=width:400,height:300,mode:fit&im.quality=80)
+
+#### Equals Notation Format (im=X)
+![Akamai AspectCrop](https://images.erfi.dev/Granna_1.JPG?im=AspectCrop=(1,1),xPosition=0.5,yPosition=0.5)
+
+Demo URL: [https://images.erfi.dev/Granna_1.JPG?im=AspectCrop=(1,1),xPosition=0.5,yPosition=0.5](https://images.erfi.dev/Granna_1.JPG?im=AspectCrop=(1,1),xPosition=0.5,yPosition=0.5)
 
 #### Advanced Features - Blur
 ![Akamai Blur](https://images.erfi.dev/Granna_1.JPG?im.blur=20&im.resize=width:400)
@@ -132,9 +180,9 @@ Demo URL: [https://images.erfi.dev/Granna_1.JPG?im.resize=width:400,height:300,m
 Demo URL: [https://images.erfi.dev/Granna_1.JPG?im.blur=20&im.resize=width:400](https://images.erfi.dev/Granna_1.JPG?im.blur=20&im.resize=width:400)
 
 #### Advanced Features - Mirror
-![Akamai Mirror](https://images.erfi.dev/Granna_1.JPG?im.mirror=horizontal&im.resize=width:400)
+![Akamai Mirror](https://images.erfi.dev/Granna_1.JPG?im=Mirror,horizontal)
 
-Demo URL: [https://images.erfi.dev/Granna_1.JPG?im.mirror=horizontal&im.resize=width:400](https://images.erfi.dev/Granna_1.JPG?im.mirror=horizontal&im.resize=width:400)
+Demo URL: [https://images.erfi.dev/Granna_1.JPG?im=Mirror,horizontal](https://images.erfi.dev/Granna_1.JPG?im=Mirror,horizontal)
 
 #### Advanced Features - Conditional Transformations
 ![Conditional Transform](https://images.erfi.dev/Granna_1.JPG?im.if-dimension=width>800,im.resize=width:400&debug=true)
@@ -143,13 +191,19 @@ Demo URL: [https://images.erfi.dev/Granna_1.JPG?im.if-dimension=width>800,im.res
 
 ## Architecture
 
-This project implements a simplified architecture compared to the original image-resizer:
+This project implements a service-oriented architecture (SOA) for better modularity and maintainability:
 
-- **No Router Pattern**: Direct function calls instead of a complex strategy/router pattern
-- **No Dependency Injection**: Simple imports instead of a complex DI system
-- **No Command Pattern**: Direct function calls instead of a command pattern
-- **Simplified Config**: One unified configuration with sensible defaults and environment overrides
+- **Service Interfaces**: Clear contracts for all services with TypeScript interfaces
+- **Service Container**: Central registry of all service instances with lazy loading
+- **Command Pattern**: Encapsulated business logic in command objects
+- **Configuration Service**: Centralized configuration management
+- **Client Detection Service**: Browser and device capability detection with request-scoped caching
+- **Cache Service**: Advanced caching strategies with tiered caching and intelligent TTL calculations
+- **Debug Service**: Enhanced debugging tools and visualizations
+- **Transformation Service**: Image transformation handling
+- **Storage Service**: Multi-source storage management with parallel fetching
 - **Interceptor Pattern**: Special handling for large images that automatically detects Cloudflare's image-resizing subrequests
+- **Performance Optimization**: Comprehensive performance improvements across all components
 
 ## Project Structure
 
@@ -163,11 +217,27 @@ This project implements a simplified architecture compared to the original image
 │   ├── cache.ts               # Caching utilities
 │   ├── debug.ts               # Debug headers
 │   ├── types.ts               # TypeScript type definitions
+│   ├── services/              # Service-oriented architecture components
+│   │   ├── interfaces.ts      # Service interfaces
+│   │   ├── cacheService.ts    # Cache service implementation
+│   │   ├── clientDetectionService.ts # Client detection service
+│   │   ├── configurationService.ts # Configuration service
+│   │   ├── debugService.ts    # Debug service implementation
+│   │   ├── debugVisualization.ts # Debug visualization utilities
+│   │   ├── serviceContainer.ts # Service container factory
+│   │   ├── storageService.ts  # Storage service implementation
+│   │   └── transformationService.ts # Transformation service
+│   ├── domain/                # Domain layer
+│   │   └── commands/          # Command pattern implementations
+│   │       ├── command.ts     # Command interface
+│   │       └── transformImageCommand.ts # Transform image command
 │   └── utils/                 # Utility functions
 │       ├── path.ts            # Path handling utilities
 │       ├── errors.ts          # Error handling utilities
 │       ├── auth.ts            # Authentication utilities
+│       ├── detector.ts        # Client detection utilities
 │       ├── logging.ts         # Centralized logging system
+│       ├── wrangler-config.ts # Configuration loading from environment
 │       └── akamai-compatibility.ts # Akamai parameter translation
 ├── test/                      # Tests
 ├── docs/                      # Documentation
@@ -310,6 +380,40 @@ See [Path Transformations](docs/storage/path-transforms.md) for more details.
 - `contrast`: Contrast adjustment (-100 to 100)
 - `saturation`: Saturation adjustment (-100 to 100, -100=grayscale)
 - `blur`: Blur effect (0.5-100.0)
+- `smart`: Enable smart transformations that automatically fetch and use image metadata
+- `aspect`: Desired aspect ratio in format `width:height` (automatically crops to this ratio)
+- `focal`: Custom focal point in format `x,y` with values from 0-1 (for smart cropping)
+
+### Compact Parameter Options
+
+For URL brevity and improved readability, the following compact parameters are supported:
+
+- `r=16:9`: Shorthand for `aspect=16:9` (sets aspect ratio)
+- `p=0.5,0.5`: Shorthand for `focal=0.5,0.5` (sets focal point for cropping)
+- `f=m`: Shorthand for `width=700` using size codes (see size code table below)
+
+These compact parameters can be used in standard URL parameters and within Akamai compatibility `im=` parameters (e.g., `im=AspectCrop=(1,1),r=16:9,p=0.5,0.5,f=m`)
+
+#### Size Code Table
+
+| Size Code | Width (px) | Description |
+|-----------|------------|-------------|
+| `xxu`     | 40         | Extra extra ultra small |
+| `xu`      | 80         | Extra ultra small |
+| `u`       | 160        | Ultra small |
+| `xxxs`    | 300        | Triple extra small |
+| `xxs`     | 400        | Double extra small |
+| `xs`      | 500        | Extra small |
+| `s`       | 600        | Small |
+| `m`       | 700        | Medium |
+| `l`       | 750        | Large |
+| `xl`      | 900        | Extra large |
+| `xxl`     | 1100       | Double extra large |
+| `xxxl`    | 1400       | Triple extra large |
+| `sg`      | 1600       | Small giant |
+| `g`       | 2000       | Giant |
+| `xg`      | 3000       | Extra giant |
+| `xxg`     | 4000       | Double extra giant |
 
 For a complete list, see the [Transformation Guide](docs/TRANSFORMATION.md).
 
@@ -430,6 +534,9 @@ For detailed information about the cache tag system, see [CACHE_TAGS.md](docs/CA
 - `LOGGING_INCLUDE_TIMESTAMP`: Whether to include timestamps (`true`/`false`)
 - `LOGGING_ENABLE_STRUCTURED_LOGS`: Whether to output logs in JSON format (`true`/`false`)
 - `LOGGING_BREADCRUMBS_ENABLED`: Whether to enable breadcrumb tracing (`true`/`false`)
+- `LOGGING_USE_PINO`: Use Pino logger instead of built-in logger (`true`/`false`)
+- `LOGGING_PRETTY_PRINT`: Format logs in a human-readable format (`true`/`false`)
+- `LOGGING_COLORIZE`: Use colors in pretty-printed logs (`true`/`false`)
 
 For detailed information about the logging system and breadcrumb tracing, see [LOGGING.md](docs/LOGGING.md).
 
@@ -456,11 +563,12 @@ For complete authentication documentation, see [Authentication](docs/storage/aut
 - [Architecture](docs/core/architecture.md) - System architecture and design
 - [Setup Guide](docs/core/setup.md) - Installation and configuration
 - [Transformation Guide](docs/core/transformation.md) - Image transformation options
+- [Performance Optimization](docs/PERFORMANCE_OPTIMIZATION.md) - Performance improvement strategies
 
 ### Feature Documentation
 - [Client Detection](docs/client-detection/index.md) - Browser and device detection framework
-- [Caching System](docs/caching/index.md) - Cache management and tagging
-- [Storage Options](docs/storage/index.md) - Image storage configuration
+- [Caching System](docs/caching/index.md) - Cache management and tiered caching
+- [Storage Options](docs/storage/index.md) - Image storage configuration and parallel fetching
 - [Authentication](docs/storage/authentication.md) - Secure access to origins
 
 ### Integrations
@@ -473,6 +581,7 @@ For complete authentication documentation, see [Authentication](docs/storage/aut
 - [Diagnosing Timeouts](docs/debugging/diagnosing-timeouts.md) - Solving timeout issues
 - [Breadcrumb Tracing](docs/debugging/breadcrumbs.md) - Request flow tracking
 - [Debug Headers](docs/debugging/debug-headers.md) - Using debug headers and reports
+- [Performance Validation](docs/PERFORMANCE_VALIDATION_GUIDE.md) - Performance testing and validation
 
 ## License
 

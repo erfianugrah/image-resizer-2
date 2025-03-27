@@ -4,17 +4,29 @@
 
 // Environment variables
 export interface Env {
+  // System configuration
   ENVIRONMENT?: string;
   DEBUG?: string;
+  
+  // Feature flags
+  USE_DI_SYSTEM?: string;
+  ENABLE_LAZY_LOADING?: string;
+  
+  // Storage configuration
   REMOTE_URL?: string;
   FALLBACK_URL?: string;
   STORAGE_PRIORITY?: string;
+  
+  // Akamai compatibility
   ENABLE_AKAMAI_COMPATIBILITY?: string;
   ENABLE_AKAMAI_ADVANCED_FEATURES?: string;
   LOGGING_LEVEL?: string;
   LOGGING_STRUCTURED?: string;
   LOGGING_TIMESTAMP?: string;
   LOGGING_BREADCRUMBS_ENABLED?: string;
+  LOGGING_USE_PINO?: string;
+  LOGGING_PRETTY_PRINT?: string;
+  LOGGING_COLORIZE?: string;
   CACHE_TAGS_ENABLED?: string;
   CACHE_TAGS_PREFIX?: string;
   CACHE_TAGS_CUSTOM?: string;
@@ -111,6 +123,10 @@ export interface Env {
   AWS_SECRET_ACCESS_KEY?: string;
   FALLBACK_AWS_ACCESS_KEY?: string;
   FALLBACK_AWS_SECRET_KEY?: string;
+  
+  // Required for compatibility with various service interfaces
+  DERIVATIVES?: Record<string, any>; // Changed to 'any' to support nested objects
+  FALLBACK_AUTH_CUSTOM_HEADERS?: Record<string, string>;
   
   // Detector Cache Configuration
   DETECTOR_CACHE_MAX_SIZE?: string;

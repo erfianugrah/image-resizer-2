@@ -1,461 +1,404 @@
-/**
+/*
  * Image Resizer Worker
- * 
+ *
  * A simplified Cloudflare Worker for image resizing that leverages Cloudflare's Image Resizing service
- * while maintaining essential functionality from the original worker.
+ * with a service-oriented architecture inspired by video-resizer.
  */
 
-import { getConfig } from './config';
-import { fetchImage } from './storage';
-import { transformImage, TransformOptions, setLogger as setTransformLogger, setDimensionCacheLogger } from './transform';
-import { applyCacheHeaders, cacheWithCacheApi, shouldBypassCache } from './cache';
-import { addDebugHeaders, createDebugHtmlReport, isDebugEnabled, PerformanceMetrics, setLogger as setDebugLogger } from './debug';
-import { parseImagePath, parseQueryOptions, extractDerivative, applyPathTransforms } from './utils/path';
-import { AppError, NotFoundError, ValidationError, StorageError, TransformError, createErrorResponse } from './utils/errors';
-import { isAkamaiFormat, convertToCloudflareUrl, translateAkamaiParams, setLogger } from './utils/akamai-compatibility';
-import { createLogger, Logger } from './utils/logging';
-import { setLogger as setStorageLogger } from './storage';
-import { setConfig as setDetectorConfig } from './utils/detector';
+import { PerformanceMetrics } from "./services/interfaces";
+import { AppError, createErrorResponse, TransformError } from "./utils/errors";
+import { isAkamaiFormat } from "./utils/akamai-compatibility";
+import { setLogger as setAkamaiLogger } from "./utils/akamai-compatibility";
+// Storage logger is now handled through StorageService
+// Transform logger is now handled through TransformationService
+// Debug logger is now handled through DebugService
+import { setConfig as setDetectorConfig } from "./utils/detector";
+import { createContainer } from "./services/containerFactory";
+import {
+  createRequestPerformanceMonitor,
+  initializePerformanceBaseline,
+} from "./utils/performance-integrations";
+import {
+  addAkamaiCompatibilityHeader,
+  handleAkamaiCompatibility,
+  handleDebugReport,
+  handleImageRequest,
+  handlePerformanceReport,
+  handlePerformanceReset,
+  handleRootPath,
+} from "./handlers";
 
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
+    // Attach env and ctx to the request object for use in services
+    // Use proper type assertion to avoid TypeScript errors
+    (request as unknown as { env: any }).env = env;
+    (request as unknown as { ctx: ExecutionContext }).ctx = ctx;
+
     // Start performance tracking
     const metrics: PerformanceMetrics = {
-      start: Date.now()
+      start: Date.now(),
     };
-    
-    // Get configuration
-    const config = getConfig(env);
-    
-    // Initialize loggers for all modules
-    const mainLogger = createLogger(config, 'ImageResizer');
-    const akamaiLogger = createLogger(config, 'AkamaiCompat');
-    const storageLogger = createLogger(config, 'Storage');
-    const transformLogger = createLogger(config, 'Transform');
-    const debugLogger = createLogger(config, 'Debug');
-    const dimensionCacheLogger = createLogger(config, 'DimensionCache');
-    
+
+    // Create service container using the factory
+    // This will automatically select the appropriate container type and add lifecycle manager
+    const services = createContainer(env, {
+      initializeServices: true,
+      gracefulDegradation: true,
+    });
+    const { logger, configurationService, loggingService, lifecycleManager } =
+      services;
+
+    // Log lifecycle information if available
+    if (lifecycleManager) {
+      logger.debug(
+        "Lifecycle manager available for coordinated service management",
+      );
+    }
+
+    // Get configuration via the configuration service
+    const config = configurationService.getConfig();
+
+    // Initialize performance monitoring
+    const performanceBaseline = initializePerformanceBaseline(config, logger);
+    const performanceMonitor = createRequestPerformanceMonitor(
+      metrics,
+      logger,
+      performanceBaseline,
+    );
+
     // Log initialization with configured logger
-    mainLogger.info(`Worker initialized with logging level ${config.logging?.level}`);
-    
-    // Set loggers for modules
-    setLogger(akamaiLogger);
-    setStorageLogger(storageLogger);
-    setTransformLogger(transformLogger);
-    setDebugLogger(debugLogger);
-    setDimensionCacheLogger(dimensionCacheLogger);
-    
+    logger.info(
+      `Worker initialized with logging level ${loggingService.getLogLevel()}`,
+    );
+
+    // Initialize loggers for specific modules that are not using the service pattern yet
+    // We now use the loggingService to get loggers for each module
+    const akamaiLogger = loggingService.getLogger("AkamaiCompat");
+    const debugLogger = loggingService.getLogger("Debug");
+
+    // Set loggers for modules that still use the older pattern
+    // These will be refactored in subsequent steps to use the service directly
+    setAkamaiLogger(akamaiLogger);
+    // Storage now uses the StorageService
+    // Transform now uses the TransformationService
+    // Debug service already has logger from constructor, no need to set it
+
     // Initialize detector with configuration if available
     if (config.detector) {
       setDetectorConfig(config.detector);
-      mainLogger.info('Client detector initialized with configuration', {
+      logger.info("Client detector initialized with configuration", {
         cacheSize: config.detector.cache.maxSize,
         strategies: Object.keys(config.detector.strategies)
-          .filter(key => {
-            const strategy = config.detector?.strategies[key as keyof typeof config.detector.strategies];
+          .filter((key) => {
+            const strategy = config.detector
+              ?.strategies[key as keyof typeof config.detector.strategies];
             return strategy?.enabled;
           })
-          .join(', '),
-        hashAlgorithm: config.detector.hashAlgorithm || 'simple'
+          .join(", "),
+        hashAlgorithm: config.detector.hashAlgorithm || "simple",
       });
     }
-    
-    // Use the main logger for this module
-    const logger = mainLogger;
-    
+
     // Start request breadcrumb trail
-    logger.breadcrumb('Request started', undefined, {
+    logger.breadcrumb("Request started", undefined, {
       url: request.url,
       method: request.method,
-      userAgent: request.headers.get('user-agent') || 'unknown'
+      userAgent: request.headers.get("user-agent") || "unknown",
     });
-    
+
     // Parse URL
     let url = new URL(request.url);
-    
-    // Handle root path
-    if (url.pathname === '/' || url.pathname === '') {
-      return new Response('Image Resizer Worker', { 
-        status: 200,
-        headers: {
-          'Content-Type': 'text/plain'
-        }
-      });
-    }
-    
-    // Check for the debug report request
-    if (url.pathname === '/debug-report' && isDebugEnabled(request, config)) {
-      try {
-        // We need a dummy storage result and transform options for the report
-        const storageResult = {
-          response: new Response('Debug Mode'),
-          sourceType: 'remote' as const, // Use a valid source type
-          contentType: 'text/plain',
-          size: 0
-        };
-        
-        const transformOptions = {
-          width: 800,
-          format: 'auto'
-        };
-        
-        return createDebugHtmlReport(request, storageResult, transformOptions, config, metrics);
-      } catch (error) {
-        return new Response(`Error creating debug report: ${error}`, { status: 500 });
-      }
-    }
-    
+
     try {
-      // Validate request method
-      if (request.method !== 'GET' && request.method !== 'HEAD') {
-        throw new ValidationError(`Method ${request.method} not allowed`, { 
-          allowedMethods: ['GET', 'HEAD'] 
+      performanceMonitor.startOperation("total");
+
+      // Check for root path
+      const rootResponse = handleRootPath(request);
+      if (rootResponse) {
+        performanceMonitor.endOperation("total", { type: "root_path" });
+        performanceMonitor.endRequest({
+          status: rootResponse.status,
+          type: "root_path",
         });
+        return rootResponse;
       }
-      
-      // Check for Akamai compatibility mode
-      let isAkamai = false;
-      if (config.features?.enableAkamaiCompatibility) {
-        logger.debug('Akamai compatibility is enabled, checking URL format', { 
-          advancedFeatures: config.features?.enableAkamaiAdvancedFeatures ? 'enabled' : 'disabled'
-        });
-        
-        // First check for Akamai parameters in the URL
-        isAkamai = isAkamaiFormat(url);
-        
-        // If Akamai format is detected, convert parameters to Cloudflare format
-        if (isAkamai) {
-          // Log the original URL for debugging
-          logger.info('Detected Akamai URL format', { url: url.toString() });
-          
-          try {
-            // Convert the URL parameters, passing config for advanced feature detection
-            const cfParams = translateAkamaiParams(url, config);
-            
-            // Store config in params for potential downstream use
-            (cfParams as any)._config = config;
-            
-            // Convert to Cloudflare URL with our params
-            const convertedUrl = new URL(url.toString());
-            
-            // Remove all Akamai parameters
-            for (const key of Array.from(convertedUrl.searchParams.keys())) {
-              if (key.startsWith('im.')) {
-                convertedUrl.searchParams.delete(key);
-              }
-            }
-            
-            // Add Cloudflare parameters
-            for (const [key, value] of Object.entries(cfParams)) {
-              if (value !== undefined && value !== null && !key.startsWith('_')) {
-                // Special handling for gravity parameter with x,y coordinates
-                if (key === 'gravity' && typeof value === 'object' && 'x' in value && 'y' in value) {
-                  // Use a simpler format: "x,y" for gravity coordinates (e.g., "0.5,0.3")
-                  // This is easier to parse and less error-prone than JSON serialization
-                  // The format matches the regex in transform.ts: /^(0(\.\d+)?|1(\.0+)?),(0(\.\d+)?|1(\.0+)?)$/
-                  // Values must be between 0-1 representing the focal point position
-                  const x = (value as any).x;
-                  const y = (value as any).y;
-                  convertedUrl.searchParams.set(key, `${x},${y}`);
-                } else if (typeof value === 'object') {
-                  convertedUrl.searchParams.set(key, JSON.stringify(value));
-                } else {
-                  convertedUrl.searchParams.set(key, String(value));
-                }
-              }
-            }
-            
-            // Create a new request with the converted URL
-            url = new URL(convertedUrl.toString());
-            
-            // Log the converted URL for debugging
-            logger.info('Successfully converted to Cloudflare format', { convertedUrl: url.toString() });
-          } catch (error) {
-            logger.error('Error converting Akamai URL to Cloudflare format', { 
-              error: String(error),
-              url: url.toString()
-            });
-            
-            // Continue with the original URL if conversion fails
-            logger.warn('Continuing with original URL due to conversion error');
-          }
-        } else {
-          logger.debug('No Akamai parameters detected in URL');
-        }
-      } else {
-        logger.debug('Akamai compatibility is disabled');
-      }
-      
-      // Parse the path to extract image path and options
-      const { imagePath: originalPath, options: pathOptions } = parseImagePath(url.pathname);
-      
-      // Validate path - must have some content
-      if (!originalPath || originalPath === '/') {
-        throw new ValidationError('Invalid image path', { path: originalPath });
-      }
-      
-      // Apply path transformations if configured
-      let imagePath = originalPath;
-      if (config.pathTransforms) {
-        imagePath = applyPathTransforms(originalPath, config.pathTransforms);
-      }
-      
-      // Parse query parameters
-      const queryOptions = parseQueryOptions(url.searchParams);
-      
-      // Combine options (query parameters take precedence over path options)
-      const optionsFromUrl: TransformOptions = {
-        ...Object.entries(pathOptions).reduce((acc, [key, value]) => {
-          // Convert string values to numbers or booleans when appropriate
-          if (value === 'true') {
-            acc[key] = true;
-          } else if (value === 'false') {
-            acc[key] = false;
-          } else {
-            const numVal = Number(value);
-            acc[key] = isNaN(numVal) ? value : numVal;
-          }
-          return acc;
-        }, {} as TransformOptions),
-        ...queryOptions
-      };
-      
-      // Check for derivative in path segments
-      const derivativeNames = Object.keys(config.derivatives);
-      
-      logger.debug('Available derivatives', {
-        derivatives: derivativeNames.join(', '),
-        count: derivativeNames.length,
-        pathname: url.pathname
-      });
-      
-      const derivativeResult = extractDerivative(url.pathname, derivativeNames);
-      
-      // If a derivative was found in the path, use it and modify the image path
-      if (derivativeResult && !optionsFromUrl.derivative) {
-        optionsFromUrl.derivative = derivativeResult.derivative;
-        
-        // Update the image path to the modified one (without the derivative segment)
-        imagePath = derivativeResult.modifiedPath;
-        
-        logger.debug('Found and applied derivative from path', {
-          pathname: url.pathname,
-          derivative: derivativeResult.derivative,
-          originalPath: url.pathname,
-          modifiedImagePath: imagePath
-        });
-      }
-      
-      // Check for named path templates (only if no derivative was found in the path)
-      if (!optionsFromUrl.derivative && config.pathTemplates) {
-        const segments = url.pathname.split('/').filter(Boolean);
-        for (const segment of segments) {
-          const templateName = config.pathTemplates[segment];
-          if (templateName) {
-            optionsFromUrl.derivative = templateName;
-            logger.debug('Applied derivative from path template', {
-              segment,
-              templateName
-            });
-            break;
-          }
-        }
-      }
-      
-      // Log derivative application status
-      if (optionsFromUrl.derivative) {
-        if (config.derivatives[optionsFromUrl.derivative]) {
-          logger.debug('Using derivative for transformation', {
-            derivative: optionsFromUrl.derivative,
-            imagePath,
-            templateProperties: Object.keys(config.derivatives[optionsFromUrl.derivative]).join(',')
-          });
-        } else {
-          logger.warn('Derivative not found in configuration', {
-            derivative: optionsFromUrl.derivative,
-            availableDerivatives: Object.keys(config.derivatives).join(',')
-          });
-        }
-      }
-      
-      // Fetch the image from storage
-      metrics.storageStart = Date.now();
-      logger.breadcrumb('Fetching image from storage', undefined, { imagePath });
-      const storageResult = await fetchImage(imagePath, config, env, request);
-      metrics.storageEnd = Date.now();
-      const storageDuration = metrics.storageEnd - metrics.storageStart;
-      logger.breadcrumb('Storage fetch completed', storageDuration, { 
-        sourceType: storageResult.sourceType,
-        contentType: storageResult.contentType,
-        size: storageResult.size
-      });
-      
-      // If the storage result is an error, throw a not found error
-      if (storageResult.sourceType === 'error') {
-        // Add more detailed debugging information
-        logger.error('Image not found in storage', {
-          originalPath,
-          transformedPath: imagePath,
-          requestUrl: url.toString(),
-          storageConfig: JSON.stringify({
-            priority: config.storage.priority,
-            hasFallback: !!config.storage.fallbackUrl,
-            hasRemote: !!config.storage.remoteUrl,
-            r2Enabled: config.storage.r2?.enabled
-          })
-        });
-        
-        throw new NotFoundError('Image not found', { 
-          path: imagePath,
-          originalPath,
-          derivative: optionsFromUrl.derivative || 'none'
-        });
-      }
-      
-      // Transform the image
-      metrics.transformStart = Date.now();
-      logger.debug('Starting image transformation', { 
-        sourceType: storageResult.sourceType,
-        contentType: storageResult.contentType,
-        transformOptions: optionsFromUrl
-      });
-      
-      logger.breadcrumb('Starting image transformation', undefined, {
-        sourceType: storageResult.sourceType,
-        contentType: storageResult.contentType,
-        format: optionsFromUrl.format,
-        width: optionsFromUrl.width,
-        height: optionsFromUrl.height,
-        fit: optionsFromUrl.fit,
-        quality: optionsFromUrl.quality,
-        derivative: optionsFromUrl.derivative
-      });
-      
-      let transformedResponse;
-      try {
-        transformedResponse = await transformImage(request, storageResult, optionsFromUrl, config);
-        metrics.transformEnd = Date.now();
-        
-        const transformTime = metrics.transformEnd - metrics.transformStart;
-        logger.debug('Image transformation completed', { 
-          transformTimeMs: transformTime,
-          status: transformedResponse.status
-        });
-        
-        logger.breadcrumb('Image transformation completed', transformTime, {
-          status: transformedResponse.status,
-          contentType: transformedResponse.headers.get('content-type') || 'unknown'
-        });
-      } catch (error) {
-        metrics.transformEnd = Date.now();
-        logger.error('Image transformation failed', { 
-          error: String(error),
-          transformTimeMs: metrics.transformEnd - metrics.transformStart
-        });
-        
-        throw error;
-      }
-      
-      // Apply cache control headers
-      logger.breadcrumb('Applying cache headers');
-      let finalResponse = applyCacheHeaders(transformedResponse, config);
-      
-      // Add debug headers if enabled
-      finalResponse = addDebugHeaders(
-        finalResponse,
+
+      // Check for performance report request
+      const performanceResponse = await handlePerformanceReport(
         request,
-        storageResult,
-        optionsFromUrl,
-        config,
-        metrics,
-        url
+        services,
       );
-      
-      // Add Akamai compatibility header if enabled and used
-      if (config.features?.enableAkamaiCompatibility && isAkamai) {
-        logger.debug('Adding Akamai compatibility header');
-        
-        const debugPrefix = config.debug.headerNames?.debugEnabled?.replace('Enabled', '') || 'X-Debug-';
-        const headerName = `${debugPrefix}Akamai-Compatibility`;
-        
-        const newHeaders = new Headers(finalResponse.headers);
-        newHeaders.set(headerName, 'used');
-        
-        logger.debug('Added Akamai compatibility header', { headerName, value: 'used' });
-        
-        finalResponse = new Response(finalResponse.body, {
-          status: finalResponse.status,
-          statusText: finalResponse.statusText,
-          headers: newHeaders
+      if (performanceResponse) {
+        performanceMonitor.endOperation("total", {
+          type: "performance_report",
         });
+        performanceMonitor.endRequest({
+          status: performanceResponse.status,
+          type: "performance_report",
+        });
+        return performanceResponse;
       }
-      
-      // Cache with Cache API if configured
-      if (config.cache.method === 'cache-api' && !shouldBypassCache(request, config)) {
-        logger.breadcrumb('Caching response with Cache API');
-        finalResponse = await cacheWithCacheApi(request, finalResponse, config, ctx);
+
+      // Check for performance reset request
+      const resetResponse = await handlePerformanceReset(request, services);
+      if (resetResponse) {
+        performanceMonitor.endOperation("total", { type: "performance_reset" });
+        performanceMonitor.endRequest({
+          status: resetResponse.status,
+          type: "performance_reset",
+        });
+        return resetResponse;
       }
-      
-      // Set the end time for performance metrics
-      metrics.end = Date.now();
-      
-      // Log the end of the request with timing information
-      const totalDuration = metrics.end - metrics.start;
-      logger.breadcrumb('Request completed', totalDuration, {
+
+      // Check for debug report request
+      const debugResponse = await handleDebugReport(
+        request,
+        services,
+        metrics,
+        config,
+        logger,
+      );
+      if (debugResponse) {
+        performanceMonitor.endOperation("total", { type: "debug_report" });
+        performanceMonitor.endRequest({
+          status: debugResponse.status,
+          type: "debug_report",
+        });
+        return debugResponse;
+      }
+
+      // Check for metadata-driven transformation request (path starts with /smart/)
+      if (url.pathname.startsWith("/smart/")) {
+        try {
+          // Import the metadata handler dynamically to avoid circular dependencies
+          const { handleMetadataTransformation } = await import(
+            "./handlers/metadataHandler"
+          );
+
+          performanceMonitor.startOperation("metadata_transform");
+          logger.debug("Handling metadata-driven transformation", {
+            path: url.pathname,
+          });
+
+          const metadataResponse = await handleMetadataTransformation(
+            request,
+            env,
+            services,
+          );
+
+          performanceMonitor.endOperation("metadata_transform", {
+            status: metadataResponse.status,
+            contentType: metadataResponse.headers.get("content-type"),
+          });
+
+          performanceMonitor.endOperation("total", {
+            type: "metadata_transform",
+          });
+          performanceMonitor.endRequest({
+            status: metadataResponse.status,
+            type: "metadata_transform",
+            contentType: metadataResponse.headers.get("content-type"),
+          });
+
+          return metadataResponse;
+        } catch (error) {
+          logger.error("Error in metadata transformation handler", {
+            error: error instanceof Error ? error.message : String(error),
+            path: url.pathname,
+          });
+
+          // Let the request continue to be handled by the standard image handler
+          logger.warn(
+            "Falling back to standard image handler after metadata handler error",
+          );
+        }
+      }
+
+      // Handle Akamai compatibility if applicable
+      performanceMonitor.startOperation("akamai_compat");
+      const isAkamai = isAkamaiFormat(url);
+      url = handleAkamaiCompatibility(request, url, services);
+      performanceMonitor.endOperation("akamai_compat", { used: isAkamai });
+
+      // Process the image transformation request
+      performanceMonitor.startOperation("image_request");
+      let finalResponse = await handleImageRequest(
+        request,
+        url,
+        services,
+        metrics,
+      );
+      performanceMonitor.endOperation("image_request", {
         status: finalResponse.status,
-        contentLength: finalResponse.headers.get('content-length'),
-        contentType: finalResponse.headers.get('content-type'),
-        totalDurationMs: totalDuration
+        contentType: finalResponse.headers.get("content-type"),
       });
-      
+
+      // Add Akamai compatibility header if enabled and used
+      if (isAkamai) {
+        performanceMonitor.startOperation("add_akamai_header");
+        finalResponse = addAkamaiCompatibilityHeader(
+          finalResponse,
+          isAkamai,
+          services,
+        );
+        performanceMonitor.endOperation("add_akamai_header");
+      }
+
+      // End the overall request timing
+      performanceMonitor.endOperation("total");
+      performanceMonitor.endRequest({
+        status: finalResponse.status,
+        contentType: finalResponse.headers.get("content-type"),
+        contentLength: finalResponse.headers.get("content-length"),
+      });
+
       return finalResponse;
     } catch (error) {
       // Log the error with detailed information
-      logger.error('Error processing image', {
+      logger.error("Error processing image", {
         url: request.url,
         error: error instanceof Error ? error.message : String(error),
-        errorType: error instanceof Error ? error.constructor.name : 'Unknown',
-        stack: error instanceof Error ? error.stack : undefined
+        errorType: error instanceof Error ? error.constructor.name : "Unknown",
+        stack: error instanceof Error ? error.stack : undefined,
       });
-      
+
       // Mark the error with a breadcrumb for easier tracing
-      logger.breadcrumb('Request processing error occurred', undefined, {
-        errorType: error instanceof Error ? error.constructor.name : 'Unknown',
+      logger.breadcrumb("Request processing error occurred", undefined, {
+        errorType: error instanceof Error ? error.constructor.name : "Unknown",
         url: request.url,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
-      
-      // Set the end time for performance metrics
-      metrics.end = Date.now();
-      const totalDuration = metrics.end - metrics.start;
-      
-      logger.breadcrumb('Request error metrics', totalDuration, {
+
+      // Track error with performance monitoring
+      try {
+        // First try to end the total operation if it was started
+        performanceMonitor.endOperation("total", { error: true });
+      } catch (endError) {
+        // Ignore errors from ending the operation - it may not have been started
+      }
+
+      performanceMonitor.startOperation("error_handling");
+
+      // Record error type in peformance data
+      const errorType = error instanceof Error
+        ? error.constructor.name
+        : "Unknown";
+      const errorMessage = error instanceof Error
+        ? error.message
+        : String(error);
+
+      // Get performance metrics
+      performanceMonitor.updateMetrics();
+      const storageTimeMs = performanceMonitor.getOperationTime("storage");
+      const transformTimeMs = performanceMonitor.getOperationTime("transform");
+
+      // End performance timing for error handling
+      const totalDuration = performanceMonitor.endOperation("error_handling", {
+        errorType,
+        errorMessage,
+      });
+
+      logger.breadcrumb("Request error metrics", totalDuration, {
         totalDurationMs: totalDuration,
-        storageTimeMs: (metrics.storageEnd && metrics.storageStart) ? metrics.storageEnd - metrics.storageStart : 0,
-        transformTimeMs: (metrics.transformEnd && metrics.transformStart) ? metrics.transformEnd - metrics.transformStart : 0
+        storageTimeMs: storageTimeMs,
+        transformTimeMs: transformTimeMs,
       });
-      
+
+      // Create appropriate error response
+      let errorResponse: Response;
+
       // Return a formatted error response
       if (error instanceof AppError) {
-        logger.debug('Returning error response for known error type', {
+        logger.debug("Returning error response for known error type", {
           errorType: error.constructor.name,
-          status: error.status
+          status: error.status,
         });
-        logger.breadcrumb('Returning structured error response', undefined, {
+        logger.breadcrumb("Returning structured error response", undefined, {
           errorType: error.constructor.name,
-          status: error.status
+          status: error.status,
         });
-        return createErrorResponse(error);
+        errorResponse = createErrorResponse(error);
       } else {
         // Wrap unknown errors in TransformError
-        logger.debug('Wrapping unknown error in TransformError');
-        logger.breadcrumb('Wrapping in TransformError', undefined, {
-          originalError: error instanceof Error ? error.message : String(error)
+        logger.debug("Wrapping unknown error in TransformError");
+        logger.breadcrumb("Wrapping in TransformError", undefined, {
+          originalError: errorMessage,
         });
         const transformError = new TransformError(
-          `Error processing image: ${error instanceof Error ? error.message : String(error)}`
+          `Error processing image: ${errorMessage}`,
         );
-        return createErrorResponse(transformError);
+        errorResponse = createErrorResponse(transformError);
+      }
+
+      // Record final error metrics
+      performanceMonitor.endRequest({
+        status: errorResponse.status,
+        errorType,
+        errorMessage,
+      });
+
+      return errorResponse;
+    }
+  },
+
+  // Add shutdown lifecycle hook for cleanup
+  async scheduled(
+    controller: any,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<void> {
+    // Map controller to event for compatibility with our code
+    const event = controller as unknown as ScheduledEvent;
+    // Create service container with minimal initialization
+    const services = createContainer(env, {
+      initializeServices: false, // Don't initialize since we'll just shut down
+    });
+
+    const { logger, lifecycleManager } = services;
+
+    if (event.scheduledTime) {
+      logger.info("Scheduled event received", {
+        scheduledTime: new Date(event.scheduledTime).toISOString(),
+      });
+    }
+
+    // If we have a lifecycle manager, use it for coordinated shutdown
+    if (lifecycleManager) {
+      try {
+        logger.info("Starting coordinated service shutdown");
+
+        // Perform the shutdown with a timeout and force mode
+        const stats = await lifecycleManager.shutdown({
+          force: true,
+          timeout: 5000, // 5 second timeout for each service
+        });
+
+        logger.info("Service shutdown completed successfully", {
+          durationMs: stats.totalShutdownTimeMs,
+          servicesShutdown: stats.services.shutdown,
+          totalServices: stats.services.total,
+        });
+      } catch (error) {
+        logger.error("Error during service shutdown", {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+      }
+    } else {
+      // Use regular shutdown if lifecycle manager is not available
+      try {
+        logger.info("Starting legacy service shutdown");
+        await services.shutdown();
+        logger.info("Legacy service shutdown completed");
+      } catch (error) {
+        logger.error("Error during legacy service shutdown", {
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
   },

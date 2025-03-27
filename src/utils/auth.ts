@@ -13,6 +13,11 @@ import { Env } from '../types';
 // Use default logger until a configured one is provided
 let logger: Logger = defaultLogger;
 
+// Flag to track if AWS client is initialized
+// This will be used in a future implementation
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const awsClientInitialized = false;
+
 /**
  * Set the logger for the auth module
  * 
@@ -261,6 +266,7 @@ async function signAwsRequest(url: string, origin: OriginConfig, env: Env): Prom
       return null;
     }
     
+    // Note: We're using the pre-imported AwsClient instead of dynamically importing it
     // Set up AWS client
     const aws = new AwsClient({
       accessKeyId: accessKey,
@@ -373,17 +379,33 @@ function generateSignedUrl(url: string, origin: OriginConfig, env: Env): string 
  * @param env Environment variables
  * @returns Authentication result with success status, URL and headers
  */
+/**
+ * Fast path function for when auth is disabled
+ * Avoids all unnecessary processing and logging
+ */
+export function getNoAuthResult(url: string): AuthResult {
+  return {
+    success: true,
+    url: url
+  };
+}
+
 export async function authenticateRequest(
   url: string, 
   config: ImageResizerConfig,
   env: Env
 ): Promise<AuthResult> {
+  // Fast path - avoid even creating breadcrumbs when auth is disabled
+  if (!config.storage.auth?.enabled) {
+    return getNoAuthResult(url);
+  }
+  
   logger.breadcrumb('Authenticating request', undefined, { 
     url, 
-    authEnabled: config.storage.auth?.enabled === true
+    authEnabled: true
   });
   
-  // If auth is not enabled, return success with original URL
+  // This check is now redundant but keeping for safety
   if (!config.storage.auth?.enabled) {
     logger.breadcrumb('Authentication disabled, passing request through');
     return {

@@ -30,6 +30,7 @@ interface Env {
   LOGGING_STRUCTURED?: string;
   LOGGING_TIMESTAMP?: string;
   LOGGING_BREADCRUMBS_ENABLED?: string;
+  LOGGING_USE_PINO?: string;
   
   // Bindings
   IMAGES_BUCKET?: R2Bucket;

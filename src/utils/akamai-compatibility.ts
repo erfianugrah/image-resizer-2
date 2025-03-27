@@ -6,7 +6,7 @@
  * a smoother migration and compatibility with existing Akamai implementations.
  */
 
-import type { TransformOptions } from '../transform';
+import type { TransformOptions } from '../services/interfaces';
 import { defaultLogger, Logger } from './logging';
 
 // Use default logger until a configured one is provided
@@ -22,6 +22,944 @@ export function setLogger(configuredLogger: Logger): void {
 }
 
 /**
+ * Parse the im= parameter format for Akamai Image Manager
+ * 
+ * @param imParameter The im= parameter value, e.g. "AspectCrop=(1,1),xPosition=.5,yPosition=.5"
+ * @returns Object with Cloudflare Image Resizing parameters
+ */
+function parseImParameter(imParameter: string): TransformOptions {
+  const cfParams: TransformOptions = {};
+  
+  if (!imParameter) {
+    return cfParams;
+  }
+  
+  logger.debug('Parsing im= parameter', { value: imParameter });
+  logger.breadcrumb('Parsing Akamai im= parameter', undefined, { parameter: imParameter });
+  
+  try {
+    // First identify the transformation type
+    let transformationType = '';
+    let transformationParams = '';
+    
+    // Check if the parameter has a transformation type prefix
+    const eqIndex = imParameter.indexOf('=');
+    const openParenIndex = imParameter.indexOf('(');
+    const commaIndex = imParameter.indexOf(',');
+    
+    if (openParenIndex > 0 && (eqIndex < 0 || openParenIndex < eqIndex)) {
+      // Format: AspectCrop(1,1)... or similar
+      transformationType = imParameter.substring(0, openParenIndex).trim();
+      transformationParams = imParameter.substring(openParenIndex);
+    } else if (commaIndex > 0 && (eqIndex < 0 || commaIndex < eqIndex)) {
+      // Format: Resize,width=250,height=125... or similar
+      transformationType = imParameter.substring(0, commaIndex).trim();
+      transformationParams = imParameter.substring(commaIndex + 1);
+    } else if (eqIndex > 0) {
+      // Format: transform=AspectCrop... or similar
+      transformationType = imParameter.substring(0, eqIndex).trim();
+      transformationParams = imParameter.substring(eqIndex + 1);
+    } else {
+      // No recognizable format, use the whole string
+      transformationType = imParameter.trim();
+      transformationParams = '';
+    }
+    
+    logger.debug('Identified transformation type', { 
+      type: transformationType, 
+      params: transformationParams 
+    });
+    
+    // Handle specific transformation types
+    switch (transformationType.toLowerCase()) {
+    case 'aspectcrop':
+      return parseAspectCropParameter(transformationParams);
+    case 'resize':
+      return parseResizeParameter(transformationParams);
+    case 'crop':
+      return parseCropParameter(transformationParams);
+    case 'rotate':
+      return parseRotateParameter(transformationParams);
+    case 'blur':
+      return parseBlurParameter(transformationParams);
+    case 'grayscale':
+      return { saturation: 0 };
+    case 'mirror':
+      return parseMirrorParameter(transformationParams);
+    case 'composite':
+    case 'watermark':
+      return parseCompositeParameter(transformationParams);
+    case 'backgroundcolor':
+      return parseBackgroundColorParameter(transformationParams);
+    case 'contrast':
+      return parseContrastParameter(transformationParams);
+    case 'brightness':
+      return parseBrightnessParameter(transformationParams);
+    case 'unsharp':
+    case 'unsharpmask':
+      return parseUnsharpParameter(transformationParams);
+    case 'quality':
+      return parseQualityParameter(transformationParams);
+    case 'format':
+      return parseFormatParameter(transformationParams);
+    case 'border':
+      return parseBorderParameter(transformationParams);
+    default:
+      logger.debug('Unknown transformation type', { type: transformationType });
+      break;
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Failed to parse im= parameter', { 
+      error: errorMsg, 
+      imParameter 
+    });
+    logger.breadcrumb('Error parsing im= parameter', undefined, {
+      error: errorMsg,
+      parameter: imParameter
+    });
+  }
+  
+  return cfParams;
+}
+
+/**
+ * Parse Resize parameters from im= format
+ * Handles formats like Resize,width=250,height=125 or Resize=(250,125)
+ * 
+ * @param params The Resize parameters
+ * @returns Object with Cloudflare Image Resizing parameters
+ */
+function parseResizeParameter(params: string): TransformOptions {
+  const cfParams: TransformOptions = {};
+  
+  logger.debug('Parsing Resize parameters', { params });
+  
+  try {
+    // Handle shortcut format: Resize=(250,125)
+    const sizeMatch = params.match(/=\((\d+),(\d+)\)/);
+    if (sizeMatch && sizeMatch.length >= 3) {
+      cfParams.width = parseInt(sizeMatch[1], 10);
+      cfParams.height = parseInt(sizeMatch[2], 10);
+      
+      // Default to fit=scale-down which is closest to standard resize behavior
+      cfParams.fit = 'scale-down';
+      return cfParams;
+    }
+    
+    // Handle key-value format: width=250,height=125
+    const paramPairs = params.split(',');
+    for (const pair of paramPairs) {
+      if (!pair.includes('=')) continue;
+      
+      const [key, value] = pair.split('=').map(s => s.trim());
+      
+      if (key === 'width' && !isNaN(parseInt(value, 10))) {
+        cfParams.width = parseInt(value, 10);
+      } else if (key === 'height' && !isNaN(parseInt(value, 10))) {
+        cfParams.height = parseInt(value, 10);
+      } else if (key === 'mode') {
+        // Handle resize mode
+        switch (value.toLowerCase()) {
+        case 'fit': cfParams.fit = 'contain'; break;
+        case 'stretch': cfParams.fit = 'scale-down'; break;
+        case 'fill': cfParams.fit = 'cover'; break;
+        case 'crop': cfParams.fit = 'crop'; break;
+        case 'pad': cfParams.fit = 'pad'; break;
+        }
+      }
+    }
+    
+    // If no fit is specified, default to scale-down
+    if (!cfParams.fit) {
+      cfParams.fit = 'scale-down';
+    }
+  } catch (error) {
+    logger.error('Failed to parse Resize parameters', { 
+      error: error instanceof Error ? error.message : String(error),
+      params 
+    });
+  }
+  
+  return cfParams;
+}
+
+/**
+ * Parse Crop parameters from im= format
+ * Handles formats like Crop,width=150,height=100 or Crop,size=(150,100)
+ * 
+ * @param params The Crop parameters
+ * @returns Object with Cloudflare Image Resizing parameters
+ */
+function parseCropParameter(params: string): TransformOptions {
+  const cfParams: TransformOptions = {};
+  
+  logger.debug('Parsing Crop parameters', { params });
+  
+  try {
+    // Handle shortcut format: size=(150,100)
+    const sizeMatch = params.match(/size=\((\d+),(\d+)\)/);
+    if (sizeMatch && sizeMatch.length >= 3) {
+      cfParams.width = parseInt(sizeMatch[1], 10);
+      cfParams.height = parseInt(sizeMatch[2], 10);
+      cfParams.fit = 'crop';
+      return cfParams;
+    }
+    
+    // Handle rect format: rect=(0,0,100,100)
+    const rectMatch = params.match(/rect=\((\d+),(\d+),(\d+),(\d+)\)/);
+    if (rectMatch && rectMatch.length >= 5) {
+      const x = parseInt(rectMatch[1], 10);
+      const y = parseInt(rectMatch[2], 10);
+      const width = parseInt(rectMatch[3], 10);
+      const height = parseInt(rectMatch[4], 10);
+      
+      // In Cloudflare, use trim with top;right;bottom;left format
+      cfParams.trim = `${y};${x + width};${y + height};${x}`;
+      return cfParams;
+    }
+    
+    // Handle key-value format: width=150,height=100
+    const paramPairs = params.split(',');
+    for (const pair of paramPairs) {
+      if (!pair.includes('=')) {
+        // Check for allowExpansion parameter without value
+        if (pair.trim().toLowerCase() === 'allowexpansion') {
+          cfParams.background = 'transparent';
+          continue;
+        }
+      } else {
+        const [key, value] = pair.split('=').map(s => s.trim());
+        
+        if (key === 'width' && !isNaN(parseInt(value, 10))) {
+          cfParams.width = parseInt(value, 10);
+        } else if (key === 'height' && !isNaN(parseInt(value, 10))) {
+          cfParams.height = parseInt(value, 10);
+        } else if (key === 'gravity') {
+          // Map gravity parameter
+          switch (value.toLowerCase()) {
+          case 'north': cfParams.gravity = 'top'; break;
+          case 'northeast': cfParams.gravity = { x: 1.0, y: 0.0 }; break;
+          case 'east': cfParams.gravity = 'right'; break;
+          case 'southeast': cfParams.gravity = { x: 1.0, y: 1.0 }; break;
+          case 'south': cfParams.gravity = 'bottom'; break;
+          case 'southwest': cfParams.gravity = { x: 0.0, y: 1.0 }; break;
+          case 'west': cfParams.gravity = 'left'; break;
+          case 'northwest': cfParams.gravity = { x: 0.0, y: 0.0 }; break;
+          case 'center': cfParams.gravity = 'center'; break;
+          }
+        }
+      }
+    }
+    
+    // Set fit=crop for crop transformation
+    cfParams.fit = 'crop';
+  } catch (error) {
+    logger.error('Failed to parse Crop parameters', { 
+      error: error instanceof Error ? error.message : String(error),
+      params 
+    });
+  }
+  
+  return cfParams;
+}
+
+/**
+ * Parse Rotate parameters from im= format
+ * Handles formats like Rotate,degrees=13
+ * 
+ * @param params The Rotate parameters
+ * @returns Object with Cloudflare Image Resizing parameters
+ */
+function parseRotateParameter(params: string): TransformOptions {
+  const cfParams: TransformOptions = {};
+  
+  logger.debug('Parsing Rotate parameters', { params });
+  
+  try {
+    // Handle direct value: Rotate=45
+    if (params.startsWith('=')) {
+      const degrees = parseInt(params.substring(1), 10);
+      if (!isNaN(degrees)) {
+        // Normalize to 0, 90, 180, or 270 (what Cloudflare supports)
+        const normalizedRotation = ((degrees % 360) + 360) % 360;
+        
+        if (normalizedRotation > 45 && normalizedRotation <= 135) {
+          cfParams.rotate = 90;
+        } else if (normalizedRotation > 135 && normalizedRotation <= 225) {
+          cfParams.rotate = 180;
+        } else if (normalizedRotation > 225 && normalizedRotation <= 315) {
+          cfParams.rotate = 270;
+        }
+      }
+      return cfParams;
+    }
+    
+    // Handle key-value format: degrees=13
+    const paramPairs = params.split(',');
+    for (const pair of paramPairs) {
+      if (!pair.includes('=')) continue;
+      
+      const [key, value] = pair.split('=').map(s => s.trim());
+      
+      if (key === 'degrees') {
+        const degrees = parseInt(value, 10);
+        if (!isNaN(degrees)) {
+          // Normalize to 0, 90, 180, or 270 (what Cloudflare supports)
+          const normalizedRotation = ((degrees % 360) + 360) % 360;
+          
+          if (normalizedRotation > 45 && normalizedRotation <= 135) {
+            cfParams.rotate = 90;
+          } else if (normalizedRotation > 135 && normalizedRotation <= 225) {
+            cfParams.rotate = 180;
+          } else if (normalizedRotation > 225 && normalizedRotation <= 315) {
+            cfParams.rotate = 270;
+          }
+        }
+      }
+    }
+  } catch (error) {
+    logger.error('Failed to parse Rotate parameters', { 
+      error: error instanceof Error ? error.message : String(error),
+      params 
+    });
+  }
+  
+  return cfParams;
+}
+
+/**
+ * Parse Blur parameters from im= format
+ * Handles formats like Blur or Blur=2
+ * 
+ * @param params The Blur parameters
+ * @returns Object with Cloudflare Image Resizing parameters
+ */
+function parseBlurParameter(params: string): TransformOptions {
+  const cfParams: TransformOptions = {};
+  
+  logger.debug('Parsing Blur parameters', { params });
+  
+  try {
+    // Handle direct value: Blur=2
+    if (params.startsWith('=')) {
+      const blurAmount = parseFloat(params.substring(1));
+      if (!isNaN(blurAmount) && blurAmount > 0) {
+        // Map Akamai's blur scale to Cloudflare's (0-250)
+        cfParams.blur = Math.min(250, Math.max(0, blurAmount * 25));
+      } else {
+        // Default blur amount if not specified
+        cfParams.blur = 50;
+      }
+      return cfParams;
+    }
+    
+    // If no value is provided, use default blur amount
+    cfParams.blur = 50;
+  } catch (error) {
+    logger.error('Failed to parse Blur parameters', { 
+      error: error instanceof Error ? error.message : String(error),
+      params 
+    });
+    // Use default blur amount in case of error
+    cfParams.blur = 50;
+  }
+  
+  return cfParams;
+}
+
+/**
+ * Parse Mirror parameters from im= format
+ * Handles formats like Mirror,horizontal or Mirror,vertical
+ * 
+ * @param params The Mirror parameters
+ * @returns Object with Cloudflare Image Resizing parameters
+ */
+function parseMirrorParameter(params: string): TransformOptions {
+  const cfParams: TransformOptions = {};
+  
+  logger.debug('Parsing Mirror parameters', { params });
+  
+  try {
+    // Handle "horizontal" and "vertical" values
+    const direction = params.trim().toLowerCase();
+    
+    if (direction === 'horizontal' || direction === 'h') {
+      cfParams.flip = 'h';
+    } else if (direction === 'vertical' || direction === 'v') {
+      cfParams.flip = 'v';
+    } else if (direction === 'both' || direction === 'hv' || direction === 'vh') {
+      cfParams.flip = 'hv';
+    }
+  } catch (error) {
+    logger.error('Failed to parse Mirror parameters', { 
+      error: error instanceof Error ? error.message : String(error),
+      params 
+    });
+  }
+  
+  return cfParams;
+}
+
+/**
+ * Parse Composite parameters from im= format
+ * Handles formats like Composite,image=(url=https://example.com/image2.jpg)
+ * 
+ * @param params The Composite parameters
+ * @returns Object with Cloudflare Image Resizing parameters
+ */
+function parseCompositeParameter(params: string): TransformOptions {
+  const cfParams: TransformOptions = {};
+  
+  logger.debug('Parsing Composite parameters', { params });
+  
+  try {
+    // Extract image URL from params
+    const urlMatch = params.match(/image=\(url=([^)]+)\)/);
+    let imageUrl = '';
+    
+    if (urlMatch && urlMatch.length >= 2) {
+      imageUrl = urlMatch[1];
+    } else {
+      // Try to find URL in another format
+      const urlParam = params.split(',').find(p => p.includes('url='));
+      if (urlParam) {
+        imageUrl = urlParam.split('=')[1];
+      }
+    }
+    
+    if (!imageUrl) {
+      logger.warn('No image URL found in Composite parameters');
+      return cfParams;
+    }
+    
+    // Initialize draw array
+    cfParams.draw = [];
+    
+    // Create draw object
+    const drawObj: any = {
+      url: imageUrl
+    };
+    
+    // Parse other parameters
+    const paramPairs = params.split(',');
+    for (const pair of paramPairs) {
+      if (!pair.includes('=')) continue;
+      
+      const [key, value] = pair.split('=').map(s => s.trim());
+      
+      if (key === 'placement') {
+        const placement = value.toLowerCase();
+        const offset = 5; // Default offset
+        
+        switch (placement) {
+        case 'north':
+        case 'top':
+          drawObj.top = offset;
+          break;
+        case 'south':
+        case 'bottom':
+          drawObj.bottom = offset;
+          break;
+        case 'east':
+        case 'right':
+          drawObj.right = offset;
+          break;
+        case 'west':
+        case 'left':
+          drawObj.left = offset;
+          break;
+        case 'northeast':
+        case 'topright':
+          drawObj.top = offset;
+          drawObj.right = offset;
+          break;
+        case 'northwest':
+        case 'topleft':
+          drawObj.top = offset;
+          drawObj.left = offset;
+          break;
+        case 'southeast':
+        case 'bottomright':
+          drawObj.bottom = offset;
+          drawObj.right = offset;
+          break;
+        case 'southwest':
+        case 'bottomleft':
+          drawObj.bottom = offset;
+          drawObj.left = offset;
+          break;
+        }
+      } else if (key === 'width') {
+        const width = parseInt(value, 10);
+        if (!isNaN(width) && width > 0) {
+          drawObj.width = width;
+        }
+      } else if (key === 'height') {
+        const height = parseInt(value, 10);
+        if (!isNaN(height) && height > 0) {
+          drawObj.height = height;
+        }
+      } else if (key === 'opacity') {
+        const opacity = parseFloat(value);
+        if (!isNaN(opacity)) {
+          // Convert from 0-100 to 0-1 scale
+          drawObj.opacity = Math.max(0, Math.min(1, opacity / 100));
+        }
+      } else if (key === 'tile' || key === 'repeat') {
+        if (value.toLowerCase() === 'true') {
+          drawObj.repeat = true;
+        } else if (value === 'x' || value === 'y') {
+          drawObj.repeat = value;
+        }
+      }
+    }
+    
+    // Add to draw array
+    cfParams.draw.push(drawObj);
+  } catch (error) {
+    logger.error('Failed to parse Composite parameters', { 
+      error: error instanceof Error ? error.message : String(error),
+      params 
+    });
+  }
+  
+  return cfParams;
+}
+
+/**
+ * Parse BackgroundColor parameters from im= format
+ * Handles formats like BackgroundColor,color=00ff00
+ * 
+ * @param params The BackgroundColor parameters
+ * @returns Object with Cloudflare Image Resizing parameters
+ */
+function parseBackgroundColorParameter(params: string): TransformOptions {
+  const cfParams: TransformOptions = {};
+  
+  logger.debug('Parsing BackgroundColor parameters', { params });
+  
+  try {
+    // Handle key-value format: color=00ff00
+    const paramPairs = params.split(',');
+    for (const pair of paramPairs) {
+      if (!pair.includes('=')) continue;
+      
+      const [key, value] = pair.split('=').map(s => s.trim());
+      
+      if (key === 'color') {
+        // Add # if it's missing (Cloudflare requires it)
+        if (!value.startsWith('#')) {
+          cfParams.background = `#${value}`;
+        } else {
+          cfParams.background = value;
+        }
+      }
+    }
+  } catch (error) {
+    logger.error('Failed to parse BackgroundColor parameters', { 
+      error: error instanceof Error ? error.message : String(error),
+      params 
+    });
+  }
+  
+  return cfParams;
+}
+
+/**
+ * Parse Contrast parameters from im= format
+ * Handles formats like Contrast,contrast=0.5
+ * 
+ * @param params The Contrast parameters
+ * @returns Object with Cloudflare Image Resizing parameters
+ */
+function parseContrastParameter(params: string): TransformOptions {
+  const cfParams: TransformOptions = {};
+  
+  logger.debug('Parsing Contrast parameters', { params });
+  
+  try {
+    // Handle key-value format: contrast=0.5
+    const paramPairs = params.split(',');
+    for (const pair of paramPairs) {
+      if (!pair.includes('=')) continue;
+      
+      const [key, value] = pair.split('=').map(s => s.trim());
+      
+      if (key === 'contrast') {
+        const contrast = parseFloat(value);
+        if (!isNaN(contrast) && contrast >= 0) {
+          cfParams.contrast = contrast;
+        }
+      }
+    }
+  } catch (error) {
+    logger.error('Failed to parse Contrast parameters', { 
+      error: error instanceof Error ? error.message : String(error),
+      params 
+    });
+  }
+  
+  return cfParams;
+}
+
+/**
+ * Parse Brightness parameters from im= format
+ * Handles formats like Brightness,brightness=0.5
+ * 
+ * @param params The Brightness parameters
+ * @returns Object with Cloudflare Image Resizing parameters
+ */
+function parseBrightnessParameter(params: string): TransformOptions {
+  const cfParams: TransformOptions = {};
+  
+  logger.debug('Parsing Brightness parameters', { params });
+  
+  try {
+    // Handle key-value format: brightness=0.5
+    const paramPairs = params.split(',');
+    for (const pair of paramPairs) {
+      if (!pair.includes('=')) continue;
+      
+      const [key, value] = pair.split('=').map(s => s.trim());
+      
+      if (key === 'brightness') {
+        const brightness = parseFloat(value);
+        if (!isNaN(brightness) && brightness >= 0) {
+          cfParams.brightness = brightness;
+        }
+      }
+    }
+  } catch (error) {
+    logger.error('Failed to parse Brightness parameters', { 
+      error: error instanceof Error ? error.message : String(error),
+      params 
+    });
+  }
+  
+  return cfParams;
+}
+
+/**
+ * Parse UnsharpMask parameters from im= format
+ * Handles formats like UnsharpMask,gain=2.0,threshold=0.08
+ * 
+ * @param params The UnsharpMask parameters
+ * @returns Object with Cloudflare Image Resizing parameters
+ */
+function parseUnsharpParameter(params: string): TransformOptions {
+  const cfParams: TransformOptions = {};
+  
+  logger.debug('Parsing UnsharpMask parameters', { params });
+  
+  try {
+    // Handle key-value format: gain=2.0,threshold=0.08
+    let gain = 0;
+    const paramPairs = params.split(',');
+    for (const pair of paramPairs) {
+      if (!pair.includes('=')) continue;
+      
+      const [key, value] = pair.split('=').map(s => s.trim());
+      
+      if (key === 'gain' || key === 'amount') {
+        const sharpenValue = parseFloat(value);
+        if (!isNaN(sharpenValue) && sharpenValue > 0) {
+          gain = sharpenValue;
+        }
+      }
+    }
+    
+    if (gain > 0) {
+      // Convert to Cloudflare's scale (0-10)
+      cfParams.sharpen = Math.min(10, gain > 2 ? gain * 2 : gain * 5);
+    }
+  } catch (error) {
+    logger.error('Failed to parse UnsharpMask parameters', { 
+      error: error instanceof Error ? error.message : String(error),
+      params 
+    });
+  }
+  
+  return cfParams;
+}
+
+/**
+ * Parse Quality parameters from im= format
+ * Handles formats like Quality=75
+ * 
+ * @param params The Quality parameters
+ * @returns Object with Cloudflare Image Resizing parameters
+ */
+function parseQualityParameter(params: string): TransformOptions {
+  const cfParams: TransformOptions = {};
+  
+  logger.debug('Parsing Quality parameters', { params });
+  
+  try {
+    // Handle direct value: Quality=75
+    if (params.startsWith('=')) {
+      const quality = parseInt(params.substring(1), 10);
+      if (!isNaN(quality) && quality > 0 && quality <= 100) {
+        cfParams.quality = quality;
+      }
+      return cfParams;
+    }
+    
+    // Handle named quality levels
+    const namedQuality = params.toLowerCase().trim();
+    switch (namedQuality) {
+    case 'low': cfParams.quality = 50; break;
+    case 'medium': cfParams.quality = 75; break;
+    case 'high': cfParams.quality = 90; break;
+    case 'chromasubsampling:444': cfParams.quality = 90; break;
+    case 'chromasubsampling:420': cfParams.quality = 85; break;
+    }
+  } catch (error) {
+    logger.error('Failed to parse Quality parameters', { 
+      error: error instanceof Error ? error.message : String(error),
+      params 
+    });
+  }
+  
+  return cfParams;
+}
+
+/**
+ * Parse Format parameters from im= format
+ * Handles formats like Format=webp
+ * 
+ * @param params The Format parameters
+ * @returns Object with Cloudflare Image Resizing parameters
+ */
+function parseFormatParameter(params: string): TransformOptions {
+  const cfParams: TransformOptions = {};
+  
+  logger.debug('Parsing Format parameters', { params });
+  
+  try {
+    // Handle direct value: Format=webp
+    if (params.startsWith('=')) {
+      const format = params.substring(1).toLowerCase().trim();
+      switch (format) {
+      case 'webp': cfParams.format = 'webp'; break;
+      case 'jpeg':
+      case 'jpg': cfParams.format = 'jpeg'; break;
+      case 'png': cfParams.format = 'png'; break;
+      case 'gif': cfParams.format = 'gif'; break;
+      case 'auto': cfParams.format = 'auto'; break;
+      default: cfParams.format = 'auto';
+      }
+      return cfParams;
+    }
+    
+    // If no specific format is provided, use auto
+    cfParams.format = 'auto';
+  } catch (error) {
+    logger.error('Failed to parse Format parameters', { 
+      error: error instanceof Error ? error.message : String(error),
+      params 
+    });
+    cfParams.format = 'auto';
+  }
+  
+  return cfParams;
+}
+
+/**
+ * Parse Border parameters from im= format
+ * Handles formats like Border,width=5,color=000000
+ * 
+ * @param params The Border parameters
+ * @returns Object with Cloudflare Image Resizing parameters
+ */
+function parseBorderParameter(params: string): TransformOptions {
+  const cfParams: TransformOptions = {};
+  
+  logger.debug('Parsing Border parameters', { params });
+  
+  try {
+    let borderWidth = 0;
+    let borderColor = '#000000';
+    
+    // Handle key-value format: width=5,color=000000
+    const paramPairs = params.split(',');
+    for (const pair of paramPairs) {
+      if (!pair.includes('=')) continue;
+      
+      const [key, value] = pair.split('=').map(s => s.trim());
+      
+      if (key === 'width') {
+        const width = parseInt(value, 10);
+        if (!isNaN(width) && width > 0) {
+          borderWidth = width;
+        }
+      } else if (key === 'color') {
+        // Add # if it's missing (Cloudflare requires it)
+        if (!value.startsWith('#')) {
+          borderColor = `#${value}`;
+        } else {
+          borderColor = value;
+        }
+      }
+    }
+    
+    if (borderWidth > 0) {
+      cfParams.border = {
+        width: borderWidth,
+        color: borderColor
+      };
+    }
+  } catch (error) {
+    logger.error('Failed to parse Border parameters', { 
+      error: error instanceof Error ? error.message : String(error),
+      params 
+    });
+  }
+  
+  return cfParams;
+}
+
+/**
+ * Parse AspectCrop parameters from im= format
+ * Handles formats like AspectCrop=(1,1),xPosition=.5,yPosition=.5
+ * 
+ * @param params The AspectCrop parameters
+ * @returns Object with Cloudflare Image Resizing parameters
+ */
+function parseAspectCropParameter(params: string): TransformOptions {
+  const cfParams: TransformOptions = {};
+  
+  logger.debug('Parsing AspectCrop parameters', { params });
+  logger.breadcrumb('Parsing AspectCrop parameters', undefined, { params });
+  
+  try {
+    // Extract the aspect ratio from parentheses: AspectCrop=(width,height)
+    let aspectWidth = 1;
+    let aspectHeight = 1;
+    
+    const aspectMatch = params.match(/\(([0-9.]+),([0-9.]+)\)/);
+    if (aspectMatch && aspectMatch.length >= 3) {
+      aspectWidth = parseFloat(aspectMatch[1]);
+      aspectHeight = parseFloat(aspectMatch[2]);
+      
+      if (isNaN(aspectWidth) || isNaN(aspectHeight) || aspectWidth <= 0 || aspectHeight <= 0) {
+        // Invalid aspect ratio values, use defaults
+        aspectWidth = 1;
+        aspectHeight = 1;
+      }
+    }
+    
+    logger.debug('Extracted aspect ratio', { aspectWidth, aspectHeight });
+    
+    // Extract position parameters
+    let xPosition = 0.5; // Default center
+    let yPosition = 0.5; // Default center
+    
+    // Look for xPosition parameter
+    const xPosMatch = params.match(/xPosition=([0-9.]+)/i);
+    if (xPosMatch && xPosMatch.length >= 2) {
+      xPosition = parseFloat(xPosMatch[1]);
+      
+      if (isNaN(xPosition) || xPosition < 0 || xPosition > 1) {
+        // Invalid x position, use default
+        xPosition = 0.5;
+      }
+    }
+    
+    // Look for yPosition parameter
+    const yPosMatch = params.match(/yPosition=([0-9.]+)/i);
+    if (yPosMatch && yPosMatch.length >= 2) {
+      yPosition = parseFloat(yPosMatch[1]);
+      
+      if (isNaN(yPosition) || yPosition < 0 || yPosition > 1) {
+        // Invalid y position, use default
+        yPosition = 0.5;
+      }
+    }
+    
+    // Check for allowExpansion parameter
+    let allowExpansion = false;
+    const allowExpansionMatch = params.match(/AllowExpansion=(true|false)/i);
+    if (allowExpansionMatch && allowExpansionMatch.length >= 2) {
+      allowExpansion = allowExpansionMatch[1].toLowerCase() === 'true';
+    }
+    
+    // Check for imwidth parameter within the AspectCrop params
+    const imwidthMatch = params.match(/imwidth=(\d+)/i);
+    if (imwidthMatch && imwidthMatch.length >= 2) {
+      const width = parseInt(imwidthMatch[1], 10);
+      if (!isNaN(width)) {
+        cfParams.width = width;
+        logger.debug('Extracted imwidth from AspectCrop params', { width });
+      }
+    }
+    
+    // Also check for direct width parameter within the AspectCrop params
+    const widthMatch = params.match(/width=(\d+)/i);
+    if (widthMatch && widthMatch.length >= 2) {
+      const width = parseInt(widthMatch[1], 10);
+      if (!isNaN(width)) {
+        cfParams.width = width;
+        logger.debug('Extracted width from AspectCrop params', { width });
+        logger.breadcrumb('Found width in AspectCrop parameters', undefined, {
+          width,
+          originalParams: params
+        });
+      }
+    }
+    
+    logger.debug('Extracted positions and expansion options', { 
+      xPosition, 
+      yPosition, 
+      allowExpansion,
+      width: cfParams.width
+    });
+    
+    // Instead of directly setting width and height with hardcoded values,
+    // translate to our internal aspect format for the metadata service to handle
+    
+    // Set aspect parameter in the format expected by our system
+    cfParams.aspect = `${aspectWidth}:${aspectHeight}`;
+    
+    // Set focal point in the format expected by our system
+    cfParams.focal = `${xPosition},${yPosition}`;
+    
+    // Set allowExpansion flag if specified
+    cfParams.allowExpansion = allowExpansion;
+    
+    // Set smart=true to trigger metadata processing
+    cfParams.smart = true;
+    
+    logger.debug('Set AspectCrop parameters using smart processing', { 
+      aspect: cfParams.aspect,
+      focal: cfParams.focal,
+      allowExpansion: cfParams.allowExpansion,
+      smart: cfParams.smart
+    });
+    
+    logger.breadcrumb('Applied AspectCrop transformation via metadata service', undefined, {
+      aspectRatio: `${aspectWidth}:${aspectHeight}`,
+      computedRatio: (aspectWidth / aspectHeight).toFixed(3),
+      xPosition,
+      yPosition,
+      allowExpansion
+    });
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    logger.error('Failed to parse AspectCrop parameters', { 
+      error: errorMsg,
+      params 
+    });
+    logger.breadcrumb('Error parsing AspectCrop parameters', undefined, {
+      error: errorMsg,
+      params
+    });
+  }
+  
+  return cfParams;
+}
+
+/**
  * Translates Akamai Image Manager URL parameters to Cloudflare Image Resizing parameters
  * 
  * @param url URL with Akamai Image Manager parameters
@@ -31,7 +969,224 @@ export function setLogger(configuredLogger: Logger): void {
 export function translateAkamaiParams(url: URL, config?: any): TransformOptions {
   const cfParams: TransformOptions = {};
   
-  // Parse Akamai im.resize parameter
+  // Size code mapping for both 'f' and 'imwidth' parameters
+  const sizeMap: Record<string, number> = {
+    'xxu': 40,
+    'xu': 80,
+    'u': 160,
+    'xxxs': 300,
+    'xxs': 400,
+    'xs': 500,
+    's': 600,
+    'm': 700,
+    'l': 750,
+    'xl': 900,
+    'xxl': 1100,
+    'xxxl': 1400,
+    'sg': 1600,
+    'g': 2000,
+    'xg': 3000,
+    'xxg': 4000
+  };
+
+  // First check for explicit width parameter (highest priority)
+  const widthParam = url.searchParams.get('width');
+  if (widthParam) {
+    const numWidth = parseInt(widthParam, 10);
+    if (!isNaN(numWidth)) {
+      cfParams.width = numWidth;
+      logger.debug('Applied explicit width parameter', {
+        width: cfParams.width
+      });
+    }
+  } else {
+    // Check for custom format size parameter 'f' (second priority)
+    const formatSize = url.searchParams.get('f');
+    if (formatSize) {
+      if (sizeMap[formatSize]) {
+        cfParams.width = sizeMap[formatSize];
+        logger.debug('Applied custom format size parameter', {
+          formatCode: formatSize,
+          width: cfParams.width
+        });
+      }
+    } else {
+      // Check for Akamai imwidth parameter that may contain size codes (lowest priority)
+      const imwidthParam = url.searchParams.get('imwidth');
+      if (imwidthParam) {
+        // First check if it's a size code
+        if (sizeMap[imwidthParam]) {
+          cfParams.width = sizeMap[imwidthParam];
+          logger.debug('Applied size code from imwidth parameter', {
+            formatCode: imwidthParam,
+            width: cfParams.width
+          });
+        } else {
+          // Otherwise parse as number
+          const numWidth = parseInt(imwidthParam, 10);
+          if (!isNaN(numWidth)) {
+            cfParams.width = numWidth;
+            logger.debug('Applied numeric imwidth parameter', {
+              imwidth: numWidth
+            });
+          }
+        }
+      }
+    }
+  }
+  
+  // Check for the newer im= parameter format first
+  const imParameter = url.searchParams.get('im');
+  if (imParameter) {
+    logger.debug('Processing Akamai im= parameter format', { imParameter });
+    logger.breadcrumb('Processing im= parameter', undefined, { parameter: imParameter });
+    
+    // Unified approach for extracting compact parameters from im= parameter
+    const compactParams = ['f=', 'r=', 'p='];
+    const hasCompactParams = compactParams.some(param => imParameter.includes(param));
+    
+    if (hasCompactParams) {
+      logger.debug('Detected compact parameters inside im= parameter', { imParameter });
+      logger.breadcrumb('Found compact parameters in im= value', undefined, { parameters: compactParams.filter(p => imParameter.includes(p)) });
+      
+      // Extract f= parameter (format/size code) if present in im= parameter
+      if (imParameter.includes('f=')) {
+        // Use a more comprehensive regex pattern that handles edge cases better
+        // Look for f= followed by any characters that aren't a comma, closing parentheses, or whitespace
+        const fMatch = imParameter.match(/f=([^,\)\s]+)/);
+        if (fMatch && fMatch[1]) {
+          const formatSize = fMatch[1];
+          // Map predefined size codes to pixel widths
+          const sizeMap: Record<string, number> = {
+            'xxu': 40,
+            'xu': 80,
+            'u': 160,
+            'xxxs': 300,
+            'xxs': 400,
+            'xs': 500,
+            's': 600,
+            'm': 700,
+            'l': 750,
+            'xl': 900,
+            'xxl': 1100,
+            'xxxl': 1400,
+            'sg': 1600,
+            'g': 2000,
+            'xg': 3000,
+            'xxg': 4000
+          };
+          
+          if (sizeMap[formatSize]) {
+            cfParams.width = sizeMap[formatSize];
+            logger.debug('Extracted f parameter from im= value', { 
+              formatCode: formatSize, 
+              width: cfParams.width 
+            });
+            logger.breadcrumb('Applied size code from im= parameter', undefined, {
+              code: formatSize, 
+              width: cfParams.width
+            });
+          } else {
+            // Check if it's a numeric width
+            const numWidth = parseInt(formatSize, 10);
+            if (!isNaN(numWidth) && numWidth > 0) {
+              cfParams.width = numWidth;
+              logger.debug('Extracted f parameter as numeric width from im= value', { 
+                width: cfParams.width 
+              });
+              logger.breadcrumb('Applied numeric width from f= parameter', undefined, {
+                originalValue: formatSize,
+                width: numWidth
+              });
+            }
+          }
+        }
+      }
+      
+      // Extract r= parameter (aspect ratio) if present in im= parameter
+      if (imParameter.includes('r=')) {
+        // More robust pattern for extracting aspect ratio parameter
+        const match = imParameter.match(/r=([^,\)\s]+)/);
+        if (match && match[1]) {
+          const aspectRatio = match[1];
+          if (aspectRatio.includes(':') || aspectRatio.includes('-')) {
+            // Convert to the standard aspect format
+            cfParams.aspect = aspectRatio;
+            logger.debug('Extracted r parameter from im= value', { aspect: aspectRatio });
+            logger.breadcrumb('Applied aspect ratio from im= parameter', undefined, {
+              aspect: aspectRatio
+            });
+          }
+        }
+      }
+      
+      // Extract p= parameter (positioning) if present in im= parameter
+      if (imParameter.includes('p=')) {
+        // Special handling for positioning parameter that contains a comma inside its value
+        // We need to be careful not to split at that comma
+        const match = imParameter.match(/p=([0-9.]+,[0-9.]+)/);
+        if (match && match[1]) {
+          const position = match[1];
+          if (position.includes(',')) {
+            const [x, y] = position.split(',').map(v => parseFloat(v));
+            if (!isNaN(x) && !isNaN(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+              cfParams.focal = position;
+              logger.debug('Extracted p parameter from im= value', { focal: position });
+              logger.breadcrumb('Applied positioning from im= parameter', undefined, {
+                focal: position,
+                x, y
+              });
+            }
+          }
+        }
+      }
+    }
+    
+    // Check for Mirror parameter and set flip accordingly
+    if (imParameter.includes('Mirror=horizontal') || imParameter.includes('Mirror=h')) {
+      cfParams.flip = 'h';
+      logger.debug('Setting horizontal mirror/flip from im= parameter');
+    } else if (imParameter.includes('Mirror=vertical') || imParameter.includes('Mirror=v')) {
+      cfParams.flip = 'v';
+      logger.debug('Setting vertical mirror/flip from im= parameter');
+    } else if (imParameter.includes('Mirror=both') || imParameter.includes('Mirror=hv') || imParameter.includes('Mirror=vh')) {
+      cfParams.flip = 'hv';
+      logger.debug('Setting both horizontal and vertical mirror/flip from im= parameter');
+    }
+    
+    // Direct check for width parameter in im= value
+    if (imParameter.includes('width=') && !cfParams.width) {
+      const widthMatch = imParameter.match(/width=(\d+)/i);
+      if (widthMatch && widthMatch.length >= 2) {
+        const width = parseInt(widthMatch[1], 10);
+        if (!isNaN(width) && width > 0) {
+          cfParams.width = width;
+          logger.debug('Extracted direct width parameter from im= value', { width });
+          logger.breadcrumb('Applied width from im= parameter', undefined, {
+            width,
+            pattern: 'direct match'
+          });
+        }
+      }
+    }
+    
+    // Still process the parameter normally in case it contains other transformations
+    const parsedParams = parseImParameter(imParameter);
+    
+    // Merge the parsed parameters into our Cloudflare parameters
+    Object.assign(cfParams, parsedParams);
+    
+    // If we found AspectCrop in this format, no need to check for im.aspectCrop
+    if (parsedParams.width && parsedParams.height && parsedParams.gravity) {
+      logger.debug('Successfully parsed im=AspectCrop parameters', {
+        width: parsedParams.width,
+        height: parsedParams.height,
+        gravity: parsedParams.gravity
+      });
+    }
+  }
+  
+  // Parse Akamai im.resize parameter (for backward compatibility)
   const imResize = url.searchParams.get('im.resize');
   if (imResize) {
     const resizeParams = parseImResize(imResize);
@@ -145,248 +1300,54 @@ export function translateAkamaiParams(url: URL, config?: any): TransformOptions 
       
       // Only proceed if we have valid dimensions
       if (aspectWidth > 0 && aspectHeight > 0) {
-        // Set the target aspect ratio
-        const targetAspect = aspectWidth / aspectHeight;
-        logger.debug('Target aspect ratio', { targetAspect });
+        // Get focal point parameters
+        const hoffset = typeof aspectCropParams.hoffset === 'number' ? aspectCropParams.hoffset : 0.5;
+        const voffset = typeof aspectCropParams.voffset === 'number' ? aspectCropParams.voffset : 0.5;
         
         // Determine if we're using allowExpansion mode
         const allowExpansion = aspectCropParams.allowExpansion === true;
         
-        // Start timing the dimension calculation
-        const dimensionStart = Date.now();
+        // Instead of directly calculating dimensions, use our internal parameters
+        // for the metadata service to handle proportionally
         
-        // If we have width and height, use them directly
-        if (cfParams.width && cfParams.height) {
-          logger.debug('Using existing width and height', { 
-            width: cfParams.width, 
-            height: cfParams.height, 
-            currentAspect: cfParams.width / cfParams.height 
-          });
-          
-          // We already have dimensions, just ensure they match the aspect ratio
-          // We'll adjust dimensions to match the aspect ratio when needed
-          if (allowExpansion) {
-            logger.debug('Allow expansion is true, adjusting dimensions with transparent background');
-            logger.breadcrumb('Adjusting dimensions with allowExpansion=true');
-            
-            // With allowExpansion, we ensure the image fits within the aspect ratio by adding transparent areas
-            if (cfParams.width / cfParams.height > targetAspect) {
-              // Image is wider than target aspect, adjust height
-              const oldHeight = cfParams.height;
-              cfParams.height = Math.round(cfParams.width / targetAspect);
-              logger.debug('Image is wider than target aspect, adjusting height', { 
-                oldHeight, 
-                newHeight: cfParams.height 
-              });
-              logger.breadcrumb('Adjusted height for aspectCrop', undefined, {
-                oldHeight,
-                newHeight: cfParams.height,
-                reason: 'wider than target'
-              });
-            } else {
-              // Image is taller than target aspect, adjust width
-              const oldWidth = cfParams.width;
-              cfParams.width = Math.round(cfParams.height * targetAspect);
-              logger.debug('Image is taller than target aspect, adjusting width', { 
-                oldWidth, 
-                newWidth: cfParams.width 
-              });
-              logger.breadcrumb('Adjusted width for aspectCrop', undefined, {
-                oldWidth,
-                newWidth: cfParams.width,
-                reason: 'taller than target'
-              });
-            }
-            // Set background to transparent
-            cfParams.background = 'transparent';
-          } else {
-            logger.debug('Allow expansion is false, using crop fit');
-            logger.breadcrumb('Using crop fit for aspectCrop', undefined, {
-              fit: 'crop',
-              allowExpansion: false
-            });
-            // Without allowExpansion, we crop to the target aspect ratio
-            cfParams.fit = 'crop';
-          }
-        } else if (cfParams.width) {
-          logger.debug('Only width provided, calculating height');
-          // We have width but not height, calculate height based on aspect ratio
-          cfParams.height = Math.round(cfParams.width / targetAspect);
-          logger.debug('Calculated height', { width: cfParams.width, height: cfParams.height });
-          logger.breadcrumb('Calculated height from width', undefined, {
-            width: cfParams.width,
-            calculatedHeight: cfParams.height
-          });
-        } else if (cfParams.height) {
-          logger.debug('Only height provided, calculating width');
-          // We have height but not width, calculate width based on aspect ratio
-          cfParams.width = Math.round(cfParams.height * targetAspect);
-          logger.debug('Calculated width', { width: cfParams.width, height: cfParams.height });
-          logger.breadcrumb('Calculated width from height', undefined, {
-            height: cfParams.height,
-            calculatedWidth: cfParams.width
-          });
-        } else {
-          logger.debug('No dimensions provided, using defaults');
-          // We have neither width nor height, use defaults
-          cfParams.width = 800;
-          cfParams.height = Math.round(800 / targetAspect);
-          logger.debug('Set default dimensions', { width: cfParams.width, height: cfParams.height });
-          logger.breadcrumb('Using default dimensions', undefined, {
-            defaultWidth: 800,
-            calculatedHeight: cfParams.height
-          });
-        }
+        // Set aspect parameter in the format expected by our system
+        cfParams.aspect = `${aspectWidth}:${aspectHeight}`;
         
-        // Now that dimensions are calculated, set fit=crop if allowExpansion is false
-        // This ensures all aspectCrop cases (with any dimension configuration) get the correct fit
-        if (!allowExpansion) {
-          logger.debug('Setting fit=crop for aspectCrop with allowExpansion=false');
-          logger.breadcrumb('Setting aspectCrop fit=crop', undefined, {
-            allowExpansion: false,
-            dimensions: `${cfParams.width}x${cfParams.height}`
-          });
-          cfParams.fit = 'crop';
-        }
+        // Set focal point in the format expected by our system
+        cfParams.focal = `${hoffset},${voffset}`;
         
-        const dimensionEnd = Date.now();
-        logger.breadcrumb('Calculated dimensions for aspectCrop', dimensionEnd - dimensionStart, {
-          width: cfParams.width,
-          height: cfParams.height,
-          targetAspect,
-          fit: cfParams.fit
+        // Set allowExpansion flag if specified
+        cfParams.allowExpansion = allowExpansion;
+        
+        // Set smart=true to trigger metadata processing
+        cfParams.smart = true;
+        
+        // If there are existing width/height parameters, preserve them
+        // The metadata service will use them as constraints while maintaining the aspect ratio
+        
+        logger.debug('Set AspectCrop parameters using smart processing', { 
+          aspect: cfParams.aspect,
+          focal: cfParams.focal,
+          allowExpansion: cfParams.allowExpansion,
+          smart: cfParams.smart,
+          existingWidth: cfParams.width,
+          existingHeight: cfParams.height
         });
         
-        // Start timing the gravity calculation
-        const gravityStart = Date.now();
+        // Log the completed translation
+        const totalProcessingTime = Date.now() - parseStart;
         
-        // Handle crop positioning (gravity)
-        let hoffset = typeof aspectCropParams.hoffset === 'number' ? aspectCropParams.hoffset : 0.5;
-        let voffset = typeof aspectCropParams.voffset === 'number' ? aspectCropParams.voffset : 0.5;
-        
-        // Check for xy gravity format with x and y coordinates (used in im.aspectCrop)
-        if (aspectCropParams.gravity === 'xy' || aspectCropParams.gravity === 'XY') {
-          // Use explicit x/y values if provided
-          if (typeof aspectCropParams.x === 'number') {
-            hoffset = aspectCropParams.x;
-          } else if (aspectCropParams.x && !isNaN(parseFloat(aspectCropParams.x as string))) {
-            // Handle case where x might be a string that can be converted to a number
-            hoffset = parseFloat(aspectCropParams.x as string);
-          }
-          
-          if (typeof aspectCropParams.y === 'number') {
-            voffset = aspectCropParams.y;
-          } else if (aspectCropParams.y && !isNaN(parseFloat(aspectCropParams.y as string))) {
-            // Handle case where y might be a string that can be converted to a number
-            voffset = parseFloat(aspectCropParams.y as string);
-          }
-          
-          // Ensure values are between 0 and 1 for Cloudflare's expected format
-          hoffset = Math.max(0, Math.min(1, hoffset));
-          voffset = Math.max(0, Math.min(1, voffset));
-          
-          // Set gravity according to Cloudflare's expected format for Workers
-          // According to docs, Cloudflare expects an object with x and y properties
-          // for the Workers integration
-          cfParams.gravity = { x: hoffset, y: voffset };
-          
-          // For debugging
-          logger.debug('Using exact gravity coordinates as object', { 
-            gravity: cfParams.gravity, 
-            x: hoffset, 
-            y: voffset,
-            gravityType: typeof cfParams.gravity,
-            originalGravity: aspectCropParams.gravity,
-            originalX: aspectCropParams.x,
-            originalY: aspectCropParams.y
-          });
-          
-          logger.breadcrumb('Using exact gravity coordinates from xy format', undefined, {
-            gravityX: hoffset,
-            gravityY: voffset,
-            sourceFormat: 'xy',
-            gravityType: typeof cfParams.gravity
-          });
-        } else {
-          logger.debug('Positioning offsets', { hoffset, voffset });
-          
-          // Map offsets to gravity
-          // Cloudflare uses gravity for positioning the crop
-          // Map the offset combinations to the closest gravity value supported by Cloudflare
-          // Cloudflare supports: "auto", "left", "right", "top", "bottom" or {x,y} coordinate object
-          
-          // Special handling for tests
-          if (hoffset === 0.5 && voffset === 0.5) {
-            // Center - map to string "center" for testing compatibility
-            cfParams.gravity = 'center';
-            logger.debug('Using center gravity for centered offset');
-          } else {
-            // For all other cases, use exact coordinate object
-            cfParams.gravity = { x: hoffset, y: voffset };
-            logger.debug('Using exact gravity coordinates', { x: hoffset, y: voffset });
-          }
-          
-          // For real-world usage, if we face issues again, we can use:
-          /*
-          // Use simple named positions for better Cloudflare compatibility
-          if (hoffset <= 0.25) {
-            // Left side
-            cfParams.gravity = "left";
-          } else if (hoffset >= 0.75) {
-            // Right side
-            cfParams.gravity = "right";
-          } else if (voffset <= 0.25) {
-            // Top
-            cfParams.gravity = "top";
-          } else if (voffset >= 0.75) {
-            // Bottom
-            cfParams.gravity = "bottom";
-          } else {
-            // Center (default)
-            cfParams.gravity = "center";
-          }
-          */
-        }
-        
-        const gravityEnd = Date.now();
-        logger.breadcrumb('Set gravity for aspectCrop', gravityEnd - gravityStart, {
-          gravity: cfParams.gravity,
-          hoffset,
-          voffset
+        logger.breadcrumb('Completed aspectCrop processing via metadata service', totalProcessingTime, {
+          aspect: cfParams.aspect,
+          focal: cfParams.focal,
+          allowExpansion: cfParams.allowExpansion,
+          smart: cfParams.smart,
+          totalParamCount: Object.keys(cfParams).length,
+          paramNames: Object.keys(cfParams).join(','),
+          computeRatio: (aspectWidth / aspectHeight).toFixed(3),
+          originalAspectCrop: imAspectCrop
         });
-        
-        logger.debug('Set gravity based on offsets', { gravity: cfParams.gravity });
       }
-      
-      logger.debug('Final transform parameters after aspect crop', { 
-        params: cfParams,
-        originalParam: imAspectCrop,
-        sourceWidth: aspectWidth,
-        sourceHeight: aspectHeight
-      });
-      
-      // Calculate total aspectCrop processing time
-      const totalProcessingTime = Date.now() - parseStart;
-      
-      logger.breadcrumb('Completed aspectCrop processing', totalProcessingTime, {
-        width: cfParams.width,
-        height: cfParams.height,
-        fit: cfParams.fit,
-        gravity: cfParams.gravity,
-        totalParamCount: Object.keys(cfParams).length,
-        paramNames: Object.keys(cfParams).join(','),
-        computeRatio: aspectWidth && aspectHeight ? (aspectWidth / aspectHeight).toFixed(3) : 'unknown',
-        originalAspectCrop: imAspectCrop
-      });
-      
-      // Add a summary breadcrumb to easily identify complex aspectCrop operations
-      logger.breadcrumb('AspectCrop summary', undefined, {
-        processingTimeMs: totalProcessingTime,
-        hasWidthHeight: !!(cfParams.width && cfParams.height),
-        hasFit: !!cfParams.fit,
-        hasGravity: !!cfParams.gravity,
-        finalParamCount: Object.keys(cfParams).length
-      });
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       const stack = error instanceof Error ? error.stack : undefined;
@@ -1264,8 +2225,12 @@ function parseImResize(resize: string): Record<string, string | number> {
  * @returns True if URL appears to use Akamai Image Manager parameters
  */
 export function isAkamaiFormat(url: URL): boolean {
-  // Check for common Akamai Image Manager parameters
-  const akamaiParams = [
+  // Check for common Akamai Image Manager parameters in both formats:
+  // 1. im.X format (e.g., im.resize, im.aspectCrop)
+  // 2. im=X format (e.g., im=AspectCrop, im=Resize)
+  
+  // Check for im.X format parameters
+  const akamaiDotParams = [
     'im.resize', 'im.crop', 'im.aspectCrop', 'im.quality', 'im.format', 'im.rotate',
     'im.grayscale', 'im.contrast', 'im.brightness', 'im.sharpen',
     'im.background', 'im.metadata', 'im.frame', 'im.composite',
@@ -1273,9 +2238,14 @@ export function isAkamaiFormat(url: URL): boolean {
     'im.watermark', 'im.if-dimension', 'im.flip', 'im.flop'
   ];
   
-  // Check if any Akamai parameters are present
-  return Array.from(url.searchParams.keys())
-    .some(key => akamaiParams.some(param => key.toLowerCase() === param.toLowerCase()));
+  // Check for the im= format parameter
+  const hasImParameter = url.searchParams.has('im');
+  
+  // Check if any Akamai parameters are present in either format
+  const hasDotFormat = Array.from(url.searchParams.keys())
+    .some(key => akamaiDotParams.some(param => key.toLowerCase() === param.toLowerCase()));
+    
+  return hasImParameter || hasDotFormat;
 }
 
 /**
@@ -1339,6 +2309,79 @@ export function convertToCloudflareUrl(url: URL): URL {
   
   // Create a new URL object to avoid modifying the original
   const cfUrl = new URL(url.toString());
+  
+  // Process compact parameters first before Akamai translation
+  // Handle r=16:9 (aspect ratio) and p=0.7,0.5 (positioning)
+  if (cfUrl.searchParams.has('r')) {
+    const aspectRatio = cfUrl.searchParams.get('r') || '';
+    if (aspectRatio.includes(':') || aspectRatio.includes('-')) {
+      // Convert to the Akamai parameter format for AspectCrop
+      const formattedRatio = aspectRatio.replace('-', ':');
+      // Parse the width and height
+      const [aspectWidth, aspectHeight] = formattedRatio.split(':').map(val => parseFloat(val));
+      const aspectCrop = `width:${aspectWidth},height:${aspectHeight}`;
+      
+      // If we also have positioning, add it to the aspectCrop string
+      if (cfUrl.searchParams.has('p')) {
+        const position = cfUrl.searchParams.get('p') || '';
+        if (position.includes(',')) {
+          const [x, y] = position.split(',').map(v => parseFloat(v));
+          if (!isNaN(x) && !isNaN(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+            const aspectCropWithPosition = `${aspectCrop},hoffset:${x},voffset:${y}`;
+            cfUrl.searchParams.set('im.aspectCrop', aspectCropWithPosition);
+            logger.debug('Applied combined compact parameters r and p', {
+              aspectRatio: formattedRatio,
+              position,
+              akamaiParam: aspectCropWithPosition
+            });
+          } else {
+            // Just use the aspect ratio
+            cfUrl.searchParams.set('im.aspectCrop', aspectCrop);
+            logger.debug('Applied compact aspect ratio parameter r', {
+              aspectRatio: formattedRatio,
+              akamaiParam: aspectCrop
+            });
+          }
+        } else {
+          // Just use the aspect ratio
+          cfUrl.searchParams.set('im.aspectCrop', aspectCrop);
+          logger.debug('Applied compact aspect ratio parameter r', {
+            aspectRatio: formattedRatio,
+            akamaiParam: aspectCrop
+          });
+        }
+        
+        // Remove the processed compact parameters
+        cfUrl.searchParams.delete('r');
+        cfUrl.searchParams.delete('p');
+      } else {
+        // Only aspect ratio, no positioning
+        cfUrl.searchParams.set('im.aspectCrop', aspectCrop);
+        cfUrl.searchParams.delete('r');
+        logger.debug('Applied compact aspect ratio parameter r', {
+          aspectRatio: formattedRatio,
+          akamaiParam: aspectCrop
+        });
+      }
+    }
+  }
+  // Handle standalone p parameter (if no r parameter was present)
+  else if (cfUrl.searchParams.has('p') && !cfUrl.searchParams.has('im.aspectCrop')) {
+    const position = cfUrl.searchParams.get('p') || '';
+    if (position.includes(',')) {
+      const [x, y] = position.split(',').map(v => parseFloat(v));
+      if (!isNaN(x) && !isNaN(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+        // Use with default 1:1 aspect
+        const aspectCrop = `width:1,height:1,hoffset:${x},voffset:${y}`;
+        cfUrl.searchParams.set('im.aspectCrop', aspectCrop);
+        cfUrl.searchParams.delete('p');
+        logger.debug('Applied compact positioning parameter p with default 1:1 aspect', {
+          position,
+          akamaiParam: aspectCrop
+        });
+      }
+    }
+  }
   
   // First check for path-based parameters
   logger.debug('Checking for path-based parameters', { pathname: url.pathname });
@@ -1404,10 +2447,10 @@ export function convertToCloudflareUrl(url: URL): URL {
     allParams: Object.keys(cfParams).join(',')
   });
   
-  // Remove all Akamai parameters
+  // Remove all Akamai parameters and custom format parameters
   const removedParams: string[] = [];
   for (const key of Array.from(cfUrl.searchParams.keys())) {
-    if (key.startsWith('im.')) {
+    if (key.startsWith('im.') || key === 'f' || key === 'imwidth' || key === 'im' || key === 'r' || key === 'p') {
       cfUrl.searchParams.delete(key);
       removedParams.push(key);
     }

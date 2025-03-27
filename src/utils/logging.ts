@@ -6,6 +6,7 @@
  */
 
 import { ImageResizerConfig } from '../config';
+import { OptimizedLogger, createOptimizedLogger } from './optimized-logging';
 
 // Define log levels for clarity and control
 export enum LogLevel {
@@ -44,9 +45,19 @@ export interface Logger {
  * 
  * @param config The image resizer configuration
  * @param context Optional context name for the logger (e.g., 'Akamai', 'Storage')
+ * @param useOptimized Whether to use the optimized logger implementation
  * @returns A logger object
  */
-export function createLogger(config: ImageResizerConfig, context?: string): Logger {
+export function createLogger(
+  config: ImageResizerConfig, 
+  context?: string, 
+  useOptimized: boolean = false
+): Logger | OptimizedLogger {
+  // Use optimized logger if requested
+  if (useOptimized) {
+    return createOptimizedLogger(config, context);
+  }
+
   // Get configured log level, defaulting to INFO
   const configuredLevel = config.logging?.level || 'INFO';
   const minLevel = LOG_LEVEL_MAP[configuredLevel] || LogLevel.INFO;
