@@ -102,7 +102,7 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
     request: Request
   ): Promise<ImageMetadata> {
     // Declare a variable to store storage fetch results for later use
-    let storageResult: any = null;
+    const storageResult: any = null;
     const startTime = Date.now();
     this.logger.debug('Fetching image metadata', { imagePath });
     

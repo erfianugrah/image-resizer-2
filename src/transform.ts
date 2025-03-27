@@ -7,7 +7,6 @@
 
 import { ImageResizerConfig } from "./config";
 import { StorageResult } from "./storage";
-import { applyCloudflareCache } from "./cache";
 import { createLogger, defaultLogger, Logger } from "./utils/logging";
 
 // Use default logger until a configured one is provided
@@ -1611,13 +1610,14 @@ export async function transformImage(
       };
 
       // Apply cache settings for the JSON request
-      const jsonOptionsWithCache = applyCloudflareCache(
-        jsonFetchOptions,
-        config,
-        storageResult.path || "",
-        { format: "json" },
-        storageResult.response.headers,
-      );
+      const jsonOptionsWithCache = {
+        ...jsonFetchOptions,
+        cf: {
+          ...jsonFetchOptions.cf,
+          cacheTtl: config.cache.ttl.ok || 3600,
+          cacheEverything: config.cache.cacheEverything || true
+        }
+      };
 
       const jsonResponse = await fetch(
         request.url,
@@ -1740,13 +1740,14 @@ export async function transformImage(
     const cacheStart = Date.now();
     // Apply cache settings including cache tags
     // Pass response headers to extract metadata for cache tags
-    const fetchOptionsWithCache = applyCloudflareCache(
-      fetchOptions,
-      config,
-      storageResult.path,
-      transformOptions,
-      storageResult.response.headers,
-    );
+    const fetchOptionsWithCache = {
+      ...fetchOptions,
+      cf: {
+        ...fetchOptions.cf,
+        cacheTtl: config.cache.ttl.ok || 3600,
+        cacheEverything: config.cache.cacheEverything || true
+      }
+    };
     const cacheEnd = Date.now();
     logger.breadcrumb("Applied cache settings", cacheEnd - cacheStart);
 

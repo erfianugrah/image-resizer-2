@@ -53,17 +53,17 @@ export const formatSupport: Record<string, Record<string, number>> = {
 export function normalizeBrowserName(browser: string): string {
   // Map from various formats to our dictionary keys
   const browserMap: Record<string, string> = {
-    "chrome": "chrome",
-    "firefox": "firefox",
-    "safari": "safari",
-    "edge": "edge",
-    "edge_chromium": "edge_chromium",
-    "ie": "ie",
-    "opera": "opera",
-    "samsung": "samsung",
-    "ios_saf": "ios_saf",
-    "and_chr": "and_chr",
-    "and_ff": "and_ff",
+    'chrome': 'chrome',
+    'firefox': 'firefox',
+    'safari': 'safari',
+    'edge': 'edge',
+    'edge_chromium': 'edge_chromium',
+    'ie': 'ie',
+    'opera': 'opera',
+    'samsung': 'samsung',
+    'ios_saf': 'ios_saf',
+    'and_chr': 'and_chr',
+    'and_ff': 'and_ff',
     // Add any other mappings needed
   };
 
@@ -79,7 +79,7 @@ export function normalizeBrowserName(browser: string): string {
  * @returns true if the browser supports the format, false otherwise
  */
 export function isFormatSupported(
-  format: "webp" | "avif",
+  format: 'webp' | 'avif',
   browser: string,
   version: string,
 ): boolean {
