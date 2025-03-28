@@ -540,7 +540,7 @@ export const defaultConfig: ImageResizerConfig = {
     parallelStorageOperations: false,
     responseOptimization: true,
     optimizedClientDetection: true,
-    optimizedMetadataFetching: true,
+    optimizedMetadataFetching: true, // Enable multi-layer cached metadata service with KV integration
     baselineEnabled: true,
     maxBaselineSamples: 100,
     reportingEnabled: true,

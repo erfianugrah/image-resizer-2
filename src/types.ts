@@ -189,6 +189,7 @@ export interface Env {
   IMAGES_BUCKET?: R2Bucket;
   ASSETS?: Fetcher;
   KV_TEST?: KVNamespace;
+  IMAGE_METADATA_CACHE?: KVNamespace; // KV for metadata caching
 }
 
 // Cloudflare Workers types

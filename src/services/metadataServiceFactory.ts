@@ -11,6 +11,7 @@ import {
   ConfigurationService
 } from './interfaces';
 import { DefaultMetadataFetchingService } from './metadataService';
+import { OptimizedMetadataService } from './optimizedMetadataService';
 
 /**
  * Create a MetadataFetchingService instance
@@ -31,10 +32,15 @@ export function createMetadataService(
 ): MetadataFetchingService {
   logger.debug('Creating MetadataFetchingService');
   
-  // Check if we should use an optimized version based on config flag
+  // Check if we should use the optimized version with multi-layer caching
   if (config.performance?.optimizedMetadataFetching) {
-    logger.info('Using optimized metadata fetching service');
-    // In the future, we could import and return an optimized version here
+    logger.info('Using optimized metadata fetching service with multi-layer caching');
+    return new OptimizedMetadataService(
+      logger,
+      storageService,
+      cacheService,
+      configurationService
+    );
   }
   
   // Return the default implementation

@@ -312,6 +312,12 @@
 			"preview_bucket_name": "images-dev"
 		}
 	],
+	"kv_namespaces": [
+		{
+			"binding": "IMAGE_METADATA_CACHE",
+			"id": "a0dea93bf646469d8794c757f1136b05"
+		}
+	],
 	/**
    * Environment-specific configurations
    */
@@ -1037,7 +1043,13 @@
 					"binding": "IMAGES_BUCKET",
 					"bucket_name": "images-weur"
 				}
-			]
+			],
+			"kv_namespaces": [
+				{
+					"binding": "IMAGE_METADATA_CACHE",
+					"id": "a0dea93bf646469d8794c757f1136b05"
+				}
+			],
 		}
 	},
 	"routes": [
