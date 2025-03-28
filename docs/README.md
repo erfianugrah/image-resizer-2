@@ -1,70 +1,47 @@
 # Image Resizer Documentation
 
-Welcome to the comprehensive documentation for the Image Resizer service. This documentation is organized by functional areas to help you find what you need quickly.
+Welcome to the Image Resizer documentation. This documentation is organized into public and internal sections.
 
-## Documentation Map
+## Documentation Structure
 
-- [Core Documentation](#core-features) - Architecture, setup, and core concepts
-- [Feature Documentation](#feature-documentation) - Detailed features and capabilities
-- [Integrations](#integrations) - Third-party integrations and compatibility
-- [Debugging and Development](#debugging-and-diagnostics) - Diagnostics and development tools
-- [Examples](#examples) - Practical examples and use cases
+### [Public Documentation](public/README.md)
+
+The public documentation contains user-facing guides, API references, and implementation examples for using the Image Resizer service:
+
+- **Core Documentation** - Architecture, setup, and configuration
+- **Feature Documentation** - Transformation, optimization, and advanced features
+- **Integrations** - Third-party integrations with Akamai, Cloudflare, etc.
+- **Examples** - Implementation examples and use cases
+
+### [Internal Documentation](internal/README.md)
+
+The internal documentation is for development teams and contains implementation details, architecture decisions, and development plans:
+
+- **Development** - Service architecture and implementation plans
+- **Refactoring** - Refactoring plans and progress
+- **Fixes** - Implementation details for bug fixes
+- **Improvements** - Enhancement plans and implementation details
+- **Performance** - Performance optimization strategies
+- **Architecture** - Architecture decisions and roadmaps
 
 ## Getting Started
 
-- [Architecture Overview](core/architecture.md) - Understand the system architecture
-- [Setup Guide](core/setup.md) - Instructions for setting up and deploying the service
-- [Configuration Reference](core/configuration-reference.md) - Complete configuration options
+If you're new to the Image Resizer, start with:
 
-## Feature Documentation
+1. [Architecture Overview](public/core/architecture.md)
+2. [Setup Guide](public/core/setup.md)
+3. [Configuration Reference](public/core/configuration-reference.md)
+4. [Transformation Guide](public/core/transformation.md)
 
-### Core Features
+## For Developers
 
-- [Transformation Guide](core/transformation.md) - Image transformation capabilities
-- [Responsive Images](optimization/responsive-images.md) - Automatic responsive image sizing
-- [Derivatives](optimization/derivatives.md) - Template-based transformations
+If you're contributing to the Image Resizer, these resources are helpful:
 
-### Storage Options
-
-- [Storage Overview](storage/index.md) - Storage systems (R2, Remote URLs, Fallback)
-- [Path Transformations](storage/path-transforms.md) - Path mapping for different storage types
-- [Authentication](storage/authentication.md) - Securing image origins
-
-### Optimization
-
-- [Format Selection](optimization/format-selection.md) - Automatic and manual format selection
-- [Quality Optimization](optimization/quality-optimization.md) - Quality settings and optimization
-- [Client Detection](client-detection/index.md) - Browser and device detection framework
-
-### Caching
-
-- [Caching System](caching/index.md) - Caching strategies and configuration
-- [Cache Tags](caching/cache-tags.md) - Advanced cache tag system for purging
-
-### Integrations
-
-- [Akamai Compatibility](integrations/akamai/index.md) - Support for Akamai Image Manager URLs
-- [Cloudflare Integration](integrations/cloudflare/index.md) - Cloudflare-specific features
-
-## Debugging and Diagnostics
-
-- [Logging System](debugging/logging.md) - Comprehensive logging capabilities
-- [Breadcrumb Tracing](debugging/breadcrumbs.md) - Request tracing with performance metrics
-- [Diagnosing Timeouts](debugging/diagnosing-timeouts.md) - Resolving 524 timeout errors
-- [Debug Mode](debugging/debug-headers.md) - Using debug headers and HTML reports
-
-## Development
-
-- [Contributing Guide](development/contributing.md) - How to contribute to the project
-- [Coding Standards](development/coding-standards.md) - Code style and practices
-- [Testing Guide](development/testing.md) - How to test the image resizer
-
-## Examples
-
-- [Watermarking Examples](examples/watermark-examples.md) - Watermark configurations and examples
-- [Authentication Examples](examples/authentication-examples.md) - Authentication setups
-- [Performance Optimization](examples/performance-optimization.md) - Performance tuning examples
+1. [Service Architecture](internal/development/service-architecture.md)
+2. [Refactoring Implementation Plan](internal/development/refactoring-implementation-plan.md)
+3. [Testing Strategy](internal/development/testing-strategy.md)
+4. [Improvement Plan](internal/architecture/improvement-plan.md)
 
 ---
 
-*Last Updated: March 22, 2025*
+*Last Updated: March 28, 2025*
