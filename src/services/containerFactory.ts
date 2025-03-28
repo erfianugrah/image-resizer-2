@@ -26,6 +26,7 @@ export function createContainerFromDI(env: Env, useLazyLoading: boolean = false)
   const serviceContainer = container.createServiceContainer();
   
   // Add lifecycle manager to the container
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (serviceContainer as any).lifecycleManager = createLifecycleManager(serviceContainer);
   
   // Log the container creation (using the container's logger)
@@ -77,6 +78,7 @@ export function createContainer(
   
   // Add lifecycle manager if it doesn't exist yet
   if (!container.lifecycleManager) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (container as any).lifecycleManager = createLifecycleManager(container);
   }
   

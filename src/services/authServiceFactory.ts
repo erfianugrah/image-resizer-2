@@ -24,14 +24,24 @@ export function createAuthService(config: ImageResizerConfig, logger: Logger): A
   // Configure it with the provided logger
   authService.setLogger(logger);
   
-  // Log the configuration
-  if (config.storage.auth?.enabled) {
-    logger.info('Auth service initialized with authentication enabled', {
-      securityLevel: config.storage.auth.securityLevel || 'strict',
-      originCount: config.storage.auth.origins ? Object.keys(config.storage.auth.origins).length : 0
+  // Log the configuration - report on origins that require authentication
+  const originConfig = config.storage.auth || {};
+  const origins = originConfig.origins || {};
+  const hasOrigins = Object.keys(origins).length > 0;
+  const originCount = hasOrigins ? Object.keys(origins).length : 0;
+  const enabledOrigins = hasOrigins ? 
+    Object.entries(origins).filter(([_, origin]) => origin.enabled !== false).length : 0;
+  
+  if (enabledOrigins > 0) {
+    logger.info('Auth service initialized with domain-specific authentication', {
+      securityLevel: config.storage.auth?.securityLevel || 'strict',
+      totalOrigins: originCount,
+      enabledOrigins: enabledOrigins,
+      remoteAuthEnabled: config.storage.remoteAuth?.enabled,
+      fallbackAuthEnabled: config.storage.fallbackAuth?.enabled
     });
   } else {
-    logger.info('Auth service initialized with authentication disabled');
+    logger.info('Auth service initialized with no enabled authentication origins');
   }
   
   return authService;

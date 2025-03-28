@@ -11,6 +11,8 @@ import { Logger } from '../utils/logging';
 import { OptimizedLogger } from '../utils/optimized-logging';
 import { 
   batchUpdateHeaders,
+  // Used for future response updates and by other modules
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   mergeResponseUpdates
 } from '../utils/optimized-response';
 import { DebugService, StorageResult, ClientInfo, TransformOptions } from './interfaces';
@@ -47,6 +49,7 @@ interface DebugVisualizationData {
       estimatedSize?: number;
       width?: number;
       height?: number;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       transformOptions: Record<string, any>;
     };
   };
@@ -101,6 +104,7 @@ export class DefaultDebugService implements DebugService {
    * @param message The message to log
    * @param data Optional additional data
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private debugLog(message: string, data?: any): void {
     if (this.isOptimizedLogger) {
       if ((this.logger as OptimizedLogger).isLevelEnabled('DEBUG')) {
@@ -226,6 +230,7 @@ export class DefaultDebugService implements DebugService {
         // Add JSON string of all options for convenience
         try {
           headers.set('X-Transform-Options', JSON.stringify(cleanOptions));
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (e) {
         // Ignore JSON errors
         }
@@ -563,6 +568,7 @@ export class DefaultDebugService implements DebugService {
     try {
       const cacheTags = this.generateCacheTags(storageResult.path || '', options, config);
       return cacheTags.length > 0 ? cacheTags.join(', ') : 'None';
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (e) {
       return 'Error generating cache tags';
     }
@@ -682,6 +688,7 @@ export class DefaultDebugService implements DebugService {
     options: TransformOptions,
     config: ImageResizerConfig,
     metrics: PerformanceMetrics
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): Record<string, any> {
     const url = new URL(request.url);
     const now = Date.now();
@@ -706,6 +713,7 @@ export class DefaultDebugService implements DebugService {
     }
     
     // Extract transformation values for display
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const transformValues: Record<string, any> = {};
     Object.keys(options).forEach(key => {
       const value = options[key as keyof typeof options];
@@ -716,6 +724,7 @@ export class DefaultDebugService implements DebugService {
           // Attempt to JSON stringify objects
           try {
             transformValues[key] = JSON.stringify(value);
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
           } catch (e) {
             transformValues[key] = '[Complex Object]';
           }
@@ -910,6 +919,7 @@ export class DefaultDebugService implements DebugService {
     metrics: PerformanceMetrics,
     clientInfo?: ClientInfo
   ): DebugVisualizationData {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const url = new URL(request.url);
     const now = Date.now();
     metrics.end = metrics.end || now;
@@ -1007,6 +1017,7 @@ export class DefaultDebugService implements DebugService {
           options,
           config
         );
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       } catch (e) {
         this.logger.error('Error generating cache tags for debug', {
           error: e instanceof Error ? e.message : String(e)

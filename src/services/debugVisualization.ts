@@ -39,6 +39,7 @@ export interface VisualizationData {
       estimatedSize?: number;
       width?: number;
       height?: number;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       transformOptions: Record<string, any>;
     };
   };
@@ -161,6 +162,7 @@ export function createEnhancedHtmlReport(
       } else {
         try {
           transformOptions[key] = JSON.stringify(value);
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (e) {
           transformOptions[key] = '[Complex Object]';
         }

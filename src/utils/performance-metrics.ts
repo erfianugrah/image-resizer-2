@@ -74,6 +74,7 @@ export interface PerformanceMeasurement {
   startTime: number;
   endTime: number;
   duration: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata?: Record<string, any>;
 }
 
@@ -128,6 +129,7 @@ export class PerformanceTimer {
    * @param metadata Optional metadata to associate with the measurement
    * @returns The duration in milliseconds
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   end(name: string, metadata?: Record<string, any>): number {
     const endTime = Date.now();
     const startTime = this.startTimes.get(name);
@@ -233,9 +235,11 @@ export class PerformanceTimer {
       if (metricKey) {
         if (name.endsWith('_end')) {
           // For end timestamps, use the end time
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (metrics as any)[metricKey] = measurement.endTime;
         } else {
           // For start timestamps, use the start time
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (metrics as any)[metricKey] = measurement.startTime;
         }
       }
@@ -297,6 +301,7 @@ export class PerformanceBaseline {
     category: string,
     operation: string,
     duration: number,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     metadata?: Record<string, any>
   ): void {
     const key = `${category}:${operation}`;
@@ -447,7 +452,7 @@ export class PerformanceBaseline {
    * @param category The measurement category to initialize
    * @param maxSamples Maximum number of samples to keep (default: 100)
    */
-  initializeBaseline(category: string, maxSamples: number = 100): void {
+  initializeBaseline(category: string, _maxSamples: number = 100): void {
     if (this.logger) {
       this.logger.debug(`Initializing performance baseline for category: ${category}`);
     }
@@ -483,6 +488,7 @@ export class PerformanceBaseline {
 export interface PerformanceSample {
   timestamp: number;
   duration: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata?: Record<string, any>;
 }
 

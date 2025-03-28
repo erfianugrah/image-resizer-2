@@ -182,9 +182,10 @@ export class OptimizedStorageService implements StorageService {
         });
         
         return result.result;
-      } catch (aggregateError) {
-        // All promises were rejected
-        // Extract the individual errors
+      // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
+      } catch (_aggregateError) {
+        // All promises were rejected, but we'll extract the individual errors ourselves
+        // We intentionally don't use the aggregateError variable directly
         const errors: Record<string, string> = {};
         
         // Fetch all results to check errors
@@ -341,7 +342,7 @@ export class OptimizedStorageService implements StorageService {
     imagePath: string,
     config: ImageResizerConfig,
     env: Env,
-    request: Request
+    _request: Request
   ): Promise<StorageResult | null> {
     // Skip if R2 is not enabled or no bucket is available
     if (!config.storage.r2?.enabled || !env.IMAGES_BUCKET) {
@@ -398,8 +399,8 @@ export class OptimizedStorageService implements StorageService {
   private async fetchFromRemote(
     imagePath: string,
     config: ImageResizerConfig,
-    env: Env,
-    request: Request
+    _env: Env,
+    _request: Request
   ): Promise<StorageResult | null> {
     // Skip if remote URL is not configured
     if (!config.storage.remoteUrl) {
@@ -456,8 +457,8 @@ export class OptimizedStorageService implements StorageService {
   private async fetchFromFallback(
     imagePath: string,
     config: ImageResizerConfig,
-    env: Env,
-    request: Request
+    _env: Env,
+    _request: Request
   ): Promise<StorageResult | null> {
     // Skip if fallback URL is not configured
     if (!config.storage.fallbackUrl) {

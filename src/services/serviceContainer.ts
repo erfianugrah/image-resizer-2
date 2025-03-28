@@ -20,6 +20,7 @@ import { DefaultCacheService } from './cacheService';
 import { DefaultDebugService } from './debugService';
 import { DefaultImageTransformationService } from './transformationService';
 import { DefaultStorageService } from './storageService';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { DefaultClientDetectionService } from './clientDetectionService';
 import { DefaultConfigurationService } from './configurationService';
 import { DefaultLoggingService } from './loggingService';
@@ -51,6 +52,7 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
       optimizedLogging: true,
       optimizedClientDetection: true
     }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any;
   
   // Create a temporary logger for bootstrapping, using optimized logging
@@ -137,34 +139,42 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
         
         // Initialize other services that support lifecycle
         if ('initialize' in loggingService && typeof loggingService.initialize === 'function') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (loggingService as any).initialize();
         }
         
         if ('initialize' in authService && typeof authService.initialize === 'function') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (authService as any).initialize();
         }
         
         if ('initialize' in storageService && typeof storageService.initialize === 'function') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (storageService as any).initialize();
         }
         
         if ('initialize' in cacheService && typeof cacheService.initialize === 'function') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (cacheService as any).initialize();
         }
         
         if ('initialize' in clientDetectionService && typeof clientDetectionService.initialize === 'function') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (clientDetectionService as any).initialize();
         }
         
         if ('initialize' in debugService && typeof debugService.initialize === 'function') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (debugService as any).initialize();
         }
         
         if ('initialize' in transformationService && typeof transformationService.initialize === 'function') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (transformationService as any).initialize();
         }
         
         if ('initialize' in metadataService && typeof metadataService.initialize === 'function') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (metadataService as any).initialize();
         }
         
@@ -182,34 +192,42 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
         
         // Shut down services in reverse dependency order
         if ('shutdown' in transformationService && typeof transformationService.shutdown === 'function') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (transformationService as any).shutdown();
         }
         
         if ('shutdown' in metadataService && typeof metadataService.shutdown === 'function') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (metadataService as any).shutdown();
         }
         
         if ('shutdown' in debugService && typeof debugService.shutdown === 'function') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (debugService as any).shutdown();
         }
         
         if ('shutdown' in clientDetectionService && typeof clientDetectionService.shutdown === 'function') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (clientDetectionService as any).shutdown();
         }
         
         if ('shutdown' in cacheService && typeof cacheService.shutdown === 'function') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (cacheService as any).shutdown();
         }
         
         if ('shutdown' in storageService && typeof storageService.shutdown === 'function') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (storageService as any).shutdown();
         }
         
         if ('shutdown' in authService && typeof authService.shutdown === 'function') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (authService as any).shutdown();
         }
         
         if ('shutdown' in loggingService && typeof loggingService.shutdown === 'function') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (loggingService as any).shutdown();
         }
         
@@ -225,6 +243,7 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
   if (!container.lifecycleManager) {
     // We need to use dynamic import to avoid circular dependency
     import('./lifecycleManager').then(({ createLifecycleManager }) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (container as any).lifecycleManager = createLifecycleManager(container);
       mainLogger.debug('LifecycleManager added to ServiceContainer');
     }).catch(error => {

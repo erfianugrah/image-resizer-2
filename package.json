@@ -19,14 +19,14 @@
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.7.5",
 		"@mdn/browser-compat-data": "^5.7.5",
-		"@typescript-eslint/eslint-plugin": "^7.4.0",
-		"@typescript-eslint/parser": "^7.4.0",
+		"@typescript-eslint/eslint-plugin": "^8.28.0",
+		"@typescript-eslint/parser": "^8.28.0",
 		"caniuse-db": "^1.0.30001706",
 		"esbuild": "^0.25.1",
 		"eslint": "^8.57.0",
-		"typescript": "^5.5.2",
+		"typescript": "^5.8.2",
 		"vitest": "~3.0.7",
-		"wrangler": "^4.5.0"
+		"wrangler": "^4.5.1"
 	},
 	"dependencies": {
 		"pino": "^9.6.0",

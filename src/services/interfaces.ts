@@ -79,9 +79,13 @@ export interface TransformOptions {
   allowExpansion?: boolean;  // Allow image expansion to fit aspect ratio
   
   // Internal use options
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   _conditions?: any[]; // For conditional transformations (internal use)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   _customEffects?: any[]; // For custom effects (internal use)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   _metadataResult?: any; // For storing metadata analysis results (internal use)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
 }
 
@@ -108,6 +112,7 @@ export interface StorageResult {
   sourceType: 'r2' | 'remote' | 'fallback' | 'error';
   contentType: string | null;
   size: number | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata?: Record<string, any>;
   originalUrl?: string;
   error?: Error;
@@ -425,6 +430,7 @@ export interface DebugService {
     options: TransformOptions,
     config: ImageResizerConfig,
     metrics: PerformanceMetrics
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): Record<string, any>;
 }
 
@@ -579,6 +585,7 @@ export interface ConfigurationService {
    * @param derivativeName Name of the derivative
    * @returns Derivative configuration or null if not found
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getDerivative(derivativeName: string): Record<string, any> | null;
   
   /**
@@ -718,6 +725,7 @@ export interface PathService {
    */
   applyTransformations(
     imagePath: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     config?: any
   ): string;
 }
@@ -796,10 +804,12 @@ export interface ImageMetadata {
     height: number;
     format?: string;
     orientation?: number;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     originalMetadata?: Record<string, any>; // Store the raw metadata from Cloudflare
     estimationMethod?: 'direct' | 'exif' | 'headers' | 'file-size' | 'minimal-fallback' | 'error-fallback'; // How dimensions were determined
     metadataSource?: 'format-json' | 'metadata-json' | 'cf-metadata' | 'headers' | 'storage-service' | 'estimation'; // Source of metadata
     confidence?: 'high' | 'medium' | 'low'; // Confidence in the accuracy of the metadata
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     [key: string]: any;
   };
   errors?: string[];
@@ -906,12 +916,12 @@ export interface AuthService {
   ): OriginContext | null;
 
   /**
-   * Get quick result for when auth is disabled
+   * Get default auth result when no authentication is needed
    * 
    * @param url URL to authenticate
    * @returns Authentication result with success status
    */
-  getNoAuthResult(url: string): AuthResult;
+  getDefaultAuthResult(url: string): AuthResult;
 
   /**
    * Authenticate a request to a protected origin

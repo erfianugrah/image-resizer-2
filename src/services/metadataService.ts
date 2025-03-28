@@ -262,6 +262,8 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
     startTime: number
   ): Promise<ImageMetadata> {
     // Declare a variable to store storage fetch results for later use
+    // Using any type here is necessary to handle unknown storage service responses
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let storageResult: any = null;
     
     try {
@@ -277,7 +279,7 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
       
       try {
         // Use the storage service to fetch the image first to get basic info
-        const storageResult = await this.storageService.fetchImage(
+        storageResult = await this.storageService.fetchImage(
           imagePath,
           config,
           env,
@@ -465,14 +467,14 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
       try {
         // Use Cloudflare's cf object to directly request metadata
       // This won't trigger recursion since it's handled by Cloudflare's image pipeline
-      const fetchOptions = {
-        cf: {
-          image: {
-            format: 'json' as const // Use const assertion to fix TypeScript type
+        const fetchOptions = {
+          cf: {
+            image: {
+              format: 'json' as const // Use const assertion to fix TypeScript type
+            }
           }
-        }
-      };
-      const metadataResponse = await fetch(metadataUrl.toString(), fetchOptions);
+        };
+        const metadataResponse = await fetch(metadataUrl.toString(), fetchOptions);
         
         // Check that the response is OK and is actually JSON
         const contentType = metadataResponse.headers.get('content-type') || '';
@@ -565,6 +567,7 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
             });
             
             // Check if we have an actual JSON response with metadata structure
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const workerMetadata = rawData as {
               width?: number;
               height?: number;
@@ -584,7 +587,9 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
               originalWidth?: number;
               originalHeight?: number;
               // EXIF data can be structured in various ways
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               exif?: Record<string, any>;
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               Exif?: Record<string, any>;
               ExifImageWidth?: number;
               ExifImageHeight?: number;
@@ -823,6 +828,7 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
                   });
                   
                   // Process the alternative format - using the same comprehensive type definition as primary method
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const altMetadata = rawAltData as {
                     width?: number;
                     height?: number;
@@ -842,7 +848,9 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
                     originalWidth?: number;
                     originalHeight?: number;
                     // EXIF data can be structured in various ways
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     exif?: Record<string, any>;
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     Exif?: Record<string, any>;
                     ExifImageWidth?: number;
                     ExifImageHeight?: number;
@@ -861,6 +869,7 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
                       width?: number; 
                       height?: number;
                       format?: string;
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
                       exif?: Record<string, any>;
                     };
                   };
@@ -1079,6 +1088,7 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
                   // Extract dimensions from Cloudflare's response
                   if (cfRawData && typeof cfRawData === 'object') {
                     // Type the data properly
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     const cfData: Record<string, any> = cfRawData;
                     
                     // Look for dimensions in various formats
@@ -1138,14 +1148,13 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
         // Continue to fallback
       }
       
-      // Get a reference to the storage result that was captured earlier
+      // Use the storage result that was captured earlier
       // This should be populated from the earlier try/catch block
-      const finalStorageResult = storageResult;
       
       // As a LAST resort, we'll use size-based estimation for larger images
       // This is deterministic, since size should be known after the storage fetch
-      if (finalStorageResult && finalStorageResult.size && finalStorageResult.size > 0) {
-        const sizeMB = finalStorageResult.size / (1024 * 1024);
+      if (storageResult && storageResult.size && storageResult.size > 0) {
+        const sizeMB = storageResult.size / (1024 * 1024);
         
         // For JPEG images, estimate resoltion based on file size
         // This is somewhat reliable for user-uploaded photos from modern devices
@@ -1159,8 +1168,8 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
         let height = 0;
         
         // Use file size to estimate dimensions depending on image format
-        if (finalStorageResult.contentType?.includes('jpeg') || 
-            finalStorageResult.contentType?.includes('jpg')) {
+        if (storageResult.contentType?.includes('jpeg') || 
+            storageResult.contentType?.includes('jpg')) {
           // JPEG - Calculate using common aspect ratio for photos (3:2)
           const aspectRatio = 3/2; // Standard photography aspect ratio
           
@@ -1168,7 +1177,7 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
           width = Math.round(Math.sqrt(estimatedMegapixels * 1_000_000 * aspectRatio / (aspectRatio + 1)) * Math.sqrt(aspectRatio));
           height = Math.round(width / aspectRatio);
         }
-        else if (finalStorageResult.contentType?.includes('png')) {
+        else if (storageResult.contentType?.includes('png')) {
           // PNG - Typically less compressed than JPEG
           const reducedMegapixels = estimatedMegapixels * 0.7; // PNG usually takes more space
           
@@ -1189,14 +1198,14 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
             metadata: {
               width,
               height,
-              format: finalStorageResult.contentType?.replace('image/', '') || 'jpeg',
+              format: storageResult.contentType?.replace('image/', '') || 'jpeg',
               estimationMethod: 'file-size',
               metadataSource: 'estimation',
               confidence: 'medium', // Size estimation is reasonably accurate for typical photos
               // Store additional information about the estimation
               originalMetadata: {
-                fileSize: finalStorageResult.size,
-                contentType: finalStorageResult.contentType,
+                fileSize: storageResult.size,
+                contentType: storageResult.contentType,
                 estimatedMegapixels: estimatedMegapixels,
                 estimationMethod: 'file-size',
                 aspectRatio: width / height
@@ -1228,8 +1237,8 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
       
       this.logger.debug('All metadata extraction methods failed, using minimal fallback dimensions', {
         methods: 'format=json, metadata=json, cf-metadata, size-estimation',
-        contentType: finalStorageResult?.contentType || 'unknown',
-        size: finalStorageResult?.size || 'unknown'
+        contentType: storageResult?.contentType || 'unknown',
+        size: storageResult?.size || 'unknown'
       });
       
       // Use a reasonable fallback - 16:9 dimension which is common for most modern displays
@@ -1238,7 +1247,7 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
         metadata: {
           width: 1600,  // Reasonable width that works for most displays
           height: 900,  // 16:9 aspect ratio
-          format: finalStorageResult?.contentType?.replace('image/', '') || 'jpeg',
+          format: storageResult?.contentType?.replace('image/', '') || 'jpeg',
           estimationMethod: 'minimal-fallback',
           metadataSource: 'estimation',
           confidence: 'low'

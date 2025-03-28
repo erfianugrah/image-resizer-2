@@ -6,7 +6,11 @@
  */
 
 import { ImageResizerConfig } from '../config';
-import { Logger, LogData, LogLevel } from './logging';
+import { Logger, LogData, 
+  // LogLevel is imported for consistency with other modules
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  LogLevel 
+} from './logging';
 import { createPinoInstance, prepareLogData } from './pino-core';
 
 /**
@@ -103,8 +107,11 @@ export function createCompatiblePinoLogger(
             ? JSON.stringify(data)
             : String(data);
           message += ` ${dataStr}`;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (e) {
+          // The error details are intentionally ignored
           // If JSON stringification fails, just add data as-is
+          // We intentionally ignore the error details
           message += ` ${data}`;
         }
       }

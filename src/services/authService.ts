@@ -46,10 +46,10 @@ export class AuthServiceImpl implements AuthService {
   }
 
   /**
-   * Fast path function for when auth is disabled
-   * Avoids all unnecessary processing and logging
+   * Default auth result when no authentication is needed
+   * Used for URLs that don't require auth or when specific auth types are disabled
    */
-  getNoAuthResult(url: string): AuthResult {
+  getDefaultAuthResult(url: string): AuthResult {
     return {
       success: true,
       url: url
@@ -134,8 +134,8 @@ export class AuthServiceImpl implements AuthService {
     config: ImageResizerConfig, 
     env: EnvWithStringIndexer
   ): OriginContext | null {
-    // If auth is disabled, return null
-    if (!config.storage.auth?.enabled) {
+    // If no origins are configured, return null
+    if (!config.storage.auth?.origins || Object.keys(config.storage.auth.origins).length === 0) {
       return null;
     }
     
@@ -144,6 +144,11 @@ export class AuthServiceImpl implements AuthService {
     
     const result = this.findAuthOrigin(url, config);
     if (!result.originId || !result.origin) {
+      return null;
+    }
+    
+    // Check if this specific origin is enabled
+    if (result.origin.enabled === false) {
       return null;
     }
     
@@ -351,43 +356,28 @@ export class AuthServiceImpl implements AuthService {
     config: ImageResizerConfig,
     env: EnvWithStringIndexer
   ): Promise<AuthResult> {
-    // Fast path - avoid even creating breadcrumbs when auth is disabled
-    if (!config.storage.auth?.enabled) {
-      return this.getNoAuthResult(url);
+    // First check if we find a matching origin that requires authentication
+    const { originId, origin } = this.findAuthOrigin(url, config);
+    
+    // If no matching origin found or the origin is explicitly disabled, no auth needed
+    if (!originId || !origin || origin.enabled === false) {
+      this.logger.breadcrumb('No matching auth origin found or origin disabled', undefined, { url });
+      return this.getDefaultAuthResult(url);
     }
     
     this.logger.breadcrumb('Authenticating request', undefined, { 
       url, 
-      authEnabled: true
+      originId 
     });
     
-    // This check is now redundant but keeping for safety
-    if (!config.storage.auth?.enabled) {
-      this.logger.breadcrumb('Authentication disabled, passing request through');
-      return {
-        success: true,
-        url: url
-      };
-    }
-    
     try {
-      // Find the appropriate origin for this URL
-      const { originId, origin } = this.findAuthOrigin(url, config);
+      // We already have originId and origin from earlier check
       
-      // Create an empty origin object if none found
+      // Create an empty origin object if none found (shouldn't happen due to earlier check)
       const authOrigin: OriginConfig = origin || {
         domain: '',
         type: 'bearer'
       };
-      
-      // If no matching origin, return success with original URL
-      if (!originId || !origin) {
-        this.logger.breadcrumb('No matching auth origin found for URL', undefined, { url });
-        return {
-          success: true,
-          url: url
-        };
-      }
       
       // Determine auth type
       const authType = authOrigin.type || AuthType.BEARER;

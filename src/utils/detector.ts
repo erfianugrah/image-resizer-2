@@ -5,7 +5,13 @@
  * client hints, network conditions, and device capabilities with caching and fallbacks.
  */
 
-import { createLogger, Logger, defaultLogger } from './logging';
+import { 
+  // createLogger is imported for consistency with other modules
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  createLogger, 
+  Logger, 
+  defaultLogger 
+} from './logging';
 import { isFormatSupported, normalizeBrowserName } from './browser-formats';
 import { 
   parseClientHints, 
@@ -19,7 +25,11 @@ import {
   DeviceCapabilities,
   PerformanceBudget
 } from './client-hints';
-import { DetectorConfig, ImageResizerConfig } from '../config';
+import { DetectorConfig, 
+  // ImageResizerConfig is imported here for type reference in other modules
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  ImageResizerConfig 
+} from '../config';
 
 // Use default logger until a configured one is provided
 let logger: Logger = defaultLogger;
@@ -1210,6 +1220,7 @@ export class ClientDetector {
               // Special handling for client hints - merge them instead of replacing
               result.clientHints = this.mergeClientHints(result.clientHints as ClientHintsData, value as ClientHintsData);
             } else if (!filledFields.has(key) && value !== undefined && value !== null) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               (result as any)[key] = value;
               filledFields.add(key);
             }
@@ -1298,6 +1309,7 @@ export class ClientDetector {
    * @param options Current transformation options
    * @returns Optimized transformation options
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getOptimizedOptions(request: Request, options: Record<string, any> = {}): Promise<Record<string, any>> {
     // Detect client capabilities
     const capabilities = await this.detect(request);

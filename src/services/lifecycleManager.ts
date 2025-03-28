@@ -175,6 +175,7 @@ export class LifecycleManager {
     // Process each service in order
     for (const serviceName of initOrder) {
       const serviceHealth = this.statistics.serviceHealths[serviceName];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const service = (this.serviceContainer as any)[serviceName];
       const isCritical = criticalServices.includes(serviceName);
       
@@ -324,6 +325,7 @@ export class LifecycleManager {
     // Process each service in reverse order
     for (const serviceName of shutdownOrder) {
       const serviceHealth = this.statistics.serviceHealths[serviceName];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const service = (this.serviceContainer as any)[serviceName];
       
       if (!service) {

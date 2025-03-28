@@ -419,7 +419,7 @@ export interface ImageResizerConfig {
     };
     // Global auth settings (still used for origin-auth)
     auth?: {
-      enabled: boolean;
+      // removed global enabled flag for cleaner architecture
       useOriginAuth?: boolean;       // When true, use Cloudflare's origin-auth feature
       sharePublicly?: boolean;       // When true, set origin-auth to "share-publicly"
       securityLevel?: 'strict' | 'permissive'; // How to handle auth errors
@@ -427,6 +427,7 @@ export interface ImageResizerConfig {
       origins?: Record<string, {
         domain: string;
         type: 'bearer' | 'basic' | 'header' | 'query' | 'aws-s3';
+        enabled?: boolean;             // Each origin can be individually enabled/disabled
         tokenHeaderName?: string;       // For bearer type
         tokenParam?: string;            // For query type
         tokenExpiration?: number;       // For bearer & query types
@@ -880,7 +881,7 @@ export const defaultConfig: ImageResizerConfig = {
       }
     },
     auth: {
-      enabled: false,
+      // removed global enabled flag
       useOriginAuth: false,
       sharePublicly: false,
       securityLevel: 'strict',
@@ -1180,7 +1181,6 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
         type: 'bearer'
       },
       auth: {
-        enabled: true,
         useOriginAuth: true,
         sharePublicly: true,
         cacheTtl: 60, // Short TTL for development
@@ -1365,7 +1365,6 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
         type: 'bearer'
       },
       auth: {
-        enabled: true,
         useOriginAuth: true,
         sharePublicly: true,
         cacheTtl: 3600, // 1 hour for staging
@@ -1689,7 +1688,6 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
         type: 'bearer'
       },
       auth: {
-        enabled: true,
         useOriginAuth: true,
         sharePublicly: true,
         cacheTtl: 86400, // 24 hours for production
@@ -1960,18 +1958,32 @@ export function getConfig(env: Env): ImageResizerConfig {
     config.storage.priority = config.storage.priority.filter(p => p !== 'r2');
   }
   
-  // Apply authentication settings from environment
+  // Handle legacy global AUTH_ENABLED environment variable
   if (env.AUTH_ENABLED) {
+    console.warn('AUTH_ENABLED is deprecated. Use origin-specific auth settings like REMOTE_AUTH_ENABLED instead.', {
+      authEnabled: env.AUTH_ENABLED
+    });
+    
+    // Create auth config if it doesn't exist
     if (!config.storage.auth) {
       config.storage.auth = {
-        enabled: env.AUTH_ENABLED === 'true',
         useOriginAuth: false,
         sharePublicly: false,
         securityLevel: 'strict',
         cacheTtl: 3600
       };
-    } else {
-      config.storage.auth.enabled = env.AUTH_ENABLED === 'true';
+    }
+    
+    // If remote auth exists, set its enabled flag based on the global setting
+    if (config.storage.remoteAuth) {
+      console.log('Setting remoteAuth.enabled based on deprecated AUTH_ENABLED setting');
+      config.storage.remoteAuth.enabled = env.AUTH_ENABLED === 'true';
+    }
+    
+    // If fallback auth exists, set its enabled flag based on the global setting
+    if (config.storage.fallbackAuth) {
+      console.log('Setting fallbackAuth.enabled based on deprecated AUTH_ENABLED setting');
+      config.storage.fallbackAuth.enabled = env.AUTH_ENABLED === 'true';
     }
   }
   

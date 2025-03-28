@@ -437,6 +437,7 @@ function parseCompositeParameter(params: string): TransformOptions {
     cfParams.draw = [];
     
     // Create draw object
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const drawObj: any = {
       url: imageUrl
     };
@@ -966,6 +967,7 @@ function parseAspectCropParameter(params: string): TransformOptions {
  * @param config Optional configuration containing feature flags
  * @returns Object with Cloudflare Image Resizing parameters
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function translateAkamaiParams(url: URL, config?: any): TransformOptions {
   const cfParams: TransformOptions = {};
   
@@ -1053,7 +1055,7 @@ export function translateAkamaiParams(url: URL, config?: any): TransformOptions 
       if (imParameter.includes('f=')) {
         // Use a more comprehensive regex pattern that handles edge cases better
         // Look for f= followed by any characters that aren't a comma, closing parentheses, or whitespace
-        const fMatch = imParameter.match(/f=([^,\)\s]+)/);
+        const fMatch = imParameter.match(/f=([^,)\s]+)/);
         if (fMatch && fMatch[1]) {
           const formatSize = fMatch[1];
           // Map predefined size codes to pixel widths
@@ -1106,7 +1108,7 @@ export function translateAkamaiParams(url: URL, config?: any): TransformOptions 
       // Extract r= parameter (aspect ratio) if present in im= parameter
       if (imParameter.includes('r=')) {
         // More robust pattern for extracting aspect ratio parameter
-        const match = imParameter.match(/r=([^,\)\s]+)/);
+        const match = imParameter.match(/r=([^,)\s]+)/);
         if (match && match[1]) {
           const aspectRatio = match[1];
           if (aspectRatio.includes(':') || aspectRatio.includes('-')) {
@@ -1983,7 +1985,9 @@ export function translateAkamaiParams(url: URL, config?: any): TransformOptions 
  * @param composite Composite parameter string
  * @returns Parsed parameters object
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function parseCompositeParams(composite: string): Record<string, any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result: Record<string, any> = {};
   
   // If empty or not a string, return empty object
@@ -2118,8 +2122,11 @@ function parseCompositeParams(composite: string): Record<string, any> {
         }
       }
     }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (error) {
+    // The error details are intentionally ignored
     // If there's an error during parsing, return empty object with the URL if available
+    // We intentionally ignore the error details
     if (result.url) {
       return { url: result.url };
     }

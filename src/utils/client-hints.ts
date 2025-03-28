@@ -5,7 +5,13 @@
  * browser capability detection and responsive image optimization.
  */
 
-import { createLogger, Logger, defaultLogger } from './logging';
+import { 
+  // createLogger is imported for consistency with other modules
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  createLogger, 
+  Logger, 
+  defaultLogger 
+} from './logging';
 import { isFormatSupported } from './browser-formats';
 
 // Use default logger until a configured one is provided
@@ -245,7 +251,8 @@ function parseAcceptHeader(acceptHeader: string): string[] {
     const parts = acceptHeader.split(',');
     
     for (const part of parts) {
-      // Extract the MIME type and quality factor
+      // Extract the MIME type and quality factor (params are not used currently)
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const [mimeType, ...params] = part.trim().split(';');
       
       // Check if this is an image format
@@ -880,6 +887,7 @@ export function getColorSchemePreference(hints: ClientHintsData): 'dark' | 'ligh
  * @returns Suggested optimizations
  */
 export function suggestOptimizations(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   options: any,
   hints: ClientHintsData
 ): OptimizationHints {

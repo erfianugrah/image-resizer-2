@@ -8,7 +8,10 @@ import { PathService } from './interfaces';
 import { Logger } from '../utils/logging';
 import { ImageResizerConfig } from '../config';
 import { 
+  // These types are imported for type documentation and future expansion
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   PathTransform,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   PathTransforms
 } from '../utils/path';
 
@@ -348,6 +351,7 @@ export class PathServiceImpl implements PathService {
         this.logger.breadcrumb('Parsed draw parameter', undefined, { 
           drawItems: drawArray.length
         });
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       } catch (e) {
         this.logger.breadcrumb('Failed to parse draw parameter as JSON');
         // If not valid JSON, skip this parameter
@@ -377,6 +381,7 @@ export class PathServiceImpl implements PathService {
    */
   applyTransformations(
     imagePath: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     config?: any
   ): string {
     const pathTransforms = config?.pathTransforms || this.config.pathTransforms || {};

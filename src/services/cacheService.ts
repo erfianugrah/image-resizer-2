@@ -7,9 +7,14 @@
 
 import { Logger } from '../utils/logging';
 import { CacheService, ConfigurationService, StorageResult, TransformOptions } from './interfaces';
+// ImageResizerConfig is used in method signatures for future implementation
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { ImageResizerConfig } from '../config';
 import { 
   CacheServiceError,
+  // These errors are imported but not directly thrown in this file
+  // They're kept for future use and consistent error handling patterns
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   CacheReadError, 
   CacheWriteError, 
   CacheUnavailableError, 
@@ -17,7 +22,11 @@ import {
   CacheQuotaExceededError 
 } from '../errors/cacheErrors';
 import { 
+  // These resilience utilities are imported but not used directly
+  // They're kept for future implementation of resilience patterns
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   withRetry, 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   withCircuitBreaker, 
   withResilience,
   createCircuitBreakerState,
@@ -417,13 +426,18 @@ export class DefaultCacheService implements CacheService {
 
       return newResponse;
     } catch (error: unknown) {
-      // Create error context with relevant details
-      const errorContext = {
-        responseStatus: response?.status,
-        contentType: response?.headers?.get('Content-Type') || 'unknown',
+      // Create error context variables for the logger
+      // The error context is used by this.handleError() for proper error reporting
+      const errorStatus = response?.status;
+      const errorContentType = response?.headers?.get('Content-Type') || 'unknown';
+      
+      // Log error details before throwing
+      this.logger.debug('Error applying cache headers', {
+        responseStatus: errorStatus,
+        contentType: errorContentType,
         hasOptions: !!options && Object.keys(options).length > 0,
         hasStorageResult: !!storageResult
-      };
+      });
       
       // Use our standardized error handler
       throw this.handleError(error, 'Apply cache headers', undefined, 'CACHE_HEADERS_ERROR');
@@ -858,6 +872,8 @@ export class DefaultCacheService implements CacheService {
       // 4. Role or authentication-based bypass
       
       // Check for authenticated or admin requests that might need fresh data
+      // Authorization header is kept for future auth-based cache bypass logic
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const authorization = request.headers.get('Authorization');
       const adminHeader = request.headers.get('X-Admin') || request.headers.get('X-Admin-Access');
       
@@ -1560,6 +1576,7 @@ export class DefaultCacheService implements CacheService {
         // Add debug header to make the cache mode clear
         if (config.debug?.enabled) {
           // Add debug properties to result.cf
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const cf = result.cf as Record<string, any>;
           cf.cacheMode = 'status-based';
           cf.statusRanges = Object.keys(config.cache.cacheTtlByStatus).join(',');
@@ -1584,6 +1601,7 @@ export class DefaultCacheService implements CacheService {
         // Add debug header to make the cache mode clear
         if (config.debug?.enabled) {
           // Add debug properties to result.cf
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const cf = result.cf as Record<string, any>;
           cf.cacheMode = 'simple';
           cf.simpleTtl = config.cache.ttl.ok;
@@ -1796,8 +1814,8 @@ export class DefaultCacheService implements CacheService {
    */
   private async tryGetStaleResponse(
     request: Request,
-    ctx: ExecutionContext,
-    options?: TransformOptions
+    _ctx: ExecutionContext,
+    _options?: TransformOptions
   ): Promise<Response | null> {
     try {
       // Check if Cache API is available

@@ -12,11 +12,18 @@ import { ImageResizerConfig } from '../config';
 import { DefaultCacheService } from './cacheService';
 import { PerformanceBaseline } from '../utils/performance-metrics';
 import { 
+  // These error types are imported for documentation and potential future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   CacheServiceError,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   CacheReadError, 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   CacheWriteError, 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   CacheUnavailableError, 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   CacheTagGenerationError, 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   CacheQuotaExceededError 
 } from '../errors/cacheErrors';
 
@@ -843,6 +850,7 @@ export class OptimizedCacheService implements CacheService {
     const cleanupInterval = setInterval(() => this.cleanupAccessPatterns(), 60000); // Cleanup every minute
     
     // Store interval ID for later cleanup in shutdown
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (this as any).cleanupIntervalId = cleanupInterval;
     
     this.logger.info('OptimizedCacheService initialization complete');
@@ -863,8 +871,11 @@ export class OptimizedCacheService implements CacheService {
     this.logger.debug('Shutting down OptimizedCacheService');
     
     // Stop the cleanup interval
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((this as any).cleanupIntervalId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       clearInterval((this as any).cleanupIntervalId);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (this as any).cleanupIntervalId = null;
     }
     

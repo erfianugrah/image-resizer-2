@@ -382,7 +382,10 @@ export function parseQueryOptions(
       logger.breadcrumb('Parsed draw parameter', undefined, {
         drawItems: drawArray.length,
       });
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (e) {
+      // The error details are intentionally ignored
+      // We intentionally ignore the error details
       logger.breadcrumb('Failed to parse draw parameter as JSON');
       // If not valid JSON, skip this parameter
     }

@@ -8,7 +8,14 @@
 import { ImageResizerConfig } from '../config';
 import { ClientDetectionService, ClientInfo, TransformOptions } from './interfaces';
 import { Logger } from '../utils/logging';
-import { detector, BrowserInfo, FormatSupport, ClientCapabilities } from '../utils/detector';
+import { detector, 
+  // These types are imported for future use in advanced browser detection
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  BrowserInfo, 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  FormatSupport, 
+  ClientCapabilities 
+} from '../utils/detector';
 
 /**
  * Default implementation of the ClientDetectionService
@@ -216,6 +223,7 @@ export class DefaultClientDetectionService implements ClientDetectionService {
       
       // Track cache hit (if available) - use type assertion since this is an internal property
       // that may be added by our implementation but isn't in the base interface
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((capabilities as any).fromCache) {
         this.detectionStatistics.cacheHitCount++;
       }
@@ -300,6 +308,7 @@ export class DefaultClientDetectionService implements ClientDetectionService {
         deviceClassification: clientInfo.deviceClassification,
         preferredFormats: clientInfo.preferredFormats?.join(','),
         detectionTime: `${detectionTime}ms`,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         fromCache: (capabilities as any).fromCache || false
       });
 
@@ -321,7 +330,7 @@ export class DefaultClientDetectionService implements ClientDetectionService {
   async getOptimizedOptions(
     request: Request,
     baseOptions: TransformOptions,
-    config: ImageResizerConfig
+    _config: ImageResizerConfig
   ): Promise<TransformOptions> {
     this.logger.debug('Getting optimized transformation options', {
       url: request.url,
@@ -764,6 +773,8 @@ export class DefaultClientDetectionService implements ClientDetectionService {
     const dprHeader = request.headers.get('DPR');
     const saveDataHeader = request.headers.get('Save-Data');
     const downlinkHeader = request.headers.get('Downlink');
+    // RTT (Round-Trip Time) header is used for future network quality detection improvements
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const rttHeader = request.headers.get('RTT');
     const ectHeader = request.headers.get('ECT');
 

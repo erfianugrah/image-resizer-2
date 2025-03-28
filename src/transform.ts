@@ -1351,8 +1351,8 @@ export async function buildTransformOptions(
     delete result.flop;
   }
 
-  // Add origin-auth configuration if enabled
-  if (config.storage.auth?.enabled && config.storage.auth.useOriginAuth) {
+  // Add origin-auth configuration if useOriginAuth is enabled
+  if (config.storage.auth?.useOriginAuth) {
     if (config.storage.auth.sharePublicly) {
       result["origin-auth"] = "share-publicly";
     }

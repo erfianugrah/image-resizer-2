@@ -78,6 +78,7 @@ export class DefaultConfigurationService implements ConfigurationService {
    */
   getValue<T>(path: string, defaultValue?: T): T {
     const parts = path.split('.');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let current: any = this.config;
     
     for (const part of parts) {
@@ -158,10 +159,13 @@ export class DefaultConfigurationService implements ConfigurationService {
           // If both values are objects, recursively merge them
           result[key as keyof typeof result] = this.deepMerge(
             targetValue, 
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             sourceValue as any
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ) as any;
         } else {
           // Otherwise just override the target value
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           result[key as keyof typeof result] = sourceValue as any;
         }
       });
@@ -188,7 +192,9 @@ export class DefaultConfigurationService implements ConfigurationService {
     const result = {} as T;
     
     Object.keys(obj as object).forEach(key => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const value = (obj as any)[key];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (result as any)[key] = this.deepClone(value);
     });
     
@@ -369,6 +375,7 @@ export class DefaultConfigurationService implements ConfigurationService {
    * @param derivativeName Name of the derivative
    * @returns Derivative configuration or null if not found
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getDerivative(derivativeName: string): Record<string, any> | null {
     if (!this.config.derivatives) {
       return null;
@@ -396,7 +403,9 @@ export class DefaultConfigurationService implements ConfigurationService {
    * @param env Environment variables
    * @returns Map of derivative names to configurations
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   parseDerivativesFromEnv(env: Env): Record<string, any> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const derivatives: Record<string, any> = {};
     const derivativePrefix = 'DERIVATIVE_';
     
@@ -440,6 +449,7 @@ export class DefaultConfigurationService implements ConfigurationService {
    * @param env Environment variables
    * @returns Detector configuration
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   loadDetectorConfigFromEnv(env: Env): Record<string, any> {
     return loadDetectorConfigFromEnv(env);
   }

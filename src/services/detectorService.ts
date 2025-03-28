@@ -39,6 +39,7 @@ interface DeviceCapabilities {
 export class DetectorServiceImpl implements ClientDetectionService {
   private logger: Logger;
   private config: ImageResizerConfig;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private detectorConfig: any;
   private cache: Map<string, CacheEntry> = new Map();
   private cacheHits = 0;
@@ -638,7 +639,7 @@ export class DetectorServiceImpl implements ClientDetectionService {
   async getOptimizedOptions(
     request: Request,
     baseOptions: TransformOptions,
-    config: ImageResizerConfig
+    _config: ImageResizerConfig
   ): Promise<TransformOptions> {
     // Detect client information
     const clientInfo = await this.detectClient(request);

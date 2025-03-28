@@ -199,7 +199,7 @@
      * direct configuration for remote and fallback URLs
      */
 		/* Global Auth Settings */
-		"AUTH_ENABLED": "true",
+		// "AUTH_ENABLED": "true",
 		"AUTH_SECURITY_LEVEL": "permissive", // permissive: continue if auth fails, strict: fail if auth fails
 		"AUTH_CACHE_TTL": "60", // TTL for authenticated requests
 		"AUTH_USE_ORIGIN_AUTH": "true", // Use Cloudflare's origin-auth feature to pass auth headers
@@ -402,7 +402,7 @@
 						"metadata": "copyright"
 					}
 				},
-				"AUTH_ENABLED": "true",
+				// "AUTH_ENABLED": "true",
 				"AUTH_SECURITY_LEVEL": "permissive",
 				"AUTH_CACHE_TTL": "60",
 				"AUTH_USE_ORIGIN_AUTH": "true",
@@ -595,7 +595,7 @@
 	         * Strict security for staging environment
 	         */
 				/* Global Auth Settings */
-				"AUTH_ENABLED": "true",
+				// "AUTH_ENABLED": "true",
 				"AUTH_SECURITY_LEVEL": "strict", // strict: fail if auth fails (more secure)
 				"AUTH_CACHE_TTL": "3600", // 1 hour TTL for authenticated requests
 				"AUTH_USE_ORIGIN_AUTH": "true", // Use Cloudflare's origin-auth feature
@@ -763,7 +763,7 @@
 						"metadata": "copyright"
 					}
 				},
-				"CACHE_EVERYTHING": "true",
+				"CACHE_EVERYTHING": "false",
 				"CACHE_USE_TTL_BY_STATUS": "false",
 				"CACHE_STATUS_SUCCESS_RANGE": "200-206,226",
 				"CACHE_STATUS_REDIRECT_RANGE": "301-302,307-308",
@@ -786,7 +786,7 @@
 	         * Note: Global auth is disabled but remote-specific auth is enabled
 	         */
 				/* Global Auth Settings */
-				"AUTH_ENABLED": "true", // Global auth is disabled in production
+				// "AUTH_ENABLED": "false", // Global auth is disabled in production
 				"AUTH_SECURITY_LEVEL": "strict", // strict: fail if auth fails (more secure)
 				"AUTH_CACHE_TTL": "86400", // 1 day TTL for authenticated requests
 				"AUTH_USE_ORIGIN_AUTH": "true", // Use Cloudflare's origin-auth feature

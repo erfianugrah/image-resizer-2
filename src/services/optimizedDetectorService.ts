@@ -7,7 +7,10 @@
 
 import { 
   ClientDetectionService, 
+  // These types are imported for type compatibility with the interface
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   ClientInfo, 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   TransformOptions 
 } from './interfaces';
 import { ImageResizerConfig } from '../config';

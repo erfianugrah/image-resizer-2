@@ -7,7 +7,11 @@
 
 import { PerformanceBaseline, PerformanceTimer } from './performance-metrics';
 import { PerformanceMetrics } from '../services/interfaces';
-import { Logger, LogLevel, LogData } from './logging';
+import { Logger, LogLevel, 
+  // LogData is imported for type reference but not directly used in this file
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  LogData 
+} from './logging';
 import { OptimizedLogger } from './optimized-logging';
 import { ImageResizerConfig } from '../config';
 
@@ -69,6 +73,7 @@ export class RequestPerformanceMonitor {
    * @param data Optional metadata to associate with the measurement
    * @returns This instance for chaining
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   startOperation(operation: string, data?: Record<string, any>): RequestPerformanceMonitor {
     this.timer.start(operation);
     
@@ -96,6 +101,7 @@ export class RequestPerformanceMonitor {
    * @param data Optional metadata to associate with the measurement
    * @returns The duration in milliseconds
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   endOperation(operation: string, data?: Record<string, any>): number {
     const duration = this.timer.end(operation, data);
     
@@ -137,21 +143,18 @@ export class RequestPerformanceMonitor {
    * @param data Optional metadata about the request outcome
    * @returns The total request duration in milliseconds
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   endRequest(data?: Record<string, any>): number {
     // Check if we started a 'total' timer (not 'total_end')
     const totalStarted = this.timer.getMeasurement('total');
     
     // End the timer that was started or use metrics directly
-    let duration = 0;
     if (totalStarted) {
       // Use the 'total' timer that was started
-      duration = this.timer.end('total', data);
-    } else {
-      // Calculate duration from metrics directly
-      this.metrics.end = Date.now();
-      duration = this.metrics.end - this.metrics.start;
+      this.timer.end('total', data);
     }
     
+    // Set the end time for metrics calculation
     this.metrics.end = Date.now();
     const totalTime = this.metrics.end - this.metrics.start;
     

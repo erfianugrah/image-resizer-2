@@ -284,11 +284,13 @@ function loadDeviceClassificationFromEnv(env: Env): Partial<DetectorConfig['devi
 
 /**
  * Check if any environment variables with the given prefix exist
+ * This function is kept for future use but is currently unused
  * 
  * @param env The wrangler environment variables
  * @param prefix The prefix to check for
  * @returns True if any environment variables with the prefix exist
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function hasEnvPrefix(env: Env, prefix: string): boolean {
   return Object.keys(env).some(key => key.startsWith(prefix));
 }

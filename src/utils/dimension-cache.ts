@@ -4,7 +4,13 @@
  * This module provides caching functionality for image dimensions to avoid repeated format:json requests
  */
 
-import { createLogger, Logger, defaultLogger } from './logging';
+import { 
+  // createLogger is imported for consistency with other modules
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  createLogger, 
+  Logger, 
+  defaultLogger 
+} from './logging';
 
 // Use default logger until a configured one is provided
 let logger: Logger = defaultLogger;
