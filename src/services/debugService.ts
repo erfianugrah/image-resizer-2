@@ -175,8 +175,12 @@ export class DefaultDebugService implements DebugService {
         headers.set('Warning', warningHeader);
       }
     
-      // Add storage debug headers
-      headers.set(headerNames.storageType || 'X-Storage-Type', storageResult.sourceType);
+      // Add consolidated storage debug headers
+      const r2Enabled = (config.storage.r2.enabled && config.storage.priority.includes('r2')).toString();
+      // Format: "type=remote; priority=remote; r2=false" for better readability
+      headers.set('X-Storage-Source', `type=${storageResult.sourceType}; priority=${config.storage.priority.join(',')}; r2=${r2Enabled}`);
+      
+      // Preserve essential original content information
       if (storageResult.contentType) {
         headers.set(headerNames.originalContentType || 'X-Original-Content-Type', storageResult.contentType);
       }
@@ -186,11 +190,6 @@ export class DefaultDebugService implements DebugService {
       if (storageResult.originalUrl) {
         headers.set(headerNames.originalUrl || 'X-Original-URL', storageResult.originalUrl);
       }
-    
-      // Add storage priority information
-      headers.set('X-Storage-Priority', config.storage.priority.join(','));
-      headers.set('X-R2-Enabled',
-        (config.storage.r2.enabled && config.storage.priority.includes('r2')).toString());
     
       // Add cache tag information if enabled
       if (config.cache.cacheTags?.enabled && storageResult.path) {
@@ -211,9 +210,9 @@ export class DefaultDebugService implements DebugService {
         }
       }
     
-      // Add transformation debug headers
+      // Add consolidated transformation debug headers
       if (options) {
-      // Clean the transform options for header value (no nested objects)
+        // Clean the transform options for header value (no nested objects)
         const cleanOptions: Record<string, string> = {};
         Object.keys(options).forEach(key => {
           const value = options[key];
@@ -221,18 +220,25 @@ export class DefaultDebugService implements DebugService {
             cleanOptions[key] = String(value);
           }
         });
-      
-        // Add individual headers for each transform option
-        Object.keys(cleanOptions).forEach(key => {
-          headers.set(`X-Transform-${key}`, cleanOptions[key]);
-        });
-      
-        // Add JSON string of all options for convenience
+
+        // Add only the consolidated options header with pretty-printing for readability
         try {
-          headers.set('X-Transform-Options', JSON.stringify(cleanOptions));
+          // Convert JSON to readable format: "aspect=16:10; focal=0.7,0.5"
+          const readableOptions = Object.entries(cleanOptions)
+            .map(([key, value]) => `${key}=${value}`)
+            .join('; ');
+            
+          headers.set('X-Transform-Options', readableOptions);
+          
+          // Only add width, height, format and quality as individual headers
+          // since they're frequently accessed in debugging
+          if (cleanOptions.width) headers.set('X-Image-Width', cleanOptions.width);
+          if (cleanOptions.height) headers.set('X-Image-Height', cleanOptions.height);
+          if (cleanOptions.format) headers.set('X-Image-Format', cleanOptions.format);
+          if (cleanOptions.quality) headers.set('X-Image-Quality', cleanOptions.quality);
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (e) {
-        // Ignore JSON errors
+          // Ignore JSON errors
         }
       }
     
@@ -243,27 +249,25 @@ export class DefaultDebugService implements DebugService {
       
         // Calculate time spent in each phase
         const totalTime = metrics.end - metrics.start;
-      
-        headers.set('X-Performance-Total-Ms', totalTime.toString());
-      
-        if (metrics.storageStart && metrics.storageEnd) {
-          const storageTime = metrics.storageEnd - metrics.storageStart;
-          headers.set('X-Performance-Storage-Ms', storageTime.toString());
-        }
-      
-        if (metrics.transformStart && metrics.transformEnd) {
-          const transformTime = metrics.transformEnd - metrics.transformStart;
-          headers.set('X-Performance-Transform-Ms', transformTime.toString());
-        }
-      
-        if (metrics.detectionStart && metrics.detectionEnd) {
-          const detectionTime = metrics.detectionEnd - metrics.detectionStart;
-          headers.set('X-Performance-Detection-Ms', detectionTime.toString());
+        const storageTime = metrics.storageStart && metrics.storageEnd ? 
+          metrics.storageEnd - metrics.storageStart : 0;
+        const transformTime = metrics.transformStart && metrics.transformEnd ? 
+          metrics.transformEnd - metrics.transformStart : 0;
+        const detectionTime = metrics.detectionStart && metrics.detectionEnd ? 
+          metrics.detectionEnd - metrics.detectionStart : 0;
         
-          // Add detection source if available
-          if (metrics.detectionSource) {
-            headers.set('X-Detection-Source', metrics.detectionSource);
-          }
+        // Add consolidated performance metrics in readable format
+        headers.set('X-Performance', `total=${totalTime}ms; storage=${storageTime}ms; transform=${transformTime}ms; detection=${detectionTime}ms`);
+        
+        // Keep individual headers for backward compatibility
+        headers.set('X-Performance-Total-Ms', totalTime.toString());
+        if (storageTime) headers.set('X-Performance-Storage-Ms', storageTime.toString());
+        if (transformTime) headers.set('X-Performance-Transform-Ms', transformTime.toString());
+        if (detectionTime) headers.set('X-Performance-Detection-Ms', detectionTime.toString());
+        
+        // Add detection source if available
+        if (metrics.detectionSource) {
+          headers.set('X-Detection-Source', metrics.detectionSource);
         }
       }
     

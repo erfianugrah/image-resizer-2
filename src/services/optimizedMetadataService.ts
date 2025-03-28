@@ -49,6 +49,9 @@ export class OptimizedMetadataService implements MetadataFetchingService {
   private readonly MEMORY_CACHE_SIZE: number;
   private readonly KV_CACHE_TTL: number;
   
+  // Request coalescing for concurrent identical requests
+  private inFlightRequests: Map<string, Promise<ImageMetadata>> = new Map();
+  
   // Delegate to the default metadata service for origin fetching
   private defaultMetadataService: DefaultMetadataFetchingService;
   
@@ -311,9 +314,9 @@ export class OptimizedMetadataService implements MetadataFetchingService {
                            (original.width !== metadata.metadata.width || 
                             original.height !== metadata.metadata.height)) 
           ? {
-              width: original.width,
-              height: original.height
-            } 
+            width: original.width,
+            height: original.height
+          } 
           : undefined,
         // Store minimal metadata fields that might be useful for transformations
         originalMetadata: original ? {
@@ -382,19 +385,59 @@ export class OptimizedMetadataService implements MetadataFetchingService {
       this.logger.warn('KV cache read error', { error: String(error) });
     }
     
-    // 3. Fetch from origin (slowest) using the default service
-    const fetchedMetadata = await this.defaultMetadataService.fetchMetadata(
-      imagePath, 
-      config, 
-      env, 
-      request
-    );
+    // 3. Check if request is already in flight to implement request coalescing
+    if (this.inFlightRequests.has(cacheKey)) {
+      this.logger.debug('Coalescing duplicate metadata request', { cacheKey });
+      const coalescedResult = await this.inFlightRequests.get(cacheKey)!;
+      this.recordMetric('coalesced-request', 'inflight', startTime);
+      return coalescedResult;
+    }
     
-    // 4. Store in both caches
-    await this.storeInBothCaches(cacheKey, fetchedMetadata, env);
+    // 4. Create a new fetch promise that will be shared by concurrent requests
+    const fetchPromise = this.fetchFromOriginWithCleanup(imagePath, config, env, request, cacheKey, startTime);
     
-    this.recordMetric('cache-miss', 'origin', startTime);
-    return fetchedMetadata;
+    // Store promise for coalescing and return result
+    this.inFlightRequests.set(cacheKey, fetchPromise);
+    return fetchPromise;
+  }
+  
+  /**
+   * Helper method to fetch metadata from origin and clean up in-flight tracking
+   * 
+   * @param imagePath Path to the image
+   * @param config Application configuration
+   * @param env Environment variables
+   * @param request Original request
+   * @param cacheKey Cache key for tracking
+   * @param startTime Start time for metrics
+   * @returns Promise with the metadata
+   */
+  private async fetchFromOriginWithCleanup(
+    imagePath: string,
+    config: ImageResizerConfig,
+    env: Env,
+    request: Request,
+    cacheKey: string,
+    startTime: number
+  ): Promise<ImageMetadata> {
+    try {
+      // Fetch from origin (slowest) using the default service
+      const fetchedMetadata = await this.defaultMetadataService.fetchMetadata(
+        imagePath, 
+        config, 
+        env, 
+        request
+      );
+      
+      // Store in both caches
+      await this.storeInBothCaches(cacheKey, fetchedMetadata, env);
+      
+      this.recordMetric('cache-miss', 'origin', startTime);
+      return fetchedMetadata;
+    } finally {
+      // Always clean up the in-flight request
+      this.inFlightRequests.delete(cacheKey);
+    }
   }
   
   /**
@@ -404,7 +447,7 @@ export class OptimizedMetadataService implements MetadataFetchingService {
    * @param source The cache source (memory, kv, or origin)
    * @param startTime The start time of the operation
    */
-  private recordMetric(type: 'cache-hit' | 'cache-miss', source: 'memory' | 'kv' | 'origin', startTime: number): void {
+  private recordMetric(type: 'cache-hit' | 'cache-miss' | 'coalesced-request', source: 'memory' | 'kv' | 'origin' | 'inflight', startTime: number): void {
     const duration = Date.now() - startTime;
     
     this.logger.debug(`Metadata ${type} from ${source}`, {
