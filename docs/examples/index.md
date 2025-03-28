@@ -4,6 +4,7 @@ This section contains practical examples for using various features of the Image
 
 ## Key Topics
 
+- [Path-Based Origins Example](path-based-origins-example.md) - Comprehensive example of configuring path-based origins
 - [Watermark Examples](watermark-examples.md) - Examples of using watermarks in different positions and styles
 - [Watermark Implementation](watermark-implementation.md) - Technical implementation of watermarking functionality
 - [Authentication Examples](authentication-examples.md) - Examples of different authentication configurations

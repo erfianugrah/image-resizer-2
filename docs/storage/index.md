@@ -7,6 +7,7 @@ The Image Resizer supports multiple storage options to provide flexibility in im
 - [R2 Storage](r2-storage.md) - Using Cloudflare R2 for image storage
 - [Remote Storage](remote-storage.md) - Accessing images from remote URLs
 - [Path Transformations](path-transforms.md) - Path mapping for different storage types
+- [Path-Based Origins](path-based-origins.md) - Configure different sources by URL path pattern
 - [Authentication](authentication.md) - Securing access to origin images
 
 ## Quick Navigation

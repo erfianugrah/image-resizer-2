@@ -192,6 +192,71 @@
 				"removePrefix": true
 			}
 		},
+		/* Path-based origins configuration for different content types */
+		"PATH_BASED_ORIGINS": {
+			"productImages": {
+				"pattern": "products/",
+				"priority": [
+					"remote",
+					"r2",
+					"fallback"
+				],
+				"remoteUrl": "https://products.example.com/images",
+				"remoteAuth": {
+					"enabled": true,
+					"type": "bearer",
+					"tokenHeaderName": "Authorization",
+					"tokenSecret": ""
+				},
+				"fetchOptions": {
+					"headers": {
+						"X-Product-API": "true"
+					}
+				}
+			},
+			"userUploads": {
+				"pattern": "uploads/",
+				"priority": [
+					"r2",
+					"fallback"
+				],
+				"r2": {
+					"enabled": true,
+					"bindingName": "IMAGES_BUCKET"
+				},
+				"pathTransforms": {
+					"uploads": {
+						"prefix": "user-content/",
+						"removePrefix": true
+					}
+				}
+			},
+			"staticAssets": {
+				"pattern": "assets/",
+				"priority": [
+					"remote"
+				],
+				"remoteUrl": "https://cdn.example.com/static",
+				"auth": {
+					"useOriginAuth": false,
+					"sharePublicly": true
+				}
+			},
+			"profilePictures": {
+				"pattern": "profiles/",
+				"priority": [
+					"r2",
+					"remote",
+					"fallback"
+				],
+				"pathTransforms": {
+					"profiles": {
+						"prefix": "avatars/",
+						"removePrefix": true
+					}
+				}
+			}
+		},
 		/**
      * AUTHENTICATION SETTINGS
      * ----------------------
@@ -359,6 +424,71 @@
 					"content": {
 						"prefix": "content-images/",
 						"removePrefix": true
+					}
+				},
+				/* Path-based Origins Configuration */
+				"PATH_BASED_ORIGINS": {
+					"productImages": {
+						"pattern": "products/",
+						"priority": [
+							"remote",
+							"r2",
+							"fallback"
+						],
+						"remoteUrl": "https://products.example.com/images",
+						"remoteAuth": {
+							"enabled": true,
+							"type": "bearer",
+							"tokenHeaderName": "Authorization",
+							"tokenSecret": ""
+						},
+						"fetchOptions": {
+							"headers": {
+								"X-Product-API": "true"
+							}
+						}
+					},
+					"userUploads": {
+						"pattern": "uploads/",
+						"priority": [
+							"r2",
+							"fallback"
+						],
+						"r2": {
+							"enabled": true,
+							"bindingName": "IMAGES_BUCKET"
+						},
+						"pathTransforms": {
+							"uploads": {
+								"prefix": "user-content/",
+								"removePrefix": true
+							}
+						}
+					},
+					"staticAssets": {
+						"pattern": "assets/",
+						"priority": [
+							"remote"
+						],
+						"remoteUrl": "https://cdn.example.com/static",
+						"auth": {
+							"useOriginAuth": false,
+							"sharePublicly": true
+						}
+					},
+					"profilePictures": {
+						"pattern": "profiles/",
+						"priority": [
+							"r2",
+							"remote",
+							"fallback"
+						],
+						"pathTransforms": {
+							"profiles": {
+								"prefix": "avatars/",
+								"removePrefix": true
+							}
+						}
 					}
 				},
 				/* Image Derivative Templates */
@@ -531,6 +661,42 @@
 						"removePrefix": true
 					}
 				},
+				/* Path-based Origins Configuration for staging */
+				"PATH_BASED_ORIGINS": {
+					"productImages": {
+						"pattern": "products/",
+						"priority": [
+							"remote",
+							"r2",
+							"fallback"
+						],
+						"remoteUrl": "https://products-staging.example.com/images",
+						"remoteAuth": {
+							"enabled": true,
+							"type": "bearer",
+							"tokenHeaderName": "Authorization",
+							"tokenSecret": ""
+						}
+					},
+					"userUploads": {
+						"pattern": "uploads/",
+						"priority": [
+							"r2",
+							"fallback"
+						],
+						"r2": {
+							"enabled": true,
+							"bindingName": "IMAGES_BUCKET"
+						}
+					},
+					"staticAssets": {
+						"pattern": "assets/",
+						"priority": [
+							"remote"
+						],
+						"remoteUrl": "https://staging-cdn.example.com/static"
+					}
+				},
 				/* Image Derivative Templates */
 				"DERIVATIVES": {
 					"thumbnail": {
@@ -590,10 +756,10 @@
 				"DEFAULT_FIT": "scale-down",
 				"USER_AGENT": "Cloudflare-Image-Resizer/1.0-STAGING",
 				/**
-	         * AUTHENTICATION SETTINGS - STAGING
-	         * -------------------------------
-	         * Strict security for staging environment
-	         */
+		         * AUTHENTICATION SETTINGS - STAGING
+		         * -------------------------------
+		         * Strict security for staging environment
+		         */
 				/* Global Auth Settings */
 				// "AUTH_ENABLED": "true",
 				"AUTH_SECURITY_LEVEL": "strict", // strict: fail if auth fails (more secure)
@@ -686,7 +852,7 @@
 				"DETECTOR_LOG_LEVEL": "info", // Minimal logging in production
 				"CACHE_TAGS_ENABLED": "true",
 				"CACHE_TAGS_PREFIX": "img-prod-",
-				"CACHE_TAGS_CUSTOM": "prod,site1",
+				"CACHE_TAGS_CUSTOM": "",
 				"CACHE_TAGS_PARSE_METADATA": "true",
 				"CACHE_TTL_OK": "604800",
 				"CACHE_TTL_CLIENT_ERROR": "60",
@@ -720,6 +886,55 @@
 					"content": {
 						"prefix": "content-images/",
 						"removePrefix": true
+					}
+				},
+				/* Path-based Origins Configuration for production */
+				"PATH_BASED_ORIGINS": {
+					"productImages": {
+						"pattern": "products/",
+						"priority": [
+							"remote",
+							"fallback"
+						],
+						"remoteUrl": "https://products-api.example.com/images",
+						"remoteAuth": {
+							"enabled": true,
+							"type": "bearer",
+							"tokenHeaderName": "Authorization"
+						}
+					},
+					"userUploads": {
+						"pattern": "uploads/",
+						"priority": [
+							"r2"
+						],
+						"r2": {
+							"enabled": true,
+							"bindingName": "IMAGES_BUCKET"
+						}
+					},
+					"staticAssets": {
+						"pattern": "assets/",
+						"priority": [
+							"remote"
+						],
+						"remoteUrl": "https://cdn.example.com/static",
+						"auth": {
+							"useOriginAuth": false,
+							"sharePublicly": true
+						}
+					},
+					"profilePictures": {
+						"pattern": "profiles/",
+						"priority": [
+							"r2"
+						],
+						"pathTransforms": {
+							"profiles": {
+								"prefix": "avatars/",
+								"removePrefix": true
+							}
+						}
 					}
 				},
 				/* Image Derivative Templates */
@@ -781,10 +996,10 @@
 				"DEFAULT_FIT": "scale-down",
 				"USER_AGENT": "Cloudflare-Image-Resizer/1.0-PROD",
 				/**
-	         * AUTHENTICATION SETTINGS - PRODUCTION
-	         * ---------------------------------
-	         * Note: Global auth is disabled but remote-specific auth is enabled
-	         */
+		         * AUTHENTICATION SETTINGS - PRODUCTION
+		         * ---------------------------------
+		         * Note: Global auth is disabled but remote-specific auth is enabled
+		         */
 				/* Global Auth Settings */
 				// "AUTH_ENABLED": "false", // Global auth is disabled in production
 				"AUTH_SECURITY_LEVEL": "strict", // strict: fail if auth fails (more secure)

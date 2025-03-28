@@ -383,6 +383,53 @@ export interface ImageResizerConfig {
   // Storage settings
   storage: {
     priority: ('r2' | 'remote' | 'fallback')[];
+    // Path-based origin configuration
+    pathBasedOrigins?: Record<string, {
+      pattern: string | RegExp;               // Path pattern to match (string pattern or regex)
+      priority: ('r2' | 'remote' | 'fallback')[];  // Storage priority for this path pattern
+      remoteUrl?: string;                     // Remote URL specific to this path
+      fallbackUrl?: string;                   // Fallback URL specific to this path
+      r2?: {                                  // R2 settings specific to this path
+        enabled: boolean;
+        bindingName: string;                  // Can be different than global binding
+      };
+      auth?: {                                // Auth settings specific to this path
+        useOriginAuth?: boolean;
+        sharePublicly?: boolean;
+        securityLevel?: 'strict' | 'permissive';
+      };
+      remoteAuth?: {                          // Remote auth settings specific to this path
+        enabled: boolean;
+        type: 'aws-s3' | 'bearer' | 'header' | 'query';
+        region?: string;
+        service?: string;
+        accessKeyVar?: string;
+        secretKeyVar?: string;
+        signedUrlExpiration?: number;
+        tokenHeaderName?: string;
+        tokenSecret?: string;
+        headers?: Record<string, string>;
+      };
+      fallbackAuth?: {                        // Fallback auth settings specific to this path
+        enabled: boolean;
+        type: 'aws-s3' | 'bearer' | 'header' | 'query';
+        region?: string;
+        service?: string;
+        accessKeyVar?: string;
+        secretKeyVar?: string;
+        signedUrlExpiration?: number;
+        tokenHeaderName?: string;
+        tokenSecret?: string;
+        headers?: Record<string, string>;
+      };
+      // Path-specific path transforms
+      pathTransforms?: PathTransforms;
+      // Path-specific fetch options
+      fetchOptions?: {
+        userAgent?: string;
+        headers?: Record<string, string>;
+      };
+    }>;
     remoteUrl?: string;
     remoteAuth?: {
       enabled: boolean;

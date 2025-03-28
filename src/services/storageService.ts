@@ -449,7 +449,8 @@ export class DefaultStorageService implements StorageService {
    * Fetch an image from storage based on configured priority with resilience patterns
    * 
    * This method adds retry, circuit breaker, and fallback mechanisms to improve
-   * reliability when fetching images from storage sources.
+   * reliability when fetching images from storage sources. It now supports path-based
+   * origin selection to use different storage sources for different path patterns.
    */
   async fetchImage(
     imagePath: string, 
@@ -464,14 +465,15 @@ export class DefaultStorageService implements StorageService {
         storagePriority: config.storage.priority.join(','),
         r2Enabled: config.storage.r2?.enabled,
         hasRemoteUrl: !!config.storage.remoteUrl,
-        hasFallbackUrl: !!config.storage.fallbackUrl
+        hasFallbackUrl: !!config.storage.fallbackUrl,
+        hasPathBasedOrigins: !!config.storage.pathBasedOrigins
       });
       
       // Create a resilient fetch operation that includes retry and circuit breaker patterns
       const fetchWithResilience = async (): Promise<StorageResult> => {
-        // Get effective storage priority, taking into account circuit breaker states
+        // Get effective storage priority, taking into account path patterns, circuit breaker states
         // and recent failure patterns
-        const effectivePriority = this.getEffectiveStoragePriority(config);
+        const { priority: effectivePriority, pathConfig } = this.getEffectiveStoragePriority(config, imagePath);
         
         // Track errors for better reporting
         const errors: Record<string, Error> = {};
@@ -483,11 +485,123 @@ export class DefaultStorageService implements StorageService {
             
             // Try to fetch from the appropriate storage based on type
             if (storageType === 'r2') {
-              result = await this.fetchFromR2WithResilience(imagePath, config, env, request);
+              // Use path-specific R2 config if available
+              let r2Config = config;
+              if (pathConfig && pathConfig.r2) {
+                // Create a new config with path-specific R2 settings
+                r2Config = {
+                  ...config,
+                  storage: {
+                    ...config.storage,
+                    r2: pathConfig.r2
+                  }
+                };
+                
+                // Apply path-specific path transforms if available
+                if (pathConfig.pathTransforms) {
+                  r2Config.pathTransforms = pathConfig.pathTransforms;
+                }
+              }
+              
+              result = await this.fetchFromR2WithResilience(imagePath, r2Config, env, request);
             } else if (storageType === 'remote') {
-              result = await this.fetchFromRemoteWithResilience(imagePath, config, env, request);
+              // Use path-specific remote config if available
+              let remoteConfig = config;
+              if (pathConfig) {
+                // Create a new config object with path-specific settings
+                remoteConfig = { ...config };
+                
+                // Apply path-specific remote URL if specified
+                if (pathConfig.remoteUrl) {
+                  remoteConfig.storage = {
+                    ...config.storage,
+                    remoteUrl: pathConfig.remoteUrl
+                  };
+                }
+                
+                // Apply path-specific remoteAuth if specified
+                if (pathConfig.remoteAuth) {
+                  remoteConfig.storage = {
+                    ...remoteConfig.storage,
+                    remoteAuth: pathConfig.remoteAuth
+                  };
+                }
+                
+                // Apply path-specific auth if specified
+                if (pathConfig.auth) {
+                  remoteConfig.storage = {
+                    ...remoteConfig.storage,
+                    auth: {
+                      ...remoteConfig.storage.auth,
+                      ...pathConfig.auth
+                    }
+                  };
+                }
+                
+                // Apply path-specific fetchOptions if specified
+                if (pathConfig.fetchOptions) {
+                  remoteConfig.storage = {
+                    ...remoteConfig.storage,
+                    fetchOptions: pathConfig.fetchOptions
+                  };
+                }
+                
+                // Apply path-specific path transforms if available
+                if (pathConfig.pathTransforms) {
+                  remoteConfig.pathTransforms = pathConfig.pathTransforms;
+                }
+              }
+              
+              result = await this.fetchFromRemoteWithResilience(imagePath, remoteConfig, env, request);
             } else if (storageType === 'fallback') {
-              result = await this.fetchFromFallbackWithResilience(imagePath, config, env, request);
+              // Use path-specific fallback config if available
+              let fallbackConfig = config;
+              if (pathConfig) {
+                // Create a new config object with path-specific settings
+                fallbackConfig = { ...config };
+                
+                // Apply path-specific fallback URL if specified
+                if (pathConfig.fallbackUrl) {
+                  fallbackConfig.storage = {
+                    ...config.storage,
+                    fallbackUrl: pathConfig.fallbackUrl
+                  };
+                }
+                
+                // Apply path-specific fallbackAuth if specified
+                if (pathConfig.fallbackAuth) {
+                  fallbackConfig.storage = {
+                    ...fallbackConfig.storage,
+                    fallbackAuth: pathConfig.fallbackAuth
+                  };
+                }
+                
+                // Apply path-specific auth if specified
+                if (pathConfig.auth) {
+                  fallbackConfig.storage = {
+                    ...fallbackConfig.storage,
+                    auth: {
+                      ...fallbackConfig.storage.auth,
+                      ...pathConfig.auth
+                    }
+                  };
+                }
+                
+                // Apply path-specific fetchOptions if specified
+                if (pathConfig.fetchOptions) {
+                  fallbackConfig.storage = {
+                    ...fallbackConfig.storage,
+                    fetchOptions: pathConfig.fetchOptions
+                  };
+                }
+                
+                // Apply path-specific path transforms if available
+                if (pathConfig.pathTransforms) {
+                  fallbackConfig.pathTransforms = pathConfig.pathTransforms;
+                }
+              }
+              
+              result = await this.fetchFromFallbackWithResilience(imagePath, fallbackConfig, env, request);
             }
             
             // If we got a result, ensure it meets our interface requirements
@@ -507,7 +621,8 @@ export class DefaultStorageService implements StorageService {
                 imagePath,
                 contentType: result.contentType,
                 size: result.size,
-                status: result.response.status
+                status: result.response.status,
+                usedPathBasedConfig: pathConfig ? true : false
               });
               
               return result as StorageResult;
@@ -528,7 +643,8 @@ export class DefaultStorageService implements StorageService {
             // Continue to the next storage type
             this.logger.warn(`Error fetching from ${storageType}, trying next source`, {
               error: error instanceof Error ? error.message : String(error),
-              imagePath
+              imagePath,
+              usedPathBasedConfig: pathConfig ? true : false
             });
           }
         }
@@ -537,6 +653,10 @@ export class DefaultStorageService implements StorageService {
         this.logger.error('All storage sources failed', {
           imagePath,
           triedSources: effectivePriority.join(','),
+          usedPathBasedConfig: pathConfig ? true : false,
+          pathPattern: pathConfig ? (typeof pathConfig.pattern === 'string' ? 
+            pathConfig.pattern : 
+            pathConfig.pattern.toString()) : 'none',
           errors: Object.entries(errors).map(([source, error]) => 
             `${source}: ${error.message}`
           ).join('; ')
@@ -578,30 +698,92 @@ export class DefaultStorageService implements StorageService {
   }
   
   /**
-   * Get the effective storage priority based on circuit breaker states and recent failures
+   * Get the effective storage priority based on path matching, circuit breaker states, and recent failures
    * 
-   * This method adjusts the storage priority to avoid sources that are currently
-   * experiencing issues.
+   * This method first checks for path-based origin configurations that match the given path,
+   * then adjusts the storage priority to avoid sources that are currently experiencing issues.
    * 
    * @param config The application configuration
-   * @returns The adjusted storage priority list
+   * @param imagePath The image path to determine the appropriate storage priority
+   * @returns The adjusted storage priority list and path-specific configuration 
    */
-  private getEffectiveStoragePriority(config: ImageResizerConfig): ('r2' | 'remote' | 'fallback')[] {
-    // Start with the configured priority
-    const configuredPriority = [...config.storage.priority];
+  private getEffectiveStoragePriority(
+    config: ImageResizerConfig,
+    imagePath: string
+  ): {
+    priority: ('r2' | 'remote' | 'fallback')[];
+    pathConfig?: any; // Path-specific configuration if matched
+  } {
+    let configuredPriority = [...config.storage.priority];
+    let pathConfig = null;
+    
+    // Check for path-based origin configurations first
+    if (config.storage.pathBasedOrigins) {
+      // Find matching path pattern
+      for (const [configName, pathOrigin] of Object.entries(config.storage.pathBasedOrigins)) {
+        // Match against pattern (either string or RegExp)
+        let isMatch = false;
+        
+        if (typeof pathOrigin.pattern === 'string') {
+          // For string patterns, do a simple inclusion check
+          isMatch = imagePath.includes(pathOrigin.pattern);
+        } else if (pathOrigin.pattern instanceof RegExp) {
+          // For RegExp patterns, use test method
+          isMatch = pathOrigin.pattern.test(imagePath);
+        }
+        
+        if (isMatch) {
+          this.logger.debug(`Matched path-based origin configuration: ${configName}`, {
+            imagePath,
+            pattern: typeof pathOrigin.pattern === 'string' 
+              ? pathOrigin.pattern 
+              : pathOrigin.pattern.toString(),
+            priority: pathOrigin.priority.join(',')
+          });
+          
+          // Use path-specific priority
+          configuredPriority = [...pathOrigin.priority];
+          pathConfig = pathOrigin;
+          
+          // Found a match, no need to check other patterns
+          break;
+        }
+      }
+    }
     
     // Create a filtered list that excludes sources with open circuit breakers
     // or high recent failure rates
     const effectivePriority = configuredPriority.filter(source => {
       // Skip sources that aren't properly configured
-      if (source === 'r2' && (!config.storage.r2?.enabled || !config.storage.r2?.bindingName)) {
-        return false;
+      // For path-based configurations, check path-specific settings first
+      if (source === 'r2') {
+        if (pathConfig && pathConfig.r2) {
+          // Use path-specific R2 settings
+          if (!pathConfig.r2.enabled || !pathConfig.r2.bindingName) {
+            return false;
+          }
+        } else if (!config.storage.r2?.enabled || !config.storage.r2?.bindingName) {
+          // Use global R2 settings
+          return false;
+        }
       }
-      if (source === 'remote' && !config.storage.remoteUrl) {
-        return false;
+      
+      if (source === 'remote') {
+        if (pathConfig && pathConfig.remoteUrl) {
+          // Path-specific remote URL is defined
+        } else if (!config.storage.remoteUrl) {
+          // No global remote URL
+          return false;
+        }
       }
-      if (source === 'fallback' && !config.storage.fallbackUrl) {
-        return false;
+      
+      if (source === 'fallback') {
+        if (pathConfig && pathConfig.fallbackUrl) {
+          // Path-specific fallback URL is defined
+        } else if (!config.storage.fallbackUrl) {
+          // No global fallback URL
+          return false;
+        }
       }
       
       // Skip sources with open circuit breakers
@@ -637,12 +819,13 @@ export class DefaultStorageService implements StorageService {
     // If all sources were filtered out, fall back to the original priority
     if (effectivePriority.length === 0) {
       this.logger.warn('All storage sources are problematic, using original priority', {
-        originalPriority: configuredPriority.join(',')
+        originalPriority: configuredPriority.join(','),
+        pathMatch: pathConfig ? 'true' : 'false'
       });
-      return configuredPriority;
+      return { priority: configuredPriority, pathConfig };
     }
     
-    return effectivePriority;
+    return { priority: effectivePriority, pathConfig };
   }
   
   /**
