@@ -18,6 +18,7 @@ import { KVTransformCacheInterface, KVCacheConfig, CacheMetadata, TransformCache
 import { StorageResult } from '../../interfaces';
 import { TransformOptions } from '../../../transform';
 import { createHash } from 'crypto';
+import { Logger, LogData } from '../../../utils/logging';
 
 // Extended StorageResult type with buffer field
 interface TransformStorageResult extends StorageResult {
@@ -38,6 +39,7 @@ interface TransformStorageResult extends StorageResult {
 export class SimpleKVTransformCacheManager implements KVTransformCacheInterface {
   private config: KVCacheConfig;
   private kvNamespace: KVNamespace;
+  private logger?: Logger;
   private stats = {
     hits: 0,
     misses: 0,
@@ -49,71 +51,227 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
    * 
    * @param config Cache configuration
    * @param kvNamespace KV namespace binding
+   * @param logger Optional logger for enhanced logging
    */
-  constructor(config: KVCacheConfig, kvNamespace: KVNamespace) {
+  constructor(config: KVCacheConfig, kvNamespace: KVNamespace, logger?: Logger) {
     this.config = config;
     this.kvNamespace = kvNamespace;
+    this.logger = logger;
+  }
+  
+  /**
+   * Helper for debug logging with console fallback
+   */
+  private logDebug(message: string, data?: LogData): void {
+    if (this.logger) {
+      this.logger.debug(message, data);
+    } else if (typeof console !== 'undefined' && console.debug) {
+      console.debug(message, data);
+    }
+  }
+  
+  /**
+   * Helper for info logging with console fallback
+   */
+  private logInfo(message: string, data?: LogData): void {
+    if (this.logger) {
+      this.logger.info(message, data);
+    } else if (typeof console !== 'undefined' && console.info) {
+      console.info(message, data);
+    }
+  }
+  
+  /**
+   * Helper for warning logging with console fallback
+   */
+  private logWarn(message: string, data?: LogData): void {
+    if (this.logger) {
+      this.logger.warn(message, data);
+    } else if (typeof console !== 'undefined' && console.warn) {
+      console.warn(message, data);
+    }
+  }
+  
+  /**
+   * Helper for error logging with console fallback
+   */
+  private logError(message: string, data?: LogData): void {
+    if (this.logger) {
+      this.logger.error(message, data);
+    } else if (typeof console !== 'undefined' && console.error) {
+      console.error(message, data);
+    }
   }
 
   /**
    * Check if a transformation is cached
    */
   async isCached(request: Request, transformOptions: TransformOptions): Promise<boolean> {
-    if (!this.config.enabled) return false;
+    const startTime = Date.now();
+    const url = new URL(request.url);
+    
+    if (!this.config.enabled) {
+      this.logDebug("KV transform cache is disabled", {
+        operation: 'kv_is_cached',
+        result: 'miss',
+        reason: 'disabled',
+        url: url.toString(),
+        path: url.pathname
+      });
+      return false;
+    }
     
     const key = this.generateCacheKey(request, transformOptions);
-    // Working around TypeScript errors with KV types
-    const metadata = await (this.kvNamespace as any).getWithMetadata(key, { type: 'metadata' });
     
-    return metadata.metadata !== null;
+    try {
+      // Working around TypeScript errors with KV types
+      const metadata = await (this.kvNamespace as any).getWithMetadata(key, { type: 'metadata' });
+      const duration = Date.now() - startTime;
+      
+      const exists = metadata.metadata !== null;
+      
+      this.logDebug(`KV transform cache: isCached check - ${exists ? 'exists' : 'not found'}`, {
+        operation: 'kv_is_cached',
+        result: exists ? 'hit' : 'miss',
+        key,
+        url: url.toString(),
+        path: url.pathname,
+        durationMs: duration,
+        transformOptions: typeof transformOptions === 'object' ? 
+          Object.keys(transformOptions).join(',') : 'none'
+      });
+      
+      return exists;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      
+      this.logError("KV transform cache: Error checking if item exists", {
+        operation: 'kv_is_cached',
+        result: 'error',
+        key,
+        url: url.toString(),
+        path: url.pathname,
+        durationMs: duration,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      
+      // If there's an error, assume it's not cached
+      return false;
+    }
   }
 
   /**
    * Get a cached transformation
    */
   async get(request: Request, transformOptions: TransformOptions): Promise<TransformCacheResult | null> {
-    if (!this.config.enabled) return null;
+    const startTime = Date.now();
+    const url = new URL(request.url);
+    
+    if (!this.config.enabled) {
+      this.logDebug("KV transform cache is disabled", {
+        operation: 'kv_get',
+        result: 'miss',
+        reason: 'disabled',
+        url: url.toString(),
+        path: url.pathname
+      });
+      return null;
+    }
     
     const key = this.generateCacheKey(request, transformOptions);
-    // Working around TypeScript errors with KV types
-    const result = await (this.kvNamespace as any).getWithMetadata(key, { type: 'arrayBuffer' });
     
-    if (result.value === null || result.metadata === null) {
-      this.stats.misses++;
-      return null;
-    }
-    
-    // Verify that the cached content has valid metadata with a content type
-    if (!result.metadata.contentType) {
-      if (typeof console !== 'undefined' && console.warn) {
-        console.warn("KV transform cache: Retrieved cache item is missing content type", { 
+    try {
+      // Working around TypeScript errors with KV types
+      const result = await (this.kvNamespace as any).getWithMetadata(key, { type: 'arrayBuffer' });
+      const duration = Date.now() - startTime;
+      
+      if (result.value === null || result.metadata === null) {
+        this.stats.misses++;
+        this.logDebug("KV transform cache: Cache miss - item not found", {
+          operation: 'kv_get',
+          result: 'miss',
+          reason: 'not_found',
           key,
-          metadataKeys: Object.keys(result.metadata).join(',')
+          url: url.toString(),
+          path: url.pathname,
+          durationMs: duration
         });
+        return null;
       }
-      this.stats.misses++;
-      return null;
-    }
-    
-    // Ensure the content type is an image format
-    // This prevents binary data being returned without proper image content type
-    if (!result.metadata.contentType.startsWith('image/')) {
-      if (typeof console !== 'undefined' && console.warn) {
-        console.warn("KV transform cache: Retrieved cache item has non-image content type", { 
+      
+      // Verify that the cached content has valid metadata with a content type
+      if (!result.metadata.contentType) {
+        this.stats.misses++;
+        this.logWarn("KV transform cache: Retrieved cache item is missing content type", {
+          operation: 'kv_get',
+          result: 'miss',
+          reason: 'missing_content_type',
           key,
-          contentType: result.metadata.contentType
+          metadataKeys: Object.keys(result.metadata).join(','),
+          url: url.toString(),
+          path: url.pathname,
+          durationMs: duration
         });
+        return null;
       }
+      
+      // Ensure the content type is an image format
+      // This prevents binary data being returned without proper image content type
+      if (!result.metadata.contentType.startsWith('image/')) {
+        this.stats.misses++;
+        this.logWarn("KV transform cache: Retrieved cache item has non-image content type", {
+          operation: 'kv_get',
+          result: 'miss',
+          reason: 'invalid_content_type',
+          key,
+          contentType: result.metadata.contentType,
+          url: url.toString(),
+          path: url.pathname,
+          durationMs: duration
+        });
+        return null;
+      }
+      
+      // Cache hit - log success with detailed info
+      this.stats.hits++;
+      this.logDebug("KV transform cache: Cache hit", {
+        operation: 'kv_get',
+        result: 'hit',
+        key,
+        contentType: result.metadata.contentType,
+        size: result.metadata.size,
+        url: url.toString(),
+        path: url.pathname,
+        durationMs: duration,
+        age: Date.now() - (result.metadata.timestamp || 0),
+        ttl: result.metadata.ttl,
+        transformOptions: typeof transformOptions === 'object' ? 
+          Object.keys(transformOptions).join(',') : 'none'
+      });
+      
+      return {
+        value: result.value,
+        metadata: result.metadata,
+        key
+      };
+    } catch (error) {
+      const duration = Date.now() - startTime;
       this.stats.misses++;
+      
+      this.logError("KV transform cache: Error retrieving cache item", {
+        operation: 'kv_get',
+        result: 'error',
+        key,
+        url: url.toString(),
+        path: url.pathname,
+        durationMs: duration,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      
       return null;
     }
-    
-    this.stats.hits++;
-    return {
-      value: result.value,
-      metadata: result.metadata,
-      key
-    };
   }
 
   /**

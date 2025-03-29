@@ -54,7 +54,7 @@ export function createKVTransformCacheManager(options: KVTransformCacheOptions):
     return new SimpleKVTransformCacheManager({
       ...config,
       enabled: false
-    }, null as unknown as KVNamespace);
+    }, null as unknown as KVNamespace, logger);
   }
   
   // Validate namespace
@@ -66,14 +66,14 @@ export function createKVTransformCacheManager(options: KVTransformCacheOptions):
     return new SimpleKVTransformCacheManager({
       ...config,
       enabled: false
-    }, null as unknown as KVNamespace);
+    }, null as unknown as KVNamespace, logger);
   }
   
   logger.debug('KV Transform Cache configuration', {
     cacheConfig: JSON.stringify(config, null, 2).substring(0, 100) + '...'
   });
   
-  // Always use the simplified implementation
+  // Always use the simplified implementation, now passing the logger
   logger.info('Creating SimpleKVTransformCacheManager with metadata-based filtering');
-  return new SimpleKVTransformCacheManager(config, kvNamespace);
+  return new SimpleKVTransformCacheManager(config, kvNamespace, logger);
 }

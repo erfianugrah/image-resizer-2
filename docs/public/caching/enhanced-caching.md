@@ -1,11 +1,13 @@
 # Enhanced Caching System
 
-This document describes the advanced caching system implemented in Image Resizer 2, including intelligent TTL management, stale-while-revalidate pattern, and enhanced cache tagging.
+This document describes the advanced caching system implemented in Image Resizer 2, including intelligent TTL management, stale-while-revalidate pattern, enhanced cache tagging, and the new modular cache architecture.
 
 ## Table of Contents
 
 - [Overview](#overview)
+- [Modular Cache Architecture](#modular-cache-architecture)
 - [Cache TTL Management](#cache-ttl-management)
+- [Simplified KV Transform Cache](#simplified-kv-transform-cache)
 - [Stale-While-Revalidate Pattern](#stale-while-revalidate-pattern)
 - [Cache Bypass Mechanisms](#cache-bypass-mechanisms)
 - [Cache Tags](#cache-tags)
@@ -23,6 +25,102 @@ The Image Resizer 2 caching system provides intelligent, content-aware caching w
 - Support flexible TTL policies based on content type and path
 - Enable fine-grained cache invalidation through tagging
 - Enhance resilience through fallback patterns
+- Improve maintainability through modular architecture
+
+## Modular Cache Architecture
+
+The caching system has been refactored into a modular, service-oriented architecture with specialized components:
+
+### Core Components
+
+1. **CachePerformanceManager**: Records metrics and adds resource hints to responses
+   - Tracks hit/miss rates with detailed categorization
+   - Adds preconnect and preload hints for optimal client performance
+   - Integrates with the performance metrics system
+
+2. **CacheTagsManager**: Handles generation and application of cache tags
+   - Generates consistent cache tags based on content and context
+   - Applies tags to both Cloudflare's managed cache and Cache API
+   - Supports tag-based purging for fine-grained invalidation
+
+3. **CacheHeadersManager**: Manages cache-related HTTP headers
+   - Sets appropriate Cache-Control directives
+   - Adds Cloudflare-specific cache headers
+   - Handles Surrogate-Control and CDN-specific directives
+
+4. **CacheBypassManager**: Controls when to bypass the cache
+   - Processes bypass request parameters and headers
+   - Implements path-based and content-based bypass rules
+   - Manages development and debugging bypass modes
+
+5. **TTLCalculator**: Determines appropriate TTL values
+   - Calculates optimal TTL based on content type, path, and dimensions
+   - Handles different status code TTLs (success vs error)
+   - Respects origin cache directives when appropriate
+
+6. **CacheFallbackManager**: Provides graceful degradation
+   - Manages fallback mechanisms when primary cache fails
+   - Implements header-only caching for minimal overhead
+   - Tracks fallback usage for monitoring and optimization
+
+7. **CacheResilienceManager**: Implements reliability patterns
+   - Provides retry mechanisms with exponential backoff
+   - Implements circuit breaker to prevent cascading failures
+   - Isolates failures to maintain system stability
+
+8. **CloudflareCacheManager**: Interfaces with Cloudflare-specific caching
+   - Integrates with Cloudflare's managed caching system
+   - Applies Cloudflare-specific optimizations and headers
+   - Manages cf-cache-status tracking and reporting
+
+### Architecture Benefits
+
+The modular architecture provides several advantages:
+
+1. **Improved Maintainability**:
+   - Each module has a single responsibility
+   - Changes to one aspect don't affect others
+   - Clearer code organization and documentation
+
+2. **Enhanced Testability**:
+   - Components can be tested in isolation
+   - Mock dependencies for focused unit tests
+   - Simpler test setup and maintenance
+
+3. **Better Error Handling**:
+   - Specialized error types for each component
+   - Clearer error messages and tracking
+   - Isolated failure domains prevent cascading issues
+
+4. **Future Extensibility**:
+   - New cache features can be added as modules
+   - Easier to implement A/B testing of cache strategies
+   - Clear extension points for new functionality
+
+## Simplified KV Transform Cache
+
+The system now uses a simplified KV transform cache implementation that:
+
+1. **Uses Human-Readable Keys**:
+   - Key format: `transform:{hash}:{dimensions}:{options}` for clearer debugging
+   - No separate index structures or lookups required
+   - Direct key access for improved performance
+
+2. **Stores Metadata in KV Metadata Fields**:
+   - Metadata retrieved without fetching binary data
+   - Headers and options stored in metadata for fast access
+   - Content type explicitly set to prevent format issues
+   - Aspect crop information included to prevent duplicate processing
+
+3. **Optimizes KV Operations**:
+   - Single KV operation per cache get/put
+   - No index updates or maintenance required
+   - Reduced bandwidth usage for metadata-only queries
+
+4. **Validates Content Types**:
+   - Ensures cached binary data is properly formatted
+   - Prevents serving invalid responses to clients
+   - Handles edge cases for different image formats
 
 ## Cache TTL Management
 
@@ -167,12 +265,14 @@ The system adds resource hints for optimal performance:
 
 ## Cache Metrics
 
-The system collects cache performance metrics:
+The system collects detailed cache performance metrics:
 
-- Cache hit/miss tracking
-- TTL monitoring
-- Stale content usage stats
-- Path-based bucketing for statistical analysis
+- Cache hit/miss tracking with categorization
+- TTL monitoring and optimization
+- Path-based performance analysis
+- Aspect crop processing time tracking
+- KV storage efficiency metrics
+- Service-specific performance indicators
 
 ## Resilience Patterns
 
@@ -213,3 +313,13 @@ The system provides tailored configurations for different environments:
 - Limited cache bypass options
 - Content-appropriate caching strategies
 - Full resource hint optimization
+
+## Migration and Compatibility
+
+The system supports gradual migration from the previous caching implementation:
+
+- Configuration flag to enable the simplified KV cache implementation
+- Both implementations can run concurrently during transition
+- Automatic detection and compatibility with existing cache entries
+- No downtime required for migration
+- Clear upgrade path with minimal risk
