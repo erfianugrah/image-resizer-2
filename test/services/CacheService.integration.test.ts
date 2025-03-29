@@ -449,9 +449,9 @@ describe('CacheService Integration', () => {
       // since we're not fully controlling the KV namespace mock implementation
       expect(stats).toHaveProperty('count');
       expect(stats).toHaveProperty('size');
-      expect(stats).toHaveProperty('indexSize');
       expect(stats).toHaveProperty('hitRate');
       expect(stats).toHaveProperty('avgSize');
+      expect(stats).toHaveProperty('lastPruned');
     });
     
     it('should handle errors gracefully', async () => {

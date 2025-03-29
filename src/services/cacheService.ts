@@ -19,7 +19,7 @@ import { ImageResizerConfig } from '../config';
 import {
   CacheQuotaExceededError,
   CacheServiceError,
-  CacheTagGenerationError,
+  // CacheTagGenerationError - Removed unused import
   CacheUnavailableError,
 } from '../errors/cacheErrors';
 import {
@@ -38,7 +38,8 @@ import {
   CacheResilienceManager,
   CachePerformanceManager,
   KVTransformCacheInterface,
-  createKVTransformCacheManager
+  createKVTransformCacheManager,
+  CacheMetadata
 } from './cache';
 
 // Type guard functions for TypeScript error handling
@@ -46,11 +47,14 @@ function isCacheServiceError(error: unknown): error is CacheServiceError {
   return error instanceof CacheServiceError;
 }
 
+// This function is kept for future use
+/* 
 function isCacheTagGenerationError(
   error: unknown,
 ): error is CacheTagGenerationError {
   return error instanceof CacheTagGenerationError;
 }
+*/
 
 function isError(error: unknown): error is Error {
   return error instanceof Error;
@@ -124,15 +128,8 @@ export class DefaultCacheService implements CacheService {
       this.logger.warn('KV namespace is not provided, transform cache will be disabled');
     }
     
-    // Check if the simplified implementation is configured
-    const useSimpleImplementation = config.cache.transformCache?.useSimpleImplementation === true;
-    
-    // Log the implementation choice for debugging
-    if (useSimpleImplementation) {
-      this.logger.info('Configured to use simplified KV transform cache implementation');
-    } else {
-      this.logger.info('Configured to use full KV transform cache implementation');
-    }
+    // Log that we are always using the simplified implementation
+    this.logger.info('Using simplified KV transform cache implementation');
     
     // Create the KV transform cache manager using the factory
     this.kvTransformCache = createKVTransformCacheManager({
@@ -144,19 +141,11 @@ export class DefaultCacheService implements CacheService {
         maxSize: config.cache.transformCache?.maxSize || 10 * 1024 * 1024, // 10MB default
         defaultTtl: config.cache.transformCache?.defaultTtl || 86400, // 1 day default
         contentTypeTtls: config.cache.transformCache?.contentTypeTtls || {},
-        indexingEnabled: config.cache.transformCache?.indexingEnabled !== false,
         backgroundIndexing: config.cache.transformCache?.backgroundIndexing !== false,
         purgeDelay: config.cache.transformCache?.purgeDelay || 100,
-        disallowedPaths: config.cache.transformCache?.disallowedPaths || [],
-        optimizedIndexing: config.cache.transformCache?.optimizedIndexing === true,
-        smallPurgeThreshold: config.cache.transformCache?.smallPurgeThreshold || 20,
-        indexUpdateFrequency: config.cache.transformCache?.indexUpdateFrequency || 10,
-        skipIndicesForSmallFiles: config.cache.transformCache?.skipIndicesForSmallFiles !== false,
-        smallFileThreshold: config.cache.transformCache?.smallFileThreshold || 51200 // 50KB default
+        disallowedPaths: config.cache.transformCache?.disallowedPaths || []
       },
-      logger,
-      // Use simplified implementation if configured
-      useSimpleImplementation: useSimpleImplementation
+      logger
     });
     
     this.cfCacheManager = new CloudflareCacheManager(logger, configService);
@@ -167,9 +156,7 @@ export class DefaultCacheService implements CacheService {
     this.logger.debug('Modular cache components initialized', {
       components: 'CacheHeadersManager, CacheTagsManager, CacheBypassManager, CacheFallbackManager, KVTransformCacheInterface, CloudflareCacheManager, TTLCalculator, CacheResilienceManager, CachePerformanceManager',
       componentsCount: 9,
-      transformCacheImpl: config.cache.transformCache?.useSimpleImplementation ? 'SimpleKVTransformCacheManager' : 'KVTransformCacheManager',
-      transformCacheFlag: config.cache.transformCache?.useSimpleImplementation,
-      transformCacheFlagType: typeof config.cache.transformCache?.useSimpleImplementation,
+      transformCacheImpl: 'SimpleKVTransformCacheManager',
       transformCache: config.cache.transformCache ? JSON.stringify(config.cache.transformCache).substring(0, 100) + '...' : 'undefined'
     });
   }
@@ -609,7 +596,9 @@ export class DefaultCacheService implements CacheService {
     this.logger.debug('Using deprecated extractOptionsFromUrl in CacheService, use CacheTagsManager instead');
     // This is kept for backward compatibility but delegates to the CacheTagsManager
     // We're using private method access which is not ideal, but this method is deprecated
-    return (this._tagsManager as any).extractOptionsFromUrl(url);
+    // Cast to unknown first to avoid TypeScript type checking on private method
+    const tagsManager = this._tagsManager as unknown;
+    return (tagsManager as { extractOptionsFromUrl: (url: URL) => TransformOptions }).extractOptionsFromUrl(url);
   }
 
   /**
@@ -1408,10 +1397,12 @@ export class DefaultCacheService implements CacheService {
     }
     
     // Check request has env
-    if (!(request as any).env) {
+    // Cast to unknown first to avoid type conflicts
+    const requestAsObj = request as unknown;
+    if (!(requestAsObj as Record<string, unknown>).env) {
       this.logger.warn('Request does not have env property, this may cause KV binding issues', {
         url: request.url,
-        requestProps: Object.keys(request as any).filter(k => k !== 'headers').join(',')
+        requestProps: Object.keys(requestAsObj as Record<string, unknown>).filter(k => k !== 'headers').join(',')
       });
       isValid = false;
     }
@@ -1509,9 +1500,9 @@ export class DefaultCacheService implements CacheService {
   async getTransformCacheStats(): Promise<{
     count: number,
     size: number,
-    indexSize: number,
     hitRate: number,
-    avgSize: number
+    avgSize: number,
+    lastPruned: Date
   }> {
     try {
       const config = this.configService.getConfig();
@@ -1522,9 +1513,9 @@ export class DefaultCacheService implements CacheService {
         return {
           count: 0,
           size: 0,
-          indexSize: 0,
           hitRate: 0,
-          avgSize: 0
+          avgSize: 0,
+          lastPruned: new Date(0)
         };
       }
       
@@ -1534,10 +1525,8 @@ export class DefaultCacheService implements CacheService {
       this.logger.debug('Retrieved KV transform cache stats', {
         count: stats.count,
         size: stats.size,
-        indexSize: stats.indexSize,
         hitRate: stats.hitRate,
         avgSize: stats.avgSize,
-        optimized: stats.optimized,
         lastPrunedTime: stats.lastPruned.getTime()
       });
       
@@ -1550,9 +1539,9 @@ export class DefaultCacheService implements CacheService {
       return {
         count: 0,
         size: 0,
-        indexSize: 0,
         hitRate: 0,
-        avgSize: 0
+        avgSize: 0,
+        lastPruned: new Date(0)
       };
     }
   }
@@ -1568,7 +1557,7 @@ export class DefaultCacheService implements CacheService {
     limit?: number, 
     cursor?: string
   ): Promise<{
-    entries: {key: string, metadata: any}[],
+    entries: {key: string, metadata: CacheMetadata}[],
     cursor?: string,
     complete: boolean
   }> {

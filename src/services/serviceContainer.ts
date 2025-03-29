@@ -85,7 +85,8 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
   // Get the KV namespace from the environment
   const transformCacheBinding = config.cache.transformCache?.binding || 'IMAGE_TRANSFORMATIONS_CACHE';
   // Use type assertion to fix TS7053 error
-  const kvNamespace = (env as Record<string, any>)[transformCacheBinding];
+  // Double cast to avoid type errors - first to unknown, then to KVNamespace
+  const kvNamespace = ((env as Record<string, unknown>)[transformCacheBinding]) as unknown as KVNamespace;
   
   // Create the cache service with the KV namespace
   const cacheService: CacheService = new DefaultCacheService(

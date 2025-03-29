@@ -22,6 +22,10 @@ export interface PerformanceMetrics {
   transformEnd?: number;
   detectionStart?: number;
   detectionEnd?: number;
+  kvCacheLookupStart?: number;
+  kvCacheLookupEnd?: number;
+  kvCacheHit?: boolean;
+  kvCacheError?: boolean;
   end?: number;
   detectionSource?: string;
 }
@@ -348,7 +352,7 @@ export interface CacheService extends KVTransformCacheMethods {
    * This property is private in DefaultCacheService to encapsulate implementation details.
    * Other services should use the generateCacheTags method instead.
    */
-  readonly tagsManager?: any; // Using 'any' to avoid circular imports - optional to support different implementations
+  readonly tagsManager?: unknown; // Optional to support different implementations
   
   /**
    * Service lifecycle method for shutdown
@@ -559,9 +563,9 @@ export interface KVTransformCacheMethods {
   getTransformCacheStats(): Promise<{
     count: number,
     size: number,
-    indexSize: number,
     hitRate: number,
-    avgSize: number
+    avgSize: number,
+    lastPruned: Date
   }>;
   
   /**
@@ -575,7 +579,7 @@ export interface KVTransformCacheMethods {
     limit?: number, 
     cursor?: string
   ): Promise<{
-    entries: {key: string, metadata: any}[],
+    entries: {key: string, metadata: Record<string, unknown>}[],
     cursor?: string,
     complete: boolean
   }>;
@@ -906,6 +910,13 @@ export interface MetadataProcessingOptions {
   preserveFocalPoint?: boolean;
   qualityFactor?: number;
   width?: number | string; // Explicitly requested width parameter
+  cachedTransform?: {    // Information from KV transform cache to avoid duplicate processing
+    aspectCropInfo?: {   // Aspect crop info from the KV transform cache
+      aspect?: string;   // Aspect ratio used in the cached transform
+      focal?: string;    // Focal point used in the cached transform
+      processedWithKV: boolean; // Flag indicating this was processed by KV transform cache
+    }
+  }
 }
 
 /**
@@ -928,6 +939,7 @@ export interface TransformationResult {
   dpr?: number;
   originalMetadata?: ImageMetadata;
   transformUrl?: string;
+  skipAspectCropCalculation?: boolean; // Flag to indicate aspect crop was already calculated
 }
 
 /**

@@ -2,29 +2,18 @@
  * Interface definition for KV-based transform cache
  * 
  * This component provides efficient storage and retrieval of transformed images
- * with cache tag indexing for efficient purging. It implements a hybrid approach to caching
- * that balances performance and functionality, with two key strategies:
+ * with a simplified approach to caching that uses:
  * 
- * 1. Standard Approach:
- *    - Uses centralized indices for all tags and paths
- *    - Full JSON documents for indices
- *    - Simple implementation but higher KV operation costs
- *    - Better for smaller deployments with fewer cache entries
+ * - Human-readable keys that include image name and transform parameters
+ * - KV's list + metadata filtering for purging operations
+ * - No separate index structures (metadata stored with content)
+ * - Background processing with waitUntil
  * 
- * 2. Optimized Approach:
- *    - Uses distributed key-specific indices for tags and paths
- *    - Comma-separated lists instead of JSON for efficiency
- *    - Batched operations and controlled indexing frequency
- *    - Lazy index updates to reduce KV operations
- *    - Better for larger deployments with many cache entries
- * 
- * The hybrid approach includes:
- *    - Background processing with waitUntil
- *    - Conditional indexing based on file size
- *    - Deterministic sampling for index updates
- *    - Smart purging with batch operations
- *    - Regular maintenance to keep the cache optimized
- *    - Adaptive list+filter vs. index-based lookups
+ * This approach is simple, efficient, and easy to debug:
+ * - Background processing for non-blocking operations
+ * - Metadata-based filtering for efficient purging
+ * - Tag-based cache invalidation
+ * - Regular maintenance to keep the cache optimized
  */
 
 import { StorageResult } from '../../interfaces';
@@ -35,7 +24,7 @@ import { ExecutionContext } from '@cloudflare/workers-types';
  * Configuration options for KV transform cache
  * 
  * These options control the behavior of the cache, including storage limits,
- * TTLs, indexing strategy, and optimization settings.
+ * TTLs, and purging operations.
  */
 export interface KVCacheConfig {
   enabled: boolean;
@@ -44,23 +33,16 @@ export interface KVCacheConfig {
   maxSize: number;             // Maximum size to cache in bytes (defaults to 10MB)
   defaultTtl: number;          // Default TTL in seconds (defaults to 86400 - 1 day)
   contentTypeTtls: Record<string, number>; // TTLs by content type
-  indexingEnabled: boolean;    // Enable secondary indices for tag-based purging
-  backgroundIndexing: boolean; // Update indices in background to avoid blocking
+  backgroundIndexing: boolean; // Process cache operations in background to avoid blocking
   purgeDelay: number;          // Delay between purge operations (ms)
   disallowedPaths: string[];   // Paths that should not be cached
-  
-  // Advanced indexing options
-  optimizedIndexing: boolean; // Use minimal indices (key references only) for better performance
-  smallPurgeThreshold: number; // Maximum number of items to purge using list+filter instead of indices
-  indexUpdateFrequency: number; // How often to update indices (e.g., 1 = every time, 10 = every 10th operation)
-  skipIndicesForSmallFiles: boolean; // Skip indexing for files smaller than a threshold
-  smallFileThreshold: number; // Size threshold for "small" files in bytes
 }
 
 /**
  * Cache metadata stored alongside the transformed image
+ * Extends Record<string, unknown> to satisfy the type system
  */
-export interface CacheMetadata {
+export interface CacheMetadata extends Record<string, unknown> {
   url: string;                 // Original URL
   timestamp: number;           // When the item was cached
   contentType: string;         // Content type of the cached image
@@ -72,6 +54,11 @@ export interface CacheMetadata {
   storageType?: string;        // The storage type used (r2, remote, fallback)
   originalSize?: number;       // Original image size before transformation
   compressionRatio?: number;   // Compression ratio achieved
+  aspectCropInfo?: {           // Information about aspect crop processing
+    aspect?: string;           // Aspect ratio used
+    focal?: string;            // Focal point used
+    processedWithKV: boolean;  // Flag indicating this was processed by KV cache
+  };
 }
 
 /**
@@ -141,15 +128,13 @@ export interface KVTransformCacheInterface {
   }>;
   
   /**
-   * Get cache statistics including optimization status and maintenance info
+   * Get cache statistics including maintenance info
    */
   getStats(): Promise<{
     count: number,             // Number of cached items
     size: number,              // Total size in bytes
-    indexSize: number,         // Size of indices in bytes (estimated)
     hitRate: number,           // Hit rate percentage
     avgSize: number,           // Average item size in bytes
-    optimized: boolean,        // Whether optimized indexing is enabled
     lastPruned: Date           // When maintenance was last performed
   }>;
   

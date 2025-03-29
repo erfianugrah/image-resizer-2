@@ -413,7 +413,8 @@ export function createContainerBuilder(env: Env): DIContainer {
   
   container.registerFactory(ServiceTypes.DEBUG_SERVICE, () => {
     const loggingService = container.resolve<DefaultLoggingService>(ServiceTypes.LOGGING_SERVICE);
-    const cacheService = container.resolve<CacheService>(ServiceTypes.CACHE_SERVICE);
+    // Resolve cacheService to ensure it's initialized properly
+    container.resolve<CacheService>(ServiceTypes.CACHE_SERVICE);
     const logger = loggingService.getLogger('DebugService');
     
     // We need to create a CacheTagsManager instance directly

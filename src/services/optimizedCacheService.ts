@@ -7,6 +7,7 @@
 
 import { Logger } from '../utils/logging';
 import { OptimizedLogger } from '../utils/optimized-logging';
+import { CacheMetadata } from './cache';
 import { CacheService, ConfigurationService, StorageResult, TransformOptions } from './interfaces';
 import { ImageResizerConfig } from '../config';
 import { DefaultCacheService } from './cacheService';
@@ -1129,9 +1130,9 @@ export class OptimizedCacheService implements CacheService {
   async getTransformCacheStats(): Promise<{
     count: number,
     size: number,
-    indexSize: number,
     hitRate: number,
-    avgSize: number
+    avgSize: number,
+    lastPruned: Date
   }> {
     // Delegate to base service with performance tracking
     const startTime = Date.now();
@@ -1162,9 +1163,9 @@ export class OptimizedCacheService implements CacheService {
       return {
         count: 0,
         size: 0,
-        indexSize: 0,
         hitRate: 0,
-        avgSize: 0
+        avgSize: 0,
+        lastPruned: new Date(0)
       };
     }
   }
@@ -1180,7 +1181,7 @@ export class OptimizedCacheService implements CacheService {
     limit?: number, 
     cursor?: string
   ): Promise<{
-    entries: {key: string, metadata: any}[],
+    entries: {key: string, metadata: CacheMetadata}[],
     cursor?: string,
     complete: boolean
   }> {

@@ -260,15 +260,27 @@ export class DefaultDebugService implements DebugService {
           metrics.transformEnd - metrics.transformStart : 0;
         const detectionTime = metrics.detectionStart && metrics.detectionEnd ? 
           metrics.detectionEnd - metrics.detectionStart : 0;
+        const kvCacheLookupTime = metrics.kvCacheLookupStart && metrics.kvCacheLookupEnd ?
+          metrics.kvCacheLookupEnd - metrics.kvCacheLookupStart : 0;
         
         // Add consolidated performance metrics in readable format
-        headers.set('X-Performance', `total=${totalTime}ms; storage=${storageTime}ms; transform=${transformTime}ms; detection=${detectionTime}ms`);
+        headers.set('X-Performance', `total=${totalTime}ms; storage=${storageTime}ms; transform=${transformTime}ms; detection=${detectionTime}ms; kv_cache=${kvCacheLookupTime}ms`);
         
         // Keep individual headers for backward compatibility
         headers.set('X-Performance-Total-Ms', totalTime.toString());
         if (storageTime) headers.set('X-Performance-Storage-Ms', storageTime.toString());
         if (transformTime) headers.set('X-Performance-Transform-Ms', transformTime.toString());
         if (detectionTime) headers.set('X-Performance-Detection-Ms', detectionTime.toString());
+        if (kvCacheLookupTime) headers.set('X-Performance-KV-Cache-Ms', kvCacheLookupTime.toString());
+        
+        // Add KV cache status if available
+        if (metrics.kvCacheHit !== undefined) {
+          headers.set('X-KV-Cache-Hit', metrics.kvCacheHit.toString());
+        }
+        
+        if (metrics.kvCacheError !== undefined) {
+          headers.set('X-KV-Cache-Error', metrics.kvCacheError.toString());
+        }
         
         // Add detection source if available
         if (metrics.detectionSource) {
@@ -1202,7 +1214,7 @@ export class DefaultDebugService implements DebugService {
   private generateCacheTags(
     path: string,
     options: TransformOptions,
-    config: ImageResizerConfig
+    _config: ImageResizerConfig
   ): string[] {
     // First choice: Always use CacheTagsManager if available
     if (this.cacheTagsManager) {

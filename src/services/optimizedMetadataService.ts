@@ -206,64 +206,139 @@ export class OptimizedMetadataService implements MetadataFetchingService {
     try {
       this.logger.debug('Checking KV cache', { cacheKey });
       
-      // Get the cached data from KV
-      const cachedData = await env.IMAGE_METADATA_CACHE.get(cacheKey, { type: 'json' });
+      // Try to retrieve using metadata directly first (faster)
+      const kvStartTime = Date.now();
+      const { value, metadata: kvMetadata } = await env.IMAGE_METADATA_CACHE.getWithMetadata(cacheKey, { type: 'text' });
+      const kvLookupDuration = Date.now() - kvStartTime;
       
-      if (!cachedData) {
-        this.logger.debug('KV cache miss', { cacheKey });
-        return null;
-      }
-      
-      // Validate the cached data structure
-      const kvCacheData = cachedData as CachedMetadata;
-      
-      if (!kvCacheData.width || !kvCacheData.height) {
-        this.logger.warn('Invalid KV cache entry', { 
+      // First check if we have metadata in the key's metadata field (new format)
+      if (kvMetadata) {
+        this.logger.debug('Found metadata in KV key metadata field', { 
           cacheKey,
-          hasWidth: !!kvCacheData.width,
-          hasHeight: !!kvCacheData.height 
+          lookupDurationMs: kvLookupDuration,
+          hasMetadata: true
         });
-        return null;
-      }
-      
-      // Check cache freshness - consider stale after 7 days
-      const now = Date.now();
-      const cacheAge = now - (kvCacheData.lastFetched || 0);
-      const maxAge = this.KV_CACHE_TTL * 1000; // Convert seconds to ms
-      
-      if (cacheAge > maxAge) {
-        this.logger.debug('KV cache entry is stale', {
+        
+        // Validate the cached data structure
+        const kvCacheData = kvMetadata as unknown as CachedMetadata;
+        
+        if (!kvCacheData.width || !kvCacheData.height) {
+          this.logger.warn('Invalid KV metadata entry', { 
+            cacheKey,
+            hasWidth: !!kvCacheData.width,
+            hasHeight: !!kvCacheData.height 
+          });
+          return null;
+        }
+        
+        // Check cache freshness - consider stale after configured TTL
+        const now = Date.now();
+        const cacheAge = now - (kvCacheData.lastFetched || 0);
+        const maxAge = this.KV_CACHE_TTL * 1000; // Convert seconds to ms
+        
+        if (cacheAge > maxAge) {
+          this.logger.debug('KV cache entry is stale', {
+            cacheKey,
+            cacheAge: Math.round(cacheAge / 1000 / 60 / 60) + 'h',
+            maxAge: Math.round(maxAge / 1000 / 60 / 60) + 'h'
+          });
+          return null;
+        }
+        
+        // Convert CachedMetadata to ImageMetadata format
+        const metadata: ImageMetadata = {
+          metadata: {
+            width: kvCacheData.width,
+            height: kvCacheData.height,
+            format: kvCacheData.format || 'jpeg',
+            // Add any original metadata if available
+            originalMetadata: kvCacheData.originalMetadata as Record<string, unknown> | undefined,
+            metadataSource: 'storage-service', // Use one of the allowed values from the type
+            confidence: kvCacheData.confidence || 'medium',
+            estimationMethod: 'direct'
+          },
+          messages: ['Retrieved from KV metadata field (optimized)']
+        };
+        
+        this.logger.debug('KV cache hit using key metadata field', {
           cacheKey,
-          cacheAge: Math.round(cacheAge / 1000 / 60 / 60) + 'h',
-          maxAge: Math.round(maxAge / 1000 / 60 / 60) + 'h'
+          width: metadata.metadata.width,
+          height: metadata.metadata.height,
+          format: metadata.metadata.format,
+          age: Math.round(cacheAge / 1000 / 60) + 'min',
+          lookupDurationMs: kvLookupDuration
         });
-        return null;
+        
+        return metadata;
       }
       
-      // Convert CachedMetadata to ImageMetadata format
-      const metadata: ImageMetadata = {
-        metadata: {
-          width: kvCacheData.width,
-          height: kvCacheData.height,
-          format: kvCacheData.format || 'jpeg',
-          // Add any original metadata if available
-          originalMetadata: kvCacheData.originalMetadata as Record<string, unknown> | undefined,
-          metadataSource: 'storage-service', // Use one of the allowed values from the type
-          confidence: kvCacheData.confidence || 'medium',
-          estimationMethod: 'direct'
-        },
-        messages: ['Retrieved from KV cache']
-      };
+      // Fall back to legacy format where metadata is stored in the value
+      if (value) {
+        try {
+          // Parse the value as JSON
+          const cachedData = JSON.parse(value) as CachedMetadata;
+          
+          if (!cachedData.width || !cachedData.height) {
+            this.logger.warn('Invalid KV cache value entry', { 
+              cacheKey,
+              hasWidth: !!cachedData.width,
+              hasHeight: !!cachedData.height 
+            });
+            return null;
+          }
+          
+          // Check cache freshness - consider stale after configured TTL
+          const now = Date.now();
+          const cacheAge = now - (cachedData.lastFetched || 0);
+          const maxAge = this.KV_CACHE_TTL * 1000; // Convert seconds to ms
+          
+          if (cacheAge > maxAge) {
+            this.logger.debug('KV cache entry is stale (legacy format)', {
+              cacheKey,
+              cacheAge: Math.round(cacheAge / 1000 / 60 / 60) + 'h',
+              maxAge: Math.round(maxAge / 1000 / 60 / 60) + 'h'
+            });
+            return null;
+          }
+          
+          // Convert CachedMetadata to ImageMetadata format
+          const metadata: ImageMetadata = {
+            metadata: {
+              width: cachedData.width,
+              height: cachedData.height,
+              format: cachedData.format || 'jpeg',
+              // Add any original metadata if available
+              originalMetadata: cachedData.originalMetadata as Record<string, unknown> | undefined,
+              metadataSource: 'storage-service', // Use one of the allowed values from the type
+              confidence: cachedData.confidence || 'medium',
+              estimationMethod: 'direct'
+            },
+            messages: ['Retrieved from KV cache (legacy format)']
+          };
+          
+          this.logger.debug('KV cache hit using legacy value format', {
+            cacheKey,
+            width: metadata.metadata.width,
+            height: metadata.metadata.height,
+            format: metadata.metadata.format,
+            age: Math.round(cacheAge / 1000 / 60) + 'min',
+            lookupDurationMs: kvLookupDuration
+          });
+          
+          return metadata;
+        } catch (parseError) {
+          this.logger.warn('Error parsing legacy KV cache value', {
+            cacheKey,
+            error: parseError instanceof Error ? parseError.message : String(parseError)
+          });
+        }
+      }
       
-      this.logger.debug('KV cache hit', {
+      this.logger.debug('KV cache miss', { 
         cacheKey,
-        width: metadata.metadata.width,
-        height: metadata.metadata.height,
-        format: metadata.metadata.format,
-        age: Math.round(cacheAge / 1000 / 60) + 'min'
+        lookupDurationMs: kvLookupDuration
       });
-      
-      return metadata;
+      return null;
     } catch (error) {
       // Log the error but don't fail the request
       this.logger.warn('Error accessing KV cache', { 
@@ -324,18 +399,23 @@ export class OptimizedMetadataService implements MetadataFetchingService {
         } : undefined
       };
       
-      // Store in KV with appropriate TTL
+      // Store empty string as value but put all metadata in the key's metadata field
+      // This allows retrieving metadata without fetching the value
       await env.IMAGE_METADATA_CACHE.put(
         cacheKey, 
-        JSON.stringify(cacheData), 
-        { expirationTtl: this.KV_CACHE_TTL }
+        '', // Empty string value since metadata is stored in metadata field
+        { 
+          expirationTtl: this.KV_CACHE_TTL,
+          metadata: cacheData // Store metadata in key's metadata field instead of value
+        }
       );
       
-      this.logger.debug('Stored metadata in KV cache', {
+      this.logger.debug('Stored metadata in KV key metadata field', {
         cacheKey,
         width: cacheData.width,
         height: cacheData.height,
-        ttl: this.KV_CACHE_TTL + 's'
+        ttl: this.KV_CACHE_TTL + 's',
+        usingMetadataField: true
       });
     } catch (error) {
       // Log the error but don't fail the request since it's already in memory cache

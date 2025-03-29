@@ -13,6 +13,36 @@ import {
   ConfigurationService, 
   AuthService 
 } from './interfaces';
+
+// Import PathTransforms from utils
+import { PathTransforms } from '../utils/path';
+
+/**
+ * Interface for path-based origin configuration
+ */
+interface PathOriginConfig {
+  pattern: string | RegExp;
+  priority?: ('r2' | 'remote' | 'fallback')[];
+  r2?: {
+    enabled: boolean;
+    bindingName: string;
+  };
+  remote?: {
+    enabled: boolean;
+    url: string;
+  };
+  fallback?: {
+    enabled: boolean;
+    url: string;
+  };
+  remoteUrl?: string;
+  fallbackUrl?: string;
+  pathTransforms?: PathTransforms;
+  fetchOptions?: Record<string, unknown>;
+  auth?: Record<string, unknown>;
+  remoteAuth?: Record<string, unknown>;
+  fallbackAuth?: Record<string, unknown>;
+}
 import { 
   StorageServiceError, 
   StorageNotFoundError, 
@@ -493,7 +523,7 @@ export class DefaultStorageService implements StorageService {
                   ...config,
                   storage: {
                     ...config.storage,
-                    r2: pathConfig.r2
+                    r2: pathConfig.r2 as { enabled: boolean; bindingName: string }
                   }
                 };
                 
@@ -515,7 +545,7 @@ export class DefaultStorageService implements StorageService {
                 if (pathConfig.remoteUrl) {
                   remoteConfig.storage = {
                     ...config.storage,
-                    remoteUrl: pathConfig.remoteUrl
+                    remoteUrl: pathConfig.remoteUrl as string
                   };
                 }
                 
@@ -523,7 +553,7 @@ export class DefaultStorageService implements StorageService {
                 if (pathConfig.remoteAuth) {
                   remoteConfig.storage = {
                     ...remoteConfig.storage,
-                    remoteAuth: pathConfig.remoteAuth
+                    remoteAuth: pathConfig.remoteAuth as { enabled: boolean; type: 'aws-s3' | 'bearer' | 'header' | 'query'; }
                   };
                 }
                 
@@ -564,7 +594,7 @@ export class DefaultStorageService implements StorageService {
                 if (pathConfig.fallbackUrl) {
                   fallbackConfig.storage = {
                     ...config.storage,
-                    fallbackUrl: pathConfig.fallbackUrl
+                    fallbackUrl: pathConfig.fallbackUrl as string
                   };
                 }
                 
@@ -572,7 +602,7 @@ export class DefaultStorageService implements StorageService {
                 if (pathConfig.fallbackAuth) {
                   fallbackConfig.storage = {
                     ...fallbackConfig.storage,
-                    fallbackAuth: pathConfig.fallbackAuth
+                    fallbackAuth: pathConfig.fallbackAuth as { enabled: boolean; type: 'aws-s3' | 'bearer' | 'header' | 'query'; }
                   };
                 }
                 
@@ -656,7 +686,7 @@ export class DefaultStorageService implements StorageService {
           usedPathBasedConfig: pathConfig ? true : false,
           pathPattern: pathConfig ? (typeof pathConfig.pattern === 'string' ? 
             pathConfig.pattern : 
-            pathConfig.pattern.toString()) : 'none',
+            (pathConfig.pattern as RegExp).toString()) : 'none',
           errors: Object.entries(errors).map(([source, error]) => 
             `${source}: ${error.message}`
           ).join('; ')
@@ -712,7 +742,7 @@ export class DefaultStorageService implements StorageService {
     imagePath: string
   ): {
     priority: ('r2' | 'remote' | 'fallback')[];
-    pathConfig?: any; // Path-specific configuration if matched
+    pathConfig?: PathOriginConfig; 
   } {
     let configuredPriority = [...config.storage.priority];
     let pathConfig = null;
@@ -743,7 +773,7 @@ export class DefaultStorageService implements StorageService {
           
           // Use path-specific priority
           configuredPriority = [...pathOrigin.priority];
-          pathConfig = pathOrigin;
+          pathConfig = pathOrigin as unknown as PathOriginConfig;
           
           // Found a match, no need to check other patterns
           break;
@@ -822,10 +852,10 @@ export class DefaultStorageService implements StorageService {
         originalPriority: configuredPriority.join(','),
         pathMatch: pathConfig ? 'true' : 'false'
       });
-      return { priority: configuredPriority, pathConfig };
+      return { priority: configuredPriority, pathConfig: pathConfig || undefined };
     }
     
-    return { priority: effectivePriority, pathConfig };
+    return { priority: effectivePriority, pathConfig: pathConfig || undefined };
   }
   
   /**

@@ -883,7 +883,7 @@ export const defaultConfig: ImageResizerConfig = {
       indexUpdateFrequency: 1,          // Update indices every time by default
       skipIndicesForSmallFiles: true,   // Skip indexing for small files to improve write perf
       smallFileThreshold: 51200,        // 50KB threshold for "small" files
-      useSimpleImplementation: true    // Use simplified implementation by default
+      useSimpleImplementation: true    // Simplified implementation is now the default
     },
     
     cacheTags: {

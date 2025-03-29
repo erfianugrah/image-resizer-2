@@ -127,6 +127,68 @@ export async function handleImageRequest(
     }
   }
   
+  // Check if the transformed image is already in KV cache before transformation
+  const { cacheService } = services;
+  
+  // Check if transform cache is enabled in the config
+  if (config.cache.transformCache?.enabled) {
+    try {
+      logger.breadcrumb('Checking KV transform cache before transformation');
+      
+      // Record KV cache lookup start time for metrics
+      metrics.kvCacheLookupStart = Date.now();
+      
+      const cachedResponse = await cacheService.getTransformedImage(request, optionsFromUrl);
+      
+      // Record KV cache lookup end time for metrics
+      metrics.kvCacheLookupEnd = Date.now();
+      const kvCacheLookupDuration = metrics.kvCacheLookupEnd - metrics.kvCacheLookupStart;
+      
+      if (cachedResponse) {
+        // Record that we had a cache hit
+        metrics.kvCacheHit = true;
+        
+        logger.info('Transformed image found in KV cache, returning cached response', {
+          url: request.url,
+          imagePath,
+          cacheKey: cachedResponse.headers.get('X-Cache-Key') || 'unknown',
+          lookupDurationMs: kvCacheLookupDuration
+        });
+        
+        // Update response headers to reflect lookup time
+        const updatedResponse = new Response(cachedResponse.body, cachedResponse);
+        updatedResponse.headers.set('X-KV-Cache-Lookup-Time', kvCacheLookupDuration.toString());
+        updatedResponse.headers.set('X-KV-Cache', 'HIT');
+        
+        // We found the image in cache, return it directly without further transformation
+        return updatedResponse;
+      }
+      
+      // Record that we had a cache miss
+      metrics.kvCacheHit = false;
+      
+      logger.debug('Transformed image not found in KV cache, proceeding with transformation', {
+        url: request.url,
+        imagePath,
+        lookupDurationMs: kvCacheLookupDuration
+      });
+    } catch (error) {
+      // Record metrics even on error
+      if (metrics.kvCacheLookupStart !== undefined && metrics.kvCacheLookupEnd === undefined) {
+        metrics.kvCacheLookupEnd = Date.now();
+      }
+      metrics.kvCacheError = true;
+      
+      // Log the error but continue with transformation
+      logger.warn('Error checking KV transform cache, proceeding with transformation', {
+        error: error instanceof Error ? error.message : String(error),
+        url: request.url,
+        imagePath,
+        lookupDurationMs: metrics.kvCacheLookupEnd !== undefined && metrics.kvCacheLookupStart !== undefined ? (metrics.kvCacheLookupEnd - metrics.kvCacheLookupStart) : 'unknown'
+      });
+    }
+  }
+  
   // Create and execute the transform image command
   const transformCommand = new TransformImageCommand(
     request,

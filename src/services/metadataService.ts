@@ -1313,6 +1313,26 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
   ): TransformationResult {
     options = options || {};
     const startTime = Date.now();
+    
+    // Check if there's already cached aspect crop information from KV transform cache
+    // This avoids duplicating aspect crop calculation for already cached transforms
+    if (options.cachedTransform && 
+        options.cachedTransform.aspectCropInfo && 
+        options.cachedTransform.aspectCropInfo.processedWithKV) {
+      
+      this.logger.debug('Using pre-computed aspect crop data from KV transform cache', {
+        aspect: options.cachedTransform.aspectCropInfo.aspect,
+        focal: options.cachedTransform.aspectCropInfo.focal
+      });
+      
+      // We can skip most of the processing since we already have the information
+      return {
+        originalMetadata: metadata,
+        // Skip aspect crop calculation - it was already done by the transform cache
+        skipAspectCropCalculation: true
+      };
+    }
+    
     this.logger.debug('Processing metadata', {
       originalWidth: metadata.metadata.width,
       originalHeight: metadata.metadata.height,
@@ -1579,6 +1599,21 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
     options?: MetadataProcessingOptions
   ): Promise<TransformationResult> {
     try {
+      // Check if there's already cached aspect crop information from KV transform cache
+      // This avoids duplicating aspect crop calculation for already cached transforms
+      if (options?.cachedTransform?.aspectCropInfo?.processedWithKV) {
+        this.logger.debug('Using cached aspect crop info from transform cache', {
+          aspect: options.cachedTransform.aspectCropInfo.aspect,
+          focal: options.cachedTransform.aspectCropInfo.focal,
+          path: imagePath
+        });
+        
+        // Return minimal result since we already have the information in the transform cache
+        return {
+          skipAspectCropCalculation: true
+        };
+      }
+      
       // First, fetch the metadata
       const metadata = await this.fetchMetadata(
         imagePath,

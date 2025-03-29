@@ -24,7 +24,7 @@
 	"vars": {
 		"ENVIRONMENT": "development",
 		"DEBUG": "true",
-		"REMOTE_URL": "https://example.com/images",
+		"REMOTE_URL": "https://cdn.erfianugrah.com",
 		"FALLBACK_URL": "https://placehold.com",
 		"STORAGE_PRIORITY": "r2,remote,fallback", // Default storage priority order
 		"ENABLE_AKAMAI_COMPATIBILITY": "true", // Enable Akamai compatibility in development
@@ -124,16 +124,17 @@
 		"CACHE_EVERYTHING": "true", // Cache all content types
 		"CACHE_USE_TTL_BY_STATUS": "true", // Use status-based caching (see above)
 		/* KV Transform Cache Settings */
-		"TRANSFORM_CACHE_ENABLED": "true", // Enable transform caching in KV
-		"TRANSFORM_CACHE_OPTIMIZED_INDEXING": "true", // Use optimized indexing for better performance
-		"TRANSFORM_CACHE_SMALL_PURGE_THRESHOLD": "20", // Under this threshold, use direct lookup vs list+filter
-		"TRANSFORM_CACHE_INDEX_FREQUENCY": "10", // Update indices every 10th operation (performance vs. accuracy)
+		"TRANSFORM_CACHE_ENABLED": "true", // REQUIRED: Enable transform caching in KV
+		"TRANSFORM_CACHE_BINDING": "IMAGE_TRANSFORMATIONS_CACHE", // REQUIRED: KV namespace binding name
+		"TRANSFORM_CACHE_USE_WAITUNTIL": "true", // REQUIRED: Use waitUntil for non-blocking operation
+		// Performance optimization settings
+		"TRANSFORM_CACHE_OPTIMIZED_INDEXING": "true", // Uses minimal indices for better performance
 		"TRANSFORM_CACHE_SKIP_SMALL_FILES": "true", // Skip indexing for small files (better performance)
-		"TRANSFORM_CACHE_SMALL_FILE_SIZE": "51200", // 50KB threshold for small files
-		"TRANSFORM_CACHE_USE_SIMPLE_IMPLEMENTATION": "true", // Use the simplified implementation by default
-		"TRANSFORM_CACHE_RESPECT_CLIENT_CACHE_CONTROL": "false", // Ignore client Cache-Control headers for KV transform caching
-		"TRANSFORM_CACHE_BINDING": "IMAGE_TRANSFORMATIONS_CACHE", // KV namespace binding for transformed images
-		"TRANSFORM_CACHE_USE_WAITUNTIL": "true", // Use waitUntil for background processing
+		"TRANSFORM_CACHE_SMALL_FILE_SIZE": "51200", // 50KB threshold for "small files"
+		"TRANSFORM_CACHE_SMALL_PURGE_THRESHOLD": "20", // Under this threshold, use direct lookup
+		"TRANSFORM_CACHE_INDEX_FREQUENCY": "10", // Update indices every 10th operation
+		// Behavior settings
+		"TRANSFORM_CACHE_RESPECT_CLIENT_CACHE_CONTROL": "false", // Ignore client Cache-Control headers
 		/* Status Code Ranges (for status-based caching) */
 		"CACHE_STATUS_SUCCESS_RANGE": "200-299",
 		"CACHE_STATUS_REDIRECT_RANGE": "301-302,307",
@@ -230,9 +231,9 @@
 					"r2",
 					"fallback"
 				],
-				"remoteUrl": "https://products.example.com/images",
+				"remoteUrl": "https://cdn.erfianugrah.com",
 				"remoteAuth": {
-					"enabled": true,
+					"enabled": false,
 					"type": "bearer",
 					"tokenHeaderName": "Authorization",
 					"tokenSecret": ""
@@ -349,6 +350,14 @@
 		{
 			"binding": "IMAGE_TRANSFORMATIONS_CACHE",
 			"id": "3e02a673554b4964ae4b90cabdc684a9"
+		},
+		{
+			"binding": "IMAGE_METADATA_CACHE_DEV",
+			"id": "a0f72b519db14692976ff31793eebab2"
+		},
+		{
+			"binding": "IMAGE_TRANSFORMATIONS_CACHE_DEV",
+			"id": "65db00a814ee4403b288233a38c58192"
 		}
 	],
 	/**
@@ -451,16 +460,17 @@
 				"CACHE_TTL_STATUS_NOTFOUND": "10",
 				"CACHE_TTL_STATUS_ERROR": "5",
 				/* KV Transform Cache Settings */
-				"TRANSFORM_CACHE_ENABLED": "true",
-				"TRANSFORM_CACHE_OPTIMIZED_INDEXING": "true",
-				"TRANSFORM_CACHE_SMALL_PURGE_THRESHOLD": "20",
-				"TRANSFORM_CACHE_INDEX_FREQUENCY": "10",
-				"TRANSFORM_CACHE_SKIP_SMALL_FILES": "true",
-				"TRANSFORM_CACHE_SMALL_FILE_SIZE": "51200",
-				"TRANSFORM_CACHE_USE_SIMPLE_IMPLEMENTATION": "true", // Use the simplified implementation in development for testing
-				"TRANSFORM_CACHE_RESPECT_CLIENT_CACHE_CONTROL": "false", // Ignore client Cache-Control headers for KV transform caching
-				"TRANSFORM_CACHE_BINDING": "IMAGE_TRANSFORMATIONS_CACHE", // KV namespace binding for transformed images
-				"TRANSFORM_CACHE_USE_WAITUNTIL": "true", // Use waitUntil for background processing
+				"TRANSFORM_CACHE_ENABLED": "true", // REQUIRED: Enable transform caching in KV
+				"TRANSFORM_CACHE_BINDING": "IMAGE_TRANSFORMATIONS_CACHE_DEV", // REQUIRED: KV namespace binding name
+				"TRANSFORM_CACHE_USE_WAITUNTIL": "true", // REQUIRED: Use waitUntil for non-blocking operation
+				// Performance optimization settings
+				"TRANSFORM_CACHE_OPTIMIZED_INDEXING": "true", // Uses minimal indices for better performance
+				"TRANSFORM_CACHE_SKIP_SMALL_FILES": "true", // Skip indexing for small files (better performance)
+				"TRANSFORM_CACHE_SMALL_FILE_SIZE": "51200", // 50KB threshold for "small files"
+				"TRANSFORM_CACHE_SMALL_PURGE_THRESHOLD": "20", // Under this threshold, use direct lookup
+				"TRANSFORM_CACHE_INDEX_FREQUENCY": "10", // Update indices every 10th operation
+				// Behavior settings
+				"TRANSFORM_CACHE_RESPECT_CLIENT_CACHE_CONTROL": "false", // Ignore client Cache-Control headers
 				"FORMAT_QUALITY_WEBP": "80",
 				"FORMAT_QUALITY_AVIF": "75",
 				"FORMAT_QUALITY_JPEG": "80",
@@ -630,9 +640,20 @@
 				{
 					"binding": "IMAGES_BUCKET",
 					"bucket_name": "images",
-					"preview_bucket_name": "images-dev"
+					"preview_bucket_name": "images-weur"
 				}
-			]
+			],
+			"kv_namespaces": [
+				{
+					"binding": "IMAGE_METADATA_CACHE_DEV",
+					"id": "a0f72b519db14692976ff31793eebab2"
+				},
+				{
+					"binding": "IMAGE_TRANSFORMATIONS_CACHE_DEV",
+					"id": "65db00a814ee4403b288233a38c58192"
+				}
+			],
+			"workers_dev": true,
 		},
 		"staging": {
 			"vars": {
@@ -720,16 +741,17 @@
 				"CACHE_TTL_R2_HEADERS": "3600",
 				"CACHE_METHOD": "cache-api",
 				/* KV Transform Cache Settings */
-				"TRANSFORM_CACHE_ENABLED": "true",
-				"TRANSFORM_CACHE_OPTIMIZED_INDEXING": "true",
-				"TRANSFORM_CACHE_SMALL_PURGE_THRESHOLD": "20",
-				"TRANSFORM_CACHE_INDEX_FREQUENCY": "5",
-				"TRANSFORM_CACHE_SKIP_SMALL_FILES": "true",
-				"TRANSFORM_CACHE_SMALL_FILE_SIZE": "51200",
-				"TRANSFORM_CACHE_USE_SIMPLE_IMPLEMENTATION": "true",
-				"TRANSFORM_CACHE_RESPECT_CLIENT_CACHE_CONTROL": "false",
-				"TRANSFORM_CACHE_BINDING": "IMAGE_TRANSFORMATIONS_CACHE",
-				"TRANSFORM_CACHE_USE_WAITUNTIL": "true",
+				"TRANSFORM_CACHE_ENABLED": "true", // REQUIRED: Enable transform caching in KV
+				"TRANSFORM_CACHE_BINDING": "IMAGE_TRANSFORMATIONS_CACHE", // REQUIRED: KV namespace binding name
+				"TRANSFORM_CACHE_USE_WAITUNTIL": "true", // REQUIRED: Use waitUntil for non-blocking operation
+				// Performance optimization settings
+				"TRANSFORM_CACHE_OPTIMIZED_INDEXING": "true", // Uses minimal indices for better performance
+				"TRANSFORM_CACHE_SKIP_SMALL_FILES": "true", // Skip indexing for small files (better performance)
+				"TRANSFORM_CACHE_SMALL_FILE_SIZE": "51200", // 50KB threshold for "small files"
+				"TRANSFORM_CACHE_SMALL_PURGE_THRESHOLD": "20", // Under this threshold, use direct lookup
+				"TRANSFORM_CACHE_INDEX_FREQUENCY": "5", // Update indices every 5th operation (faster updates for staging)
+				// Behavior settings
+				"TRANSFORM_CACHE_RESPECT_CLIENT_CACHE_CONTROL": "false", // Ignore client Cache-Control headers
 				/* Path transformations for all storage types */
 				"PATH_TRANSFORMS": {
 					"images": {
@@ -976,16 +998,17 @@
 				"CACHE_TTL_R2_HEADERS": "604800",
 				"CACHE_METHOD": "cf",
 				/* KV Transform Cache Settings */
-				"TRANSFORM_CACHE_ENABLED": "true",
-				"TRANSFORM_CACHE_OPTIMIZED_INDEXING": "true",
-				"TRANSFORM_CACHE_SMALL_PURGE_THRESHOLD": "50",
-				"TRANSFORM_CACHE_INDEX_FREQUENCY": "20",
-				"TRANSFORM_CACHE_SKIP_SMALL_FILES": "true",
-				"TRANSFORM_CACHE_SMALL_FILE_SIZE": "102400",
-				"TRANSFORM_CACHE_USE_SIMPLE_IMPLEMENTATION": "true",
-				"TRANSFORM_CACHE_RESPECT_CLIENT_CACHE_CONTROL": "false",
-				"TRANSFORM_CACHE_BINDING": "IMAGE_TRANSFORMATIONS_CACHE",
-				"TRANSFORM_CACHE_USE_WAITUNTIL": "true",
+				"TRANSFORM_CACHE_ENABLED": "true", // REQUIRED: Enable transform caching in KV
+				"TRANSFORM_CACHE_BINDING": "IMAGE_TRANSFORMATIONS_CACHE", // REQUIRED: KV namespace binding name
+				"TRANSFORM_CACHE_USE_WAITUNTIL": "true", // REQUIRED: Use waitUntil for non-blocking operation
+				// Performance optimization settings
+				"TRANSFORM_CACHE_OPTIMIZED_INDEXING": "true", // Uses minimal indices for better performance
+				"TRANSFORM_CACHE_SKIP_SMALL_FILES": "true", // Skip indexing for small files (better performance)
+				"TRANSFORM_CACHE_SMALL_FILE_SIZE": "102400", // 100KB threshold for "small files" (larger for production)
+				"TRANSFORM_CACHE_SMALL_PURGE_THRESHOLD": "50", // Higher threshold for production
+				"TRANSFORM_CACHE_INDEX_FREQUENCY": "20", // Less frequent index updates for production (better performance)
+				// Behavior settings
+				"TRANSFORM_CACHE_RESPECT_CLIENT_CACHE_CONTROL": "false", // Ignore client Cache-Control headers
 				/* Path transformations for all storage types */
 				"PATH_TRANSFORMS": {
 					"images": {

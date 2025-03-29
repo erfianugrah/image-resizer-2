@@ -83,6 +83,31 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       return null;
     }
     
+    // Verify that the cached content has valid metadata with a content type
+    if (!result.metadata.contentType) {
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn("KV transform cache: Retrieved cache item is missing content type", { 
+          key,
+          metadataKeys: Object.keys(result.metadata).join(',')
+        });
+      }
+      this.stats.misses++;
+      return null;
+    }
+    
+    // Ensure the content type is an image format
+    // This prevents binary data being returned without proper image content type
+    if (!result.metadata.contentType.startsWith('image/')) {
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn("KV transform cache: Retrieved cache item has non-image content type", { 
+          key,
+          contentType: result.metadata.contentType
+        });
+      }
+      this.stats.misses++;
+      return null;
+    }
+    
     this.stats.hits++;
     return {
       value: result.value,
@@ -112,6 +137,18 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
         status: response.status,
         contentType: response.headers.get('content-type')
       });
+    }
+    
+    // Skip caching for metadata requests (format=json)
+    // These are already handled by the metadata service
+    if (transformOptions.format === 'json' || request.url.includes('format=json')) {
+      if (typeof console !== 'undefined' && console.debug) {
+        console.debug("KV transform cache: Skipping storage for metadata request", {
+          url: request.url,
+          format: transformOptions.format
+        });
+      }
+      return;
     }
     
     // Check if we should cache this response
@@ -217,6 +254,24 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
         storageResult.buffer.byteLength / storageResult.originalSize : 
         undefined
     };
+    
+    // If we have aspect crop information in transformOptions, store it in metadata
+    // This helps coordinate with the metadata service to avoid duplicate processing
+    if (transformOptions.aspect || transformOptions.focal) {
+      metadata.aspectCropInfo = {
+        aspect: transformOptions.aspect,
+        focal: transformOptions.focal,
+        // Flag to indicate this was processed via KV transform cache
+        processedWithKV: true
+      };
+      
+      if (typeof console !== 'undefined' && console.debug) {
+        console.debug("KV transform cache: Storing aspect crop info in metadata", {
+          aspect: transformOptions.aspect,
+          focal: transformOptions.focal
+        });
+      }
+    }
     
     // Generate cache key
     const key = this.generateCacheKey(request, transformOptions);
@@ -399,20 +454,16 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
   async getStats(): Promise<{
     count: number,
     size: number,
-    indexSize: number,
     hitRate: number,
     avgSize: number,
-    optimized: boolean,
     lastPruned: Date
   }> {
     if (!this.config.enabled) {
       return {
         count: 0,
         size: 0,
-        indexSize: 0,
         hitRate: 0,
         avgSize: 0,
-        optimized: true,
         lastPruned: this.stats.lastPruned
       };
     }
@@ -449,10 +500,8 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     return {
       count,
       size: totalSize,
-      indexSize: 0, // No separate indices in this implementation
       hitRate,
       avgSize,
-      optimized: true,
       lastPruned: this.stats.lastPruned
     };
   }
