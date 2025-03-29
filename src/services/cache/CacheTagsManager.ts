@@ -71,14 +71,16 @@ export class CacheTagsManager {
         const replacementChar = config.cache.cacheTags?.pathNormalization?.replacementChar || '-';
         
         // Normalize path consistently with debugService
-        const normalizedPath = storageResult.path
-          .replace(new RegExp(leadingSlashPattern), '') // Remove leading slashes
+        const pathWithoutLeadingSlash = storageResult.path
+          .replace(new RegExp(leadingSlashPattern), ''); // Remove leading slashes
+        
+        const normalizedPath = pathWithoutLeadingSlash
           .replace(new RegExp(invalidCharsPattern, 'g'), replacementChar) // Replace special chars
           .split('/')
           .filter(Boolean);
         
         // Add unified path tag
-        tags.push(`${prefix}path-${normalizedPath.join('-')}`);
+        tags.push(`${prefix}path-${storageResult.path}`);
         
         // Add filename tag if simplified tags or add segment tags if not simplified
         const filename = normalizedPath[normalizedPath.length - 1];

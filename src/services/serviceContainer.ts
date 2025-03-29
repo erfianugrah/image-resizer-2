@@ -81,7 +81,18 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
 
   // Create service instances
   const storageService: StorageService = new DefaultStorageService(storageLogger, configurationService, authService) as StorageService;
-  const cacheService: CacheService = new DefaultCacheService(cacheLogger, configurationService);
+  
+  // Get the KV namespace from the environment
+  const transformCacheBinding = config.cache.transformCache?.binding || 'IMAGE_TRANSFORMATIONS_CACHE';
+  // Use type assertion to fix TS7053 error
+  const kvNamespace = (env as Record<string, any>)[transformCacheBinding];
+  
+  // Create the cache service with the KV namespace
+  const cacheService: CacheService = new DefaultCacheService(
+    cacheLogger, 
+    configurationService,
+    kvNamespace
+  );
   
   // Create CacheTagsManager for the debug service
   const cacheTagsManager = new CacheTagsManager(debugLogger, configurationService);

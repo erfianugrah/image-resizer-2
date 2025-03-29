@@ -400,6 +400,8 @@ export default {
   ): Promise<void> {
     // Map controller to event for compatibility with our code
     const event = controller as unknown as ScheduledEvent;
+    
+    
     // Create service container with minimal initialization
     const services = createContainer(env, {
       initializeServices: false, // Don't initialize since we'll just shut down

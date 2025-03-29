@@ -7,29 +7,25 @@
  * This implementation follows a modular approach with clear separation of concerns.
  */
 
-import { Logger } from "../utils/logging";
+import { Logger } from '../utils/logging';
 import {
   CacheService,
   ConfigurationService,
   StorageResult,
   TransformOptions,
-} from "./interfaces";
-import { ImageResizerConfig } from "../config";
+} from './interfaces';
+import { KVNamespace } from '@cloudflare/workers-types';
+import { ImageResizerConfig } from '../config';
 import {
   CacheQuotaExceededError,
-  CacheReadError,
   CacheServiceError,
   CacheTagGenerationError,
   CacheUnavailableError,
-  CacheWriteError,
-} from "../errors/cacheErrors";
+} from '../errors/cacheErrors';
 import {
   CircuitBreakerState,
   createCircuitBreakerState,
-  withCircuitBreaker,
-  withResilience,
-  withRetry,
-} from "../utils/retry";
+} from '../utils/retry';
 
 // Import all cache modules from the central index file
 import {
@@ -41,7 +37,8 @@ import {
   TTLCalculator,
   CacheResilienceManager,
   CachePerformanceManager,
-  KVTransformCacheManager
+  KVTransformCacheInterface,
+  createKVTransformCacheManager
 } from './cache';
 
 // Type guard functions for TypeScript error handling
@@ -83,7 +80,7 @@ export class DefaultCacheService implements CacheService {
   private _tagsManager: CacheTagsManager;  // renamed to _tagsManager to avoid conflict with getter
   private bypassManager: CacheBypassManager;
   private fallbackManager: CacheFallbackManager;
-  private kvTransformCache: KVTransformCacheManager;
+  private kvTransformCache: KVTransformCacheInterface;
   
   // Getter for the tagsManager to make it accessible while keeping the implementation private
   get tagsManager(): CacheTagsManager {
@@ -94,7 +91,11 @@ export class DefaultCacheService implements CacheService {
   private resilienceManager: CacheResilienceManager;
   private performanceManager: CachePerformanceManager;
 
-  constructor(logger: Logger, configService: ConfigurationService) {
+  constructor(
+    logger: Logger, 
+    configService: ConfigurationService,
+    private kvTransformNamespace?: KVNamespace 
+  ) {
     this.logger = logger;
     this.configService = configService;
 
@@ -109,15 +110,67 @@ export class DefaultCacheService implements CacheService {
     this._tagsManager = new CacheTagsManager(logger, configService);
     this.bypassManager = new CacheBypassManager(logger, configService);
     this.fallbackManager = new CacheFallbackManager(logger, configService);
-    this.kvTransformCache = new KVTransformCacheManager(logger, configService, this._tagsManager);
+    
+    // Get the configuration for transform cache
+    const config = configService.getConfig();
+    
+    // Use the KV namespace passed in the constructor
+    const kvNamespace = this.kvTransformNamespace;
+    
+    // Log namespace availability
+    if (kvNamespace) {
+      this.logger.info('Using KV namespace provided in constructor');
+    } else {
+      this.logger.warn('KV namespace is not provided, transform cache will be disabled');
+    }
+    
+    // Check if the simplified implementation is configured
+    const useSimpleImplementation = config.cache.transformCache?.useSimpleImplementation === true;
+    
+    // Log the implementation choice for debugging
+    if (useSimpleImplementation) {
+      this.logger.info('Configured to use simplified KV transform cache implementation');
+    } else {
+      this.logger.info('Configured to use full KV transform cache implementation');
+    }
+    
+    // Create the KV transform cache manager using the factory
+    this.kvTransformCache = createKVTransformCacheManager({
+      kvNamespace: kvNamespace as KVNamespace,
+      config: {
+        enabled: config.cache.transformCache?.enabled === true,
+        binding: config.cache.transformCache?.binding || 'IMAGE_TRANSFORMATIONS_CACHE',
+        prefix: config.cache.transformCache?.prefix || 'transform',
+        maxSize: config.cache.transformCache?.maxSize || 10 * 1024 * 1024, // 10MB default
+        defaultTtl: config.cache.transformCache?.defaultTtl || 86400, // 1 day default
+        contentTypeTtls: config.cache.transformCache?.contentTypeTtls || {},
+        indexingEnabled: config.cache.transformCache?.indexingEnabled !== false,
+        backgroundIndexing: config.cache.transformCache?.backgroundIndexing !== false,
+        purgeDelay: config.cache.transformCache?.purgeDelay || 100,
+        disallowedPaths: config.cache.transformCache?.disallowedPaths || [],
+        optimizedIndexing: config.cache.transformCache?.optimizedIndexing === true,
+        smallPurgeThreshold: config.cache.transformCache?.smallPurgeThreshold || 20,
+        indexUpdateFrequency: config.cache.transformCache?.indexUpdateFrequency || 10,
+        skipIndicesForSmallFiles: config.cache.transformCache?.skipIndicesForSmallFiles !== false,
+        smallFileThreshold: config.cache.transformCache?.smallFileThreshold || 51200 // 50KB default
+      },
+      logger,
+      // Use simplified implementation if configured
+      useSimpleImplementation: useSimpleImplementation
+    });
+    
     this.cfCacheManager = new CloudflareCacheManager(logger, configService);
     this.ttlCalculator = new TTLCalculator(logger, configService);
     this.resilienceManager = new CacheResilienceManager(logger, configService);
     this.performanceManager = new CachePerformanceManager(logger, configService);
     
     this.logger.debug('Modular cache components initialized', {
-      components: 'CacheHeadersManager, CacheTagsManager, CacheBypassManager, CacheFallbackManager, KVTransformCacheManager, CloudflareCacheManager, TTLCalculator, CacheResilienceManager, CachePerformanceManager',
-      componentsCount: 9
+      components: 'CacheHeadersManager, CacheTagsManager, CacheBypassManager, CacheFallbackManager, KVTransformCacheInterface, CloudflareCacheManager, TTLCalculator, CacheResilienceManager, CachePerformanceManager',
+      componentsCount: 9,
+      transformCacheImpl: config.cache.transformCache?.useSimpleImplementation ? 'SimpleKVTransformCacheManager' : 'KVTransformCacheManager',
+      transformCacheFlag: config.cache.transformCache?.useSimpleImplementation,
+      transformCacheFlagType: typeof config.cache.transformCache?.useSimpleImplementation,
+      transformCache: config.cache.transformCache ? JSON.stringify(config.cache.transformCache).substring(0, 100) + '...' : 'undefined'
     });
   }
 
@@ -135,7 +188,7 @@ export class DefaultCacheService implements CacheService {
     error: unknown,
     context: string,
     request?: Request,
-    defaultCode: string = "CACHE_SERVICE_ERROR",
+    defaultCode: string = 'CACHE_SERVICE_ERROR',
   ): CacheServiceError {
     // If it's already a CacheServiceError, just add request URL to error details if needed
     if (isCacheServiceError(error)) {
@@ -154,12 +207,12 @@ export class DefaultCacheService implements CacheService {
 
     // Check for quota exceeded errors
     if (
-      errorMessage.includes("quota") || errorMessage.includes("storage limit")
+      errorMessage.includes('quota') || errorMessage.includes('storage limit')
     ) {
       return new CacheQuotaExceededError(`Cache quota exceeded in ${context}`, {
         details: {
           originalError: errorMessage,
-          url: request && isRequest(request) ? request.url : "unknown",
+          url: request && isRequest(request) ? request.url : 'unknown',
         },
       });
     }
@@ -170,7 +223,7 @@ export class DefaultCacheService implements CacheService {
       status: 500,
       details: {
         originalError: errorMessage,
-        url: request && isRequest(request) ? request.url : "unknown",
+        url: request && isRequest(request) ? request.url : 'unknown',
         context,
       },
       retryable: true, // Most cache operations can be retried
@@ -226,9 +279,9 @@ export class DefaultCacheService implements CacheService {
 
     // Log high failure rates
     if (this.recentFailures.length > 10) {
-      this.logger.warn("High cache failure rate detected", {
+      this.logger.warn('High cache failure rate detected', {
         failureCount: this.recentFailures.length,
-        timeWindow: "5 minutes",
+        timeWindow: '5 minutes',
         mostCommonError: this.getMostCommonErrorCode(),
       });
     }
@@ -289,7 +342,7 @@ export class DefaultCacheService implements CacheService {
     try {
       // If we're seeing a lot of failures, go straight to fallback
       if (this.shouldUseFallback()) {
-        this.logger.debug("Using fallback behavior due to recent failures");
+        this.logger.debug('Using fallback behavior due to recent failures');
         return await fallback();
       }
 
@@ -300,11 +353,11 @@ export class DefaultCacheService implements CacheService {
       if (error instanceof CacheServiceError) {
         this.recordFailure(error.code);
       } else {
-        this.recordFailure("UNKNOWN_ERROR");
+        this.recordFailure('UNKNOWN_ERROR');
       }
 
       // Log the fallback
-      this.logger.debug("Cache operation failed, using fallback", {
+      this.logger.debug('Cache operation failed, using fallback', {
         error: error instanceof Error ? error.message : String(error),
       });
 
@@ -333,11 +386,11 @@ export class DefaultCacheService implements CacheService {
     try {
       // Validate inputs
       if (!response || !isResponse(response)) {
-        throw new CacheServiceError("Invalid response object provided", {
-          code: "INVALID_RESPONSE",
+        throw new CacheServiceError('Invalid response object provided', {
+          code: 'INVALID_RESPONSE',
           status: 500,
           details: {
-            responseType: response ? typeof response : "undefined",
+            responseType: response ? typeof response : 'undefined',
             isResponse: isResponse(response),
           },
         });
@@ -361,11 +414,11 @@ export class DefaultCacheService implements CacheService {
     } catch (error: unknown) {
       // Create error context variables for the logger
       const errorStatus = response?.status;
-      const errorContentType = response?.headers?.get("Content-Type") ||
-        "unknown";
+      const errorContentType = response?.headers?.get('Content-Type') ||
+        'unknown';
 
       // Log error details before throwing
-      this.logger.debug("Error applying cache headers", {
+      this.logger.debug('Error applying cache headers', {
         responseStatus: errorStatus,
         contentType: errorContentType,
         hasOptions: !!options && Object.keys(options).length > 0,
@@ -375,9 +428,9 @@ export class DefaultCacheService implements CacheService {
       // Use our standardized error handler
       throw this.handleError(
         error,
-        "Apply cache headers",
+        'Apply cache headers',
         undefined,
-        "CACHE_HEADERS_ERROR",
+        'CACHE_HEADERS_ERROR',
       );
     }
   }
@@ -431,32 +484,32 @@ export class DefaultCacheService implements CacheService {
     try {
       // Validate inputs
       if (!request || !isRequest(request)) {
-        throw new CacheServiceError("Invalid request object provided", {
-          code: "INVALID_REQUEST",
+        throw new CacheServiceError('Invalid request object provided', {
+          code: 'INVALID_REQUEST',
           status: 500,
           details: {
-            requestType: request ? typeof request : "undefined",
+            requestType: request ? typeof request : 'undefined',
             isRequest: isRequest(request),
           },
         });
       }
 
       if (!response || !isResponse(response)) {
-        throw new CacheServiceError("Invalid response object provided", {
-          code: "INVALID_RESPONSE",
+        throw new CacheServiceError('Invalid response object provided', {
+          code: 'INVALID_RESPONSE',
           status: 500,
           details: {
-            responseType: response ? typeof response : "undefined",
+            responseType: response ? typeof response : 'undefined',
             isResponse: isResponse(response),
           },
         });
       }
 
-      if (!ctx || typeof ctx.waitUntil !== "function") {
-        throw new CacheUnavailableError("Invalid execution context provided", {
+      if (!ctx || typeof ctx.waitUntil !== 'function') {
+        throw new CacheUnavailableError('Invalid execution context provided', {
           details: {
-            contextType: ctx ? typeof ctx : "undefined",
-            hasWaitUntil: ctx ? (typeof ctx.waitUntil === "function") : false,
+            contextType: ctx ? typeof ctx : 'undefined',
+            hasWaitUntil: ctx ? (typeof ctx.waitUntil === 'function') : false,
           },
         });
       }
@@ -485,9 +538,9 @@ export class DefaultCacheService implements CacheService {
     } catch (error) {
       throw this.handleError(
         error,
-        "Cache API caching",
+        'Cache API caching',
         request,
-        "CACHE_API_ERROR",
+        'CACHE_API_ERROR',
       );
     }
   }
@@ -511,12 +564,12 @@ export class DefaultCacheService implements CacheService {
       // Validate input
       if (!request || !isRequest(request)) {
         throw new CacheServiceError(
-          "Invalid request object provided to shouldBypassCache",
+          'Invalid request object provided to shouldBypassCache',
           {
-            code: "INVALID_REQUEST",
+            code: 'INVALID_REQUEST',
             status: 500,
             details: {
-              requestType: request ? typeof request : "undefined",
+              requestType: request ? typeof request : 'undefined',
               isRequest: isRequest(request),
             },
           },
@@ -536,11 +589,11 @@ export class DefaultCacheService implements CacheService {
       throw new CacheServiceError(
         `Failed to evaluate cache bypass status: ${errorMessage}`,
         {
-          code: "CACHE_BYPASS_ERROR",
+          code: 'CACHE_BYPASS_ERROR',
           status: 500,
           details: {
             originalError: errorMessage,
-            requestUrl: isRequest(request) ? request.url : "unknown",
+            requestUrl: isRequest(request) ? request.url : 'unknown',
           },
         },
       );
@@ -591,8 +644,8 @@ export class DefaultCacheService implements CacheService {
     try {
       // Validate inputs
       if (!requestInit) {
-        throw new CacheServiceError("Invalid requestInit object provided", {
-          code: "INVALID_REQUEST_INIT",
+        throw new CacheServiceError('Invalid requestInit object provided', {
+          code: 'INVALID_REQUEST_INIT',
           status: 500,
           details: {
             requestInitType: typeof requestInit,
@@ -602,9 +655,9 @@ export class DefaultCacheService implements CacheService {
 
       if (!imagePath) {
         throw new CacheServiceError(
-          "Missing image path for Cloudflare cache configuration",
+          'Missing image path for Cloudflare cache configuration',
           {
-            code: "MISSING_IMAGE_PATH",
+            code: 'MISSING_IMAGE_PATH',
             status: 500,
             details: {
               hasOptions: !!options && Object.keys(options).length > 0,
@@ -625,16 +678,16 @@ export class DefaultCacheService implements CacheService {
     } catch (error: unknown) {
       // Create additional context specific to Cloudflare cache configuration
       const errorContext = {
-        imagePath: imagePath || "unknown",
+        imagePath: imagePath || 'unknown',
         hasOptions: !!options && Object.keys(options).length > 0,
       };
 
       // Use our standardized error handler
       const wrappedError = this.handleError(
         error,
-        "Apply Cloudflare cache configuration",
+        'Apply Cloudflare cache configuration',
         undefined,
-        "CF_CACHE_CONFIG_ERROR",
+        'CF_CACHE_CONFIG_ERROR',
       );
 
       // Add Cloudflare-specific context to the error details
@@ -676,9 +729,9 @@ export class DefaultCacheService implements CacheService {
     try {
       // Check if caching should be bypassed for this request
       if (this.shouldBypassCache(request, options)) {
-        this.logger.debug("Bypassing cache for request", {
+        this.logger.debug('Bypassing cache for request', {
           url: request.url,
-          reason: "shouldBypassCache returned true",
+          reason: 'shouldBypassCache returned true',
         });
 
         // Apply cache headers but don't store in cache
@@ -718,7 +771,7 @@ export class DefaultCacheService implements CacheService {
         }
       );
     } catch (error) {
-      this.logger.error("Cache with fallback failed", {
+      this.logger.error('Cache with fallback failed', {
         url: request.url,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -925,21 +978,21 @@ export class DefaultCacheService implements CacheService {
       // Validate inputs
       if (!response || !isResponse(response)) {
         throw new CacheServiceError(
-          "Invalid response object provided to calculateTtl",
+          'Invalid response object provided to calculateTtl',
           {
-            code: "INVALID_RESPONSE",
+            code: 'INVALID_RESPONSE',
             status: 500,
             details: {
-              responseType: response ? typeof response : "undefined",
+              responseType: response ? typeof response : 'undefined',
               isResponse: isResponse(response),
             },
           },
         );
       }
 
-      this.logger.debug("Delegating TTL calculation to TTLCalculator module", {
+      this.logger.debug('Delegating TTL calculation to TTLCalculator module', {
         status: response.status,
-        contentType: response.headers.get("Content-Type") || "unknown"
+        contentType: response.headers.get('Content-Type') || 'unknown'
       });
       
       // Delegate to the TTL calculator module
@@ -953,14 +1006,14 @@ export class DefaultCacheService implements CacheService {
       // Otherwise, wrap the error in a CacheServiceError
       const errorMessage = isError(error) ? error.message : String(error);
       throw new CacheServiceError(`Failed to calculate TTL: ${errorMessage}`, {
-        code: "TTL_CALCULATION_ERROR",
+        code: 'TTL_CALCULATION_ERROR',
         status: 500,
         details: {
           originalError: errorMessage,
-          responseStatus: isResponse(response) ? response.status : "unknown",
+          responseStatus: isResponse(response) ? response.status : 'unknown',
           contentType: isResponse(response)
-            ? (response.headers.get("Content-Type") || "unknown")
-            : "unknown",
+            ? (response.headers.get('Content-Type') || 'unknown')
+            : 'unknown',
           optionsPresent: !!options,
         },
         retryable: true, // TTL calculation can be retried with default values
@@ -979,7 +1032,7 @@ export class DefaultCacheService implements CacheService {
    * @returns Promise that resolves when initialization is complete
    */
   async initialize(): Promise<void> {
-    this.logger.debug("Initializing DefaultCacheService");
+    this.logger.debug('Initializing DefaultCacheService');
 
     // Reset circuit breaker states
     this.cacheWriteCircuitBreaker = createCircuitBreakerState();
@@ -1004,14 +1057,14 @@ export class DefaultCacheService implements CacheService {
         2;
 
       // Log the configuration we'll use for circuit breakers
-      this.logger.debug("Configured circuit breakers for cache operations", {
+      this.logger.debug('Configured circuit breakers for cache operations', {
         failureThreshold,
         resetTimeoutMs,
         successThreshold,
       });
     }
 
-    this.logger.info("DefaultCacheService initialization complete");
+    this.logger.info('DefaultCacheService initialization complete');
     return Promise.resolve();
   }
 
@@ -1025,10 +1078,10 @@ export class DefaultCacheService implements CacheService {
    * @returns Promise that resolves when shutdown is complete
    */
   async shutdown(): Promise<void> {
-    this.logger.debug("Shutting down DefaultCacheService");
+    this.logger.debug('Shutting down DefaultCacheService');
 
     // Log circuit breaker state
-    this.logger.debug("Cache circuit breaker state at shutdown", {
+    this.logger.debug('Cache circuit breaker state at shutdown', {
       writeCircuitOpen: this.cacheWriteCircuitBreaker.isOpen,
       readCircuitOpen: this.cacheReadCircuitBreaker.isOpen,
       writeFailures: this.cacheWriteCircuitBreaker.failureCount,
@@ -1039,7 +1092,7 @@ export class DefaultCacheService implements CacheService {
     // Reset failure tracking
     this.recentFailures = [];
 
-    this.logger.info("DefaultCacheService shutdown complete");
+    this.logger.info('DefaultCacheService shutdown complete');
     return Promise.resolve();
   }
   
@@ -1207,78 +1260,60 @@ export class DefaultCacheService implements CacheService {
         configEnabled: config.cache.transformCache?.enabled
       });
       
-      // Check if KV transform cache is enabled
-      if (!config.cache.transformCache?.enabled) {
-        this.logger.debug('KV transform cache is disabled, skipping store', {
-          url: request.url,
-          binding: config.cache.transformCache?.binding || 'not configured'
-        });
+      // Early exit conditions - Check if prerequisites for caching are met
+      if (!this.shouldAttemptKVCaching(request, config, transformOptions)) {
         return;
       }
       
-      // For KV transform caching, we ignore client Cache-Control headers
-      // This ensures that transformations are cached in KV even if the client requests no caching
-      const cacheControl = request.headers.get("Cache-Control");
-      if (cacheControl && (cacheControl.includes("no-cache") || cacheControl.includes("no-store"))) {
-        this.logger.info('Ignoring client Cache-Control header for KV transform cache', {
-          url: request.url,
-          cacheControl: cacheControl,
-          reason: 'KV transform cache should work regardless of client caching preferences'
-        });
-        // Continue with caching despite the Cache-Control header
-      } else {
-        // For all other bypass checks, use specialized KV bypass detection
-        if (this.bypassManager.shouldBypassKVTransformCache(request, transformOptions)) {
-          this.logger.debug('Bypassing KV transform cache for request', {
-            url: request.url,
-            reason: 'shouldBypassKVTransformCache returned true'
-          });
-          return;
-        }
-      }
+      // Note Cache-Control headers if present (for logging only)
+      this.logCacheControlHeaderStatus(request);
       
-      // Log execution context
-      if (ctx) {
-        this.logger.debug('Execution context is available for KV operation', {
-          contextType: typeof ctx,
-          hasWaitUntil: typeof ctx.waitUntil === 'function',
-          passingTo: 'kvTransformCache.put'
-        });
-      } else {
-        this.logger.warn('No execution context provided for KV operation, this may cause issues with background processing', {
-          url: request.url
-        });
-      }
-      
-      // Check request has env
-      if (!(request as any).env) {
-        this.logger.warn('Request does not have env property, this may cause KV binding issues', {
-          url: request.url,
-          requestProps: Object.keys(request as any).filter(k => k !== 'headers').join(',')
-        });
-      }
-      
-      // Clone the response to ensure we don't consume the body
-      this.logger.debug('Cloning response before passing to KV cache manager');
+      // Prepare for caching operation
       const clonedResponse = response.clone();
       
-      // Delegate to the KV transform cache manager
+      // We need to extract the response body as an ArrayBuffer
+      // This is required by the KV transform cache manager
+      let responseBuffer: ArrayBuffer;
+      try {
+        responseBuffer = await clonedResponse.arrayBuffer();
+        this.logger.debug('Successfully extracted response buffer for KV caching', {
+          bufferSize: responseBuffer.byteLength,
+          contentType: clonedResponse.headers.get('Content-Type')
+        });
+      } catch (bufferError) {
+        this.logger.error('Failed to extract response buffer for KV caching', {
+          error: bufferError instanceof Error ? bufferError.message : String(bufferError),
+          url: request.url
+        });
+        return; // Exit early if we can't get the buffer
+      }
+      
+      // Create an enhanced storage result with the buffer
+      const enhancedStorageResult = {
+        ...storageResult,
+        buffer: responseBuffer,
+        storageType: storageResult.sourceType || 'transform'
+      };
+      
+      // Execute the caching operation
       this.logger.debug('Delegating to KV transform cache manager', {
         managerType: typeof this.kvTransformCache,
-        hasKVPutMethod: typeof this.kvTransformCache.put === 'function'
+        hasKVPutMethod: typeof this.kvTransformCache.put === 'function',
+        bufferSize: responseBuffer.byteLength
       });
       
       await this.kvTransformCache.put(
         request,
-        clonedResponse,
-        storageResult,
+        response.clone(), // Clone again to ensure we have a fresh response
+        enhancedStorageResult,
         transformOptions,
         ctx
       );
       
       this.logger.debug('Successfully delegated to KV transform cache manager', {
         url: request.url,
-        contentType: response.headers.get('Content-Type')
+        contentType: response.headers.get('Content-Type'),
+        bufferSize: responseBuffer.byteLength
       });
     } catch (error) {
       this.logger.error('Error storing transformed image in cache', {
@@ -1291,6 +1326,97 @@ export class DefaultCacheService implements CacheService {
       // Rethrow so the error can be caught by callers (particularly important for waitUntil)
       throw error;
     }
+  }
+  
+  /**
+   * Determine if we should attempt to store this response in KV cache
+   * 
+   * @param request The original request
+   * @param config The application configuration
+   * @param transformOptions The transformation options
+   * @returns True if caching should be attempted
+   * @private
+   */
+  private shouldAttemptKVCaching(
+    request: Request, 
+    config: ImageResizerConfig,
+    transformOptions?: TransformOptions
+  ): boolean {
+    // Check if KV transform cache is enabled
+    if (!config.cache.transformCache?.enabled) {
+      this.logger.debug('KV transform cache is disabled, skipping store', {
+        url: request.url,
+        binding: config.cache.transformCache?.binding || 'not configured'
+      });
+      return false;
+    }
+    
+    // Check if we should bypass for non-Cache-Control reasons
+    if (this.bypassManager.shouldBypassKVTransformCache(request, transformOptions)) {
+      this.logger.debug('Bypassing KV transform cache for request', {
+        url: request.url,
+        reason: 'shouldBypassKVTransformCache returned true'
+      });
+      return false;
+    }
+    
+    // Log execution context availability
+    if (!this.checkExecutionContext(request)) {
+      // We still continue with caching, but this logs warnings for debugging
+    }
+    
+    return true;
+  }
+  
+  /**
+   * Check for Cache-Control headers and log appropriate messages
+   * 
+   * @param request The original request
+   * @private
+   */
+  private logCacheControlHeaderStatus(request: Request): void {
+    const cacheControl = request.headers.get('Cache-Control');
+    const hasBypassCacheControl = cacheControl && 
+      (cacheControl.includes('no-cache') || cacheControl.includes('no-store'));
+    
+    // If Cache-Control indicates bypass, log that we're ignoring it but continue caching
+    if (hasBypassCacheControl) {
+      this.logger.info('Ignoring client Cache-Control header for KV transform cache', {
+        url: request.url,
+        cacheControl: cacheControl,
+        reason: 'KV transform cache should work regardless of client caching preferences'
+      });
+    }
+  }
+  
+  /**
+   * Check if execution context is available and log warnings if needed
+   * 
+   * @param request The original request
+   * @returns True if execution context is properly configured
+   * @private
+   */
+  private checkExecutionContext(request: Request): boolean {
+    let isValid = true;
+    
+    // Check if execution context is available
+    if (!request) {
+      this.logger.warn('No request provided for KV operation', {
+        stack: new Error().stack
+      });
+      isValid = false;
+    }
+    
+    // Check request has env
+    if (!(request as any).env) {
+      this.logger.warn('Request does not have env property, this may cause KV binding issues', {
+        url: request.url,
+        requestProps: Object.keys(request as any).filter(k => k !== 'headers').join(',')
+      });
+      isValid = false;
+    }
+    
+    return isValid;
   }
   
   /**

@@ -123,7 +123,6 @@
 		"CACHE_METHOD": "cf", // cf, cache-api, or none
 		"CACHE_EVERYTHING": "true", // Cache all content types
 		"CACHE_USE_TTL_BY_STATUS": "true", // Use status-based caching (see above)
-		
 		/* KV Transform Cache Settings */
 		"TRANSFORM_CACHE_ENABLED": "true", // Enable transform caching in KV
 		"TRANSFORM_CACHE_OPTIMIZED_INDEXING": "true", // Use optimized indexing for better performance
@@ -131,6 +130,10 @@
 		"TRANSFORM_CACHE_INDEX_FREQUENCY": "10", // Update indices every 10th operation (performance vs. accuracy)
 		"TRANSFORM_CACHE_SKIP_SMALL_FILES": "true", // Skip indexing for small files (better performance)
 		"TRANSFORM_CACHE_SMALL_FILE_SIZE": "51200", // 50KB threshold for small files
+		"TRANSFORM_CACHE_USE_SIMPLE_IMPLEMENTATION": "true", // Use the simplified implementation by default
+		"TRANSFORM_CACHE_RESPECT_CLIENT_CACHE_CONTROL": "false", // Ignore client Cache-Control headers for KV transform caching
+		"TRANSFORM_CACHE_BINDING": "IMAGE_TRANSFORMATIONS_CACHE", // KV namespace binding for transformed images
+		"TRANSFORM_CACHE_USE_WAITUNTIL": "true", // Use waitUntil for background processing
 		/* Status Code Ranges (for status-based caching) */
 		"CACHE_STATUS_SUCCESS_RANGE": "200-299",
 		"CACHE_STATUS_REDIRECT_RANGE": "301-302,307",
@@ -447,6 +450,17 @@
 				"CACHE_TTL_STATUS_REDIRECT": "30",
 				"CACHE_TTL_STATUS_NOTFOUND": "10",
 				"CACHE_TTL_STATUS_ERROR": "5",
+				/* KV Transform Cache Settings */
+				"TRANSFORM_CACHE_ENABLED": "true",
+				"TRANSFORM_CACHE_OPTIMIZED_INDEXING": "true",
+				"TRANSFORM_CACHE_SMALL_PURGE_THRESHOLD": "20",
+				"TRANSFORM_CACHE_INDEX_FREQUENCY": "10",
+				"TRANSFORM_CACHE_SKIP_SMALL_FILES": "true",
+				"TRANSFORM_CACHE_SMALL_FILE_SIZE": "51200",
+				"TRANSFORM_CACHE_USE_SIMPLE_IMPLEMENTATION": "true", // Use the simplified implementation in development for testing
+				"TRANSFORM_CACHE_RESPECT_CLIENT_CACHE_CONTROL": "false", // Ignore client Cache-Control headers for KV transform caching
+				"TRANSFORM_CACHE_BINDING": "IMAGE_TRANSFORMATIONS_CACHE", // KV namespace binding for transformed images
+				"TRANSFORM_CACHE_USE_WAITUNTIL": "true", // Use waitUntil for background processing
 				"FORMAT_QUALITY_WEBP": "80",
 				"FORMAT_QUALITY_AVIF": "75",
 				"FORMAT_QUALITY_JPEG": "80",
@@ -705,6 +719,17 @@
 				"CACHE_TTL_REMOTE_FETCH": "1800",
 				"CACHE_TTL_R2_HEADERS": "3600",
 				"CACHE_METHOD": "cache-api",
+				/* KV Transform Cache Settings */
+				"TRANSFORM_CACHE_ENABLED": "true",
+				"TRANSFORM_CACHE_OPTIMIZED_INDEXING": "true",
+				"TRANSFORM_CACHE_SMALL_PURGE_THRESHOLD": "20",
+				"TRANSFORM_CACHE_INDEX_FREQUENCY": "5",
+				"TRANSFORM_CACHE_SKIP_SMALL_FILES": "true",
+				"TRANSFORM_CACHE_SMALL_FILE_SIZE": "51200",
+				"TRANSFORM_CACHE_USE_SIMPLE_IMPLEMENTATION": "true",
+				"TRANSFORM_CACHE_RESPECT_CLIENT_CACHE_CONTROL": "false",
+				"TRANSFORM_CACHE_BINDING": "IMAGE_TRANSFORMATIONS_CACHE",
+				"TRANSFORM_CACHE_USE_WAITUNTIL": "true",
 				/* Path transformations for all storage types */
 				"PATH_TRANSFORMS": {
 					"images": {
@@ -950,6 +975,17 @@
 				"CACHE_TTL_REMOTE_FETCH": "86400",
 				"CACHE_TTL_R2_HEADERS": "604800",
 				"CACHE_METHOD": "cf",
+				/* KV Transform Cache Settings */
+				"TRANSFORM_CACHE_ENABLED": "true",
+				"TRANSFORM_CACHE_OPTIMIZED_INDEXING": "true",
+				"TRANSFORM_CACHE_SMALL_PURGE_THRESHOLD": "50",
+				"TRANSFORM_CACHE_INDEX_FREQUENCY": "20",
+				"TRANSFORM_CACHE_SKIP_SMALL_FILES": "true",
+				"TRANSFORM_CACHE_SMALL_FILE_SIZE": "102400",
+				"TRANSFORM_CACHE_USE_SIMPLE_IMPLEMENTATION": "true",
+				"TRANSFORM_CACHE_RESPECT_CLIENT_CACHE_CONTROL": "false",
+				"TRANSFORM_CACHE_BINDING": "IMAGE_TRANSFORMATIONS_CACHE",
+				"TRANSFORM_CACHE_USE_WAITUNTIL": "true",
 				/* Path transformations for all storage types */
 				"PATH_TRANSFORMS": {
 					"images": {

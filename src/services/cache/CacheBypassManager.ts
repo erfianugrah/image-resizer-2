@@ -116,8 +116,42 @@ export class CacheBypassManager {
       return true;
     }
 
-    // We intentionally ignore Cache-Control and Pragma headers for KV transform caching
+    // Check for disallowed paths in transform cache configuration
+    if (config.cache.transformCache?.disallowedPaths && 
+        Array.isArray(config.cache.transformCache.disallowedPaths)) {
+      for (const disallowedPath of config.cache.transformCache.disallowedPaths) {
+        if (path.includes(disallowedPath.toLowerCase())) {
+          this.logger.debug("Path in transform cache disallowed paths list", {
+            url: request.url,
+            disallowedPath,
+            reason: "Path matches transform cache disallowed path",
+          });
+          return true;
+        }
+      }
+    }
+
+    // IMPORTANT: We intentionally ignore Cache-Control and Pragma headers for KV transform caching
     // This ensures transformations are cached regardless of client caching preferences
+    // Cache-Control header check is handled separately in the DefaultCacheService.storeTransformedImage method
+
+    // Only check Cache-Control headers if we're explicitly configured to respect them
+    // This property might not be defined in the type, so we use dynamic property access pattern
+    const respectClientCacheControl = config.cache.transformCache && 
+                                     'respectClientCacheControl' in config.cache.transformCache &&
+                                     config.cache.transformCache.respectClientCacheControl === true;
+    
+    if (respectClientCacheControl) {
+      const cacheControl = request.headers.get("Cache-Control");
+      if (cacheControl && (cacheControl.includes("no-cache") || cacheControl.includes("no-store"))) {
+        this.logger.debug("Cache-Control header causing KV transform cache bypass - respectClientCacheControl is enabled", {
+          url: request.url,
+          cacheControl,
+          reason: "Configuration set to respect client Cache-Control headers",
+        });
+        return true;
+      }
+    }
 
     this.logger.debug("No KV transform cache bypass conditions detected", {
       url: request.url,

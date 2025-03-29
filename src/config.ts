@@ -283,6 +283,8 @@ export interface ImageResizerConfig {
       indexUpdateFrequency?: number; // How often to update indices
       skipIndicesForSmallFiles?: boolean; // Skip indexing for small files
       smallFileThreshold?: number; // Size threshold for "small" files in bytes
+      // Simplified implementation
+      useSimpleImplementation?: boolean; // Use simplified KV transform cache implementation with metadata filtering
     };
     
     // New stale-while-revalidate settings
@@ -880,7 +882,8 @@ export const defaultConfig: ImageResizerConfig = {
       smallPurgeThreshold: 20,          // For small purges (<20 items), use list+filter
       indexUpdateFrequency: 1,          // Update indices every time by default
       skipIndicesForSmallFiles: true,   // Skip indexing for small files to improve write perf
-      smallFileThreshold: 51200         // 50KB threshold for "small" files
+      smallFileThreshold: 51200,        // 50KB threshold for "small" files
+      useSimpleImplementation: true    // Use simplified implementation by default
     },
     
     cacheTags: {

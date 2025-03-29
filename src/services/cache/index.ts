@@ -16,6 +16,8 @@ export { CachePerformanceManager } from './CachePerformanceManager';
 
 // KV Transform Cache components
 export { KVTransformCacheManager } from './kv/KVTransformCacheManager';
+export { SimpleKVTransformCacheManager } from './kv/SimpleKVTransformCacheManager';
+export { createKVTransformCacheManager } from './kv/KVTransformCacheManagerFactory';
 export type {
   KVTransformCacheInterface,
   KVCacheConfig,

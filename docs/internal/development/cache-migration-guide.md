@@ -1,179 +1,187 @@
-# Cache Migration Guide - Optimized KV Transform Cache
-
-This guide provides instructions for migrating to the new optimized KV Transform Cache system from the previous implementation.
+# KV Transform Cache Migration Guide
 
 ## Overview
 
-The KV Transform Cache has been significantly enhanced with a hybrid approach that balances performance and functionality. The new system offers two operational modes:
-
-1. **Standard Mode**: Similar to the previous implementation but with improved error handling and background processing.
-2. **Optimized Mode**: Uses a more efficient indexing strategy for better performance with large caches.
-
-## Configuration Changes
-
-Update your config.ts or wrangler.jsonc configuration with the new options:
-
-```typescript
-export default {
-  // ... other config
-  cache: {
-    // ... other cache config
-    transformCache: {
-      enabled: true,
-      binding: "IMAGE_TRANSFORMATIONS_CACHE",
-      prefix: "transform",
-      maxSize: 10485760, // 10MB
-      defaultTtl: 86400, // 1 day
-      contentTypeTtls: {
-        'image/jpeg': 604800, // 7 days
-        'image/png': 604800,  // 7 days
-        'image/webp': 604800, // 7 days
-        // ... other content types
-      },
-      
-      // Advanced performance options
-      optimizedIndexing: true,          // Enable the optimized approach
-      smallPurgeThreshold: 20,          // Threshold for direct vs. list+filter purging
-      indexUpdateFrequency: 1,          // Update indices every time (set higher for fewer updates)
-      skipIndicesForSmallFiles: true,   // Skip indexing for small files
-      smallFileThreshold: 51200         // 50KB threshold for "small" files
-    }
-  }
-}
-```
+This guide outlines the migration process from the index-based KV transform cache implementation to the simplified metadata-based approach. The migration can be done incrementally without downtime.
 
 ## Migration Steps
 
-### 1. Update Dependencies
+### 1. Configuration Update
 
-No new dependencies are required for this update.
+Update your wrangler.jsonc to enable the simplified implementation:
 
-### 2. Code Migration
+```jsonc
+{
+  "vars": {
+    /* KV Transform Cache Settings */
+    "TRANSFORM_CACHE_ENABLED": "true",
+    "TRANSFORM_CACHE_USE_SIMPLE_IMPLEMENTATION": "true"
+  }
+}
+```
 
-The API surface of the cache service remains unchanged, but internal implementation has changed significantly. If you have custom implementations using the KV Transform Cache:
+The `TRANSFORM_CACHE_USE_SIMPLE_IMPLEMENTATION` setting controls which implementation is used.
 
-- Use the `ctx` parameter in cache operations to enable background processing with `waitUntil`.
-- Be aware that purge operations now have optimized implementations.
+### 2. Gradual Transition
 
-### 3. Data Migration
+The system supports both implementations concurrently, so you can:
 
-**Important**: The optimized indexing mode uses a different storage format for indices. If you switch to optimized mode with an existing cache:
+1. Deploy the updated code with the simplified implementation
+2. Monitor cache performance and behavior
+3. Verify that cache hits/misses work as expected with the new implementation
 
-1. Purge the entire cache first using your admin tools, OR
-2. Run the migration script:
+The KV namespace will have data stored in both formats (indexed and simplified) during the transition period.
+
+### 3. Key Format Changes
+
+#### Old Format (Indexed Implementation)
+- Main key: MD5 hash like `transform:8f7e6d5c4b3a2190`
+- Tag index: `transform:tag:product:keys` with JSON array of keys
+- Path index: `transform:path:/products/:keys` with JSON array of keys
+
+#### New Format (Simplified Implementation)
+- Human-readable key format: `transform:image-name:w800-h600-q80:webp:a1b2c3d4`
+- No separate index keys
+
+### 4. One-time Migration (Optional)
+
+If desired, you can perform a one-time migration to convert all existing cache entries to the new format:
 
 ```typescript
-import { KVTransformCacheManager } from './services/cache/kv/KVTransformCacheManager';
-
-async function migrateKVIndices(env: any) {
-  // Create the cache manager with your logger and config service
-  const cacheManager = new KVTransformCacheManager(
-    logger,
-    configService,
-    tagsManager
+async function migrateKVCache() {
+  // Get all keys with the transform prefix
+  const oldCache = new KVTransformCacheManager(logger, configService, tagsManager);
+  const newCache = new SimpleKVTransformCacheManager(
+    /* config */,
+    /* kvNamespace */
   );
   
-  // Perform a full migration - this may take a while for large caches
-  const { processed, migrated } = await cacheManager.migrateToOptimizedIndices();
+  // List all entries
+  let cursor;
+  let complete = false;
   
-  console.log(`Migration complete: ${processed} entries processed, ${migrated} entries migrated`);
-}
-```
-
-### 4. Performance Monitoring
-
-After migration, monitor the cache performance using the enhanced stats:
-
-```typescript
-const stats = await cacheManager.getStats();
-console.log('Cache Stats:', {
-  entries: stats.count,
-  size: `${(stats.size / 1024 / 1024).toFixed(2)}MB`,
-  indexSize: `${(stats.indexSize / 1024).toFixed(2)}KB`,
-  hitRate: `${stats.hitRate.toFixed(1)}%`,
-  optimized: stats.optimized,
-  lastMaintenance: stats.lastPruned
-});
-```
-
-### 5. Configure Maintenance
-
-Set up regular maintenance to keep the cache optimized:
-
-```typescript
-// In your main worker handler:
-export default {
-  async scheduled(event, env, ctx) {
-    // Run maintenance during scheduled events
-    const cacheManager = getCacheManager(env);
-    await cacheManager.performMaintenance(500, ctx); // Process up to 500 entries
-  },
-  
-  async fetch(request, env, ctx) {
-    // Your normal request handling
-    // ...
+  while (!complete) {
+    const result = await oldCache.listEntries(1000, cursor);
     
-    // Optionally trigger lightweight maintenance occasionally (1% of requests)
-    if (Math.random() < 0.01) {
-      ctx.waitUntil(cacheManager.performMaintenance(50, ctx)); // Light maintenance
+    // Process each entry
+    for (const entry of result.entries) {
+      // Get the cached data
+      const cacheData = await kvNamespace.get(entry.key, 'arrayBuffer');
+      if (cacheData) {
+        // Re-create the request from the metadata
+        const url = entry.metadata.url;
+        const req = new Request(url);
+        
+        // Create a response with the cached data
+        const resp = new Response(cacheData, {
+          headers: {
+            'Content-Type': entry.metadata.contentType
+          }
+        });
+        
+        // Store in the new format
+        await newCache.put(
+          req,
+          resp,
+          {
+            buffer: cacheData,
+            response: resp,
+            storageType: entry.metadata.storageType || 'unknown',
+            contentType: entry.metadata.contentType,
+            size: entry.metadata.size,
+            originalSize: entry.metadata.originalSize
+          },
+          entry.metadata.transformOptions
+        );
+      }
     }
     
-    return response;
+    cursor = result.cursor;
+    complete = result.complete || !cursor;
   }
-};
-```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **KV Operation Limit Exceeded**
-   - If you see this error, increase the `indexUpdateFrequency` value to reduce KV operations.
-   - Consider enabling `skipIndicesForSmallFiles` to reduce indexing overhead.
-
-2. **Slow Purge Operations**
-   - Adjust the `smallPurgeThreshold` based on your typical purge size.
-   - For very large caches, schedule purges during off-peak hours.
-
-3. **Missing Cache Items After Migration**
-   - If items are missing after migration, check if indices were properly converted.
-   - Run a full maintenance operation: `await cacheManager.performMaintenance(1000);`
-
-### Reverting to Standard Mode
-
-If you encounter issues with optimized mode, you can revert to standard mode:
-
-1. Update your configuration:
-```typescript
-transformCache: {
-  // ...other settings
-  optimizedIndexing: false
+  
+  // Once migration is complete, you can delete the old index keys
+  // (Note: only do this after verifying the migration was successful)
 }
 ```
 
-2. Purge all cache tags to reset the indices:
+### 5. Clean-up (Optional)
+
+After the migration is complete and the new implementation is working as expected, you can optionally clean up the old index keys:
+
 ```typescript
-// Get all tags
-const stats = await cacheManager.listAllTags();
-// Purge each tag
-for (const tag of stats.tags) {
-  await cacheManager.purgeByTag(tag);
+async function cleanupOldIndices() {
+  const kvNamespace = (globalThis as any).IMAGE_TRANSFORMATIONS_CACHE;
+  
+  // List and delete tag indices
+  let cursor;
+  let complete = false;
+  
+  while (!complete) {
+    const result = await kvNamespace.list({
+      prefix: 'transform:tag:',
+      cursor
+    });
+    
+    for (const key of result.keys) {
+      await kvNamespace.delete(key.name);
+    }
+    
+    cursor = result.cursor || result.cursor_token;
+    complete = result.list_complete || !cursor;
+  }
+  
+  // List and delete path indices
+  cursor = undefined;
+  complete = false;
+  
+  while (!complete) {
+    const result = await kvNamespace.list({
+      prefix: 'transform:path:',
+      cursor
+    });
+    
+    for (const key of result.keys) {
+      await kvNamespace.delete(key.name);
+    }
+    
+    cursor = result.cursor || result.cursor_token;
+    complete = result.list_complete || !cursor;
+  }
 }
 ```
 
-## Best Practices
+## Verification
 
-1. **Small Deployments**
-   - If your cache has fewer than 10,000 items, standard mode may be simpler.
-   - Enable background processing regardless of mode.
+To verify that the migration was successful:
 
-2. **Large Deployments**
-   - For more than 10,000 items, optimized mode offers better performance.
-   - Tune the optimization parameters based on your specific workload.
-   - Schedule regular maintenance during off-peak hours.
+1. Check cache hit rates before and after the migration
+2. Verify that purging by tag and path still works correctly
+3. Monitor KV operation counts and ensure they decrease with the simplified implementation
+4. Use debug headers to verify cache keys are in the expected format
 
-3. **Extreme Scale**
-   - For very large caches (100,000+ items), consider increasing:
-     - `indexUpdateFrequency` to 5 or 10
-     - `smallFileThreshold` to 100KB or higher
-     - `smallPurgeThreshold` to 50 or higher
+## Rollback Plan
+
+If issues are encountered, you can roll back to the original implementation by setting:
+
+```jsonc
+"TRANSFORM_CACHE_USE_SIMPLE_IMPLEMENTATION": "false"
+```
+
+The system will switch back to the indexed implementation, which will continue to work with existing cache entries.
+
+## Performance Considerations
+
+The simplified implementation performs more efficiently for:
+
+- Cache puts (fewer KV operations)
+- Cache gets (simpler key lookup)
+- Small purge operations (using list+filter directly)
+
+For very large deployments (hundreds of thousands of entries), the original implementation might perform better for tag-based purges due to its index structure. Consider your usage patterns when deciding which implementation to use.
+
+## Long-term Maintenance
+
+Both implementations follow the same interface (`KVTransformCacheInterface`), so the code is prepared to support either approach indefinitely. This allows you to choose the implementation that best fits your needs.
+
+The factory pattern (`createKVTransformCacheManager`) ensures that your choice can be made via configuration without code changes.

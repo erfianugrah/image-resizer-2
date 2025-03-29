@@ -29,6 +29,7 @@
 
 import { StorageResult } from '../../interfaces';
 import { TransformOptions } from '../../../transform';
+import { ExecutionContext } from '@cloudflare/workers-types';
 
 /**
  * Configuration options for KV transform cache

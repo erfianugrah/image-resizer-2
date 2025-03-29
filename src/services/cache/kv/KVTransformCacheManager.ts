@@ -48,7 +48,7 @@ const DEFAULT_STATS: StatsData = {
 export class KVTransformCacheManager implements KVTransformCacheInterface {
   private logger: Logger;
   private config: KVCacheConfig;
-  private tagsManager: CacheTagsManager;
+  private tagsManager?: CacheTagsManager;
   private namespace?: KVNamespace;
   private statsKey: string;
   private tagIndexKey: string;
@@ -59,43 +59,66 @@ export class KVTransformCacheManager implements KVTransformCacheInterface {
    */
   constructor(
     logger: Logger, 
-    configService: ConfigurationService,
-    tagsManager: CacheTagsManager
+    configService?: ConfigurationService,
+    tagsManager?: CacheTagsManager
   ) {
     this.logger = logger;
     
-    // Extract the KV configuration from the config service
-    const config = configService.getConfig();
-    this.config = {
-      enabled: config.cache.transformCache?.enabled || false,
-      binding: config.cache.transformCache?.binding || 'IMAGE_TRANSFORMATIONS_CACHE',
-      prefix: config.cache.transformCache?.prefix || 'transform',
-      maxSize: config.cache.transformCache?.maxSize || 10485760, // 10MB default
-      defaultTtl: config.cache.transformCache?.defaultTtl || 86400, // 1 day default
-      contentTypeTtls: config.cache.transformCache?.contentTypeTtls || {
-        'image/jpeg': 604800, // 7 days
-        'image/png': 604800,  // 7 days
-        'image/webp': 604800, // 7 days
-        'image/avif': 604800, // 7 days
-        'image/gif': 604800,  // 7 days
-        'image/svg+xml': 2592000 // 30 days
-      },
-      indexingEnabled: config.cache.transformCache?.indexingEnabled !== false, // Default to true
-      backgroundIndexing: config.cache.transformCache?.backgroundIndexing !== false, // Default to true
-      purgeDelay: config.cache.transformCache?.purgeDelay || 100, // 100ms delay between purge operations
-      disallowedPaths: config.cache.transformCache?.disallowedPaths || [
-        '/admin/',
-        '/preview/',
-        '/draft/',
-        '/temp/'
-      ],
-      // Advanced indexing options with sensible defaults
-      optimizedIndexing: config.cache.transformCache?.optimizedIndexing ?? true, // Default to true
-      smallPurgeThreshold: config.cache.transformCache?.smallPurgeThreshold ?? 20, // For small purges (<20 items), use list+filter
-      indexUpdateFrequency: config.cache.transformCache?.indexUpdateFrequency ?? 1, // Update indices every time by default
-      skipIndicesForSmallFiles: config.cache.transformCache?.skipIndicesForSmallFiles ?? true, // Default to true
-      smallFileThreshold: config.cache.transformCache?.smallFileThreshold ?? 51200 // 50KB default threshold
-    };
+    // Initialize with default config if none provided
+    // The actual config will be set by the factory
+    if (configService) {
+      // Extract the KV configuration from the config service
+      const config = configService.getConfig();
+      this.config = {
+        enabled: config.cache.transformCache?.enabled || false,
+        binding: config.cache.transformCache?.binding || 'IMAGE_TRANSFORMATIONS_CACHE',
+        prefix: config.cache.transformCache?.prefix || 'transform',
+        maxSize: config.cache.transformCache?.maxSize || 10485760, // 10MB default
+        defaultTtl: config.cache.transformCache?.defaultTtl || 86400, // 1 day default
+        contentTypeTtls: config.cache.transformCache?.contentTypeTtls || {
+          'image/jpeg': 604800, // 7 days
+          'image/png': 604800,  // 7 days
+          'image/webp': 604800, // 7 days
+          'image/avif': 604800, // 7 days
+          'image/gif': 604800,  // 7 days
+          'image/svg+xml': 2592000 // 30 days
+        },
+        indexingEnabled: config.cache.transformCache?.indexingEnabled !== false, // Default to true
+        backgroundIndexing: config.cache.transformCache?.backgroundIndexing !== false, // Default to true
+        purgeDelay: config.cache.transformCache?.purgeDelay || 100, // 100ms delay between purge operations
+        disallowedPaths: config.cache.transformCache?.disallowedPaths || [
+          '/admin/',
+          '/preview/',
+          '/draft/',
+          '/temp/'
+        ],
+        // Advanced indexing options with sensible defaults
+        optimizedIndexing: config.cache.transformCache?.optimizedIndexing ?? true, // Default to true
+        smallPurgeThreshold: config.cache.transformCache?.smallPurgeThreshold ?? 20, // For small purges (<20 items), use list+filter
+        indexUpdateFrequency: config.cache.transformCache?.indexUpdateFrequency ?? 1, // Update indices every time by default
+        skipIndicesForSmallFiles: config.cache.transformCache?.skipIndicesForSmallFiles ?? true, // Default to true
+        smallFileThreshold: config.cache.transformCache?.smallFileThreshold ?? 51200 // 50KB default threshold
+      };
+    } else {
+      // Config will be set by factory or other methods
+      this.config = {
+        enabled: false,
+        binding: 'IMAGE_TRANSFORMATIONS_CACHE',
+        prefix: 'transform',
+        maxSize: 10485760,
+        defaultTtl: 86400,
+        contentTypeTtls: {},
+        indexingEnabled: true,
+        backgroundIndexing: true,
+        purgeDelay: 100,
+        disallowedPaths: [],
+        optimizedIndexing: true,
+        smallPurgeThreshold: 20,
+        indexUpdateFrequency: 1,
+        skipIndicesForSmallFiles: true,
+        smallFileThreshold: 51200
+      };
+    }
     
     this.tagsManager = tagsManager;
     
@@ -356,7 +379,9 @@ export class KVTransformCacheManager implements KVTransformCacheInterface {
       
       // Generate cache tags for the transformed image
       this.logger.debug('Generating cache tags');
-      const tags = this.tagsManager.generateCacheTags(request, storageResult, transformOptions);
+      const tags = this.tagsManager 
+        ? this.tagsManager.generateCacheTags(request, storageResult, transformOptions) 
+        : [];
       
       // Calculate the TTL based on content type or default
       const ttl = this.getTtlForContentType(contentType);
@@ -457,7 +482,17 @@ export class KVTransformCacheManager implements KVTransformCacheInterface {
               optimized: this.config.optimizedIndexing
             });
             // Do index updates in the background to avoid blocking the request
-            ctx.waitUntil(this.updateIndices(key, metadata));
+            // Make sure waitUntil exists before calling it (for testing)
+            if (typeof ctx.waitUntil === 'function') {
+              ctx.waitUntil(this.updateIndices(key, metadata));
+            } else {
+              this.logger.warn('waitUntil is not a function in the provided context', {
+                contextType: typeof ctx,
+                waitUntilType: typeof ctx.waitUntil
+              });
+              // Still update indices in background (will be ignored in tests)
+              Promise.resolve().then(() => this.updateIndices(key, metadata));
+            }
           } else {
             this.logger.debug('Updating indices synchronously', {
               backgroundIndexing: this.config.backgroundIndexing,
@@ -980,7 +1015,16 @@ export class KVTransformCacheManager implements KVTransformCacheInterface {
     
     // Use waitUntil if context is provided, otherwise wait for all deletions
     if (ctx) {
-      ctx.waitUntil(Promise.all(deletionPromises));
+      if (typeof ctx.waitUntil === 'function') {
+        ctx.waitUntil(Promise.all(deletionPromises));
+      } else {
+        this.logger.warn('waitUntil is not a function in the provided context', {
+          contextType: typeof ctx,
+          waitUntilType: typeof ctx.waitUntil
+        });
+        // Still run in background (will be ignored in tests)
+        Promise.resolve().then(() => Promise.all(deletionPromises));
+      }
       
       // Remove the tag from the index immediately
       delete tagIndex[tag];
@@ -1123,12 +1167,26 @@ export class KVTransformCacheManager implements KVTransformCacheInterface {
     // Process deletions based on execution context
     if (ctx) {
       // Run deletions in the background
-      ctx.waitUntil(processBatches().catch(error => {
-        this.logger.error('Error in background tag purge', {
-          error: error instanceof Error ? error.message : String(error),
-          tag
+      if (typeof ctx.waitUntil === 'function') {
+        ctx.waitUntil(processBatches().catch(error => {
+          this.logger.error('Error in background tag purge', {
+            error: error instanceof Error ? error.message : String(error),
+            tag
+          });
+        }));
+      } else {
+        this.logger.warn('waitUntil is not a function in the provided context', {
+          contextType: typeof ctx,
+          waitUntilType: typeof ctx.waitUntil
         });
-      }));
+        // Still run in background (will be ignored in tests)
+        Promise.resolve().then(() => processBatches().catch(error => {
+          this.logger.error('Error in background tag purge', {
+            error: error instanceof Error ? error.message : String(error),
+            tag
+          });
+        }));
+      }
       
       this.logger.info('Purging by tag in background (optimized method)', { 
         tag,
@@ -1260,7 +1318,16 @@ export class KVTransformCacheManager implements KVTransformCacheInterface {
       
       // Use waitUntil if context is provided, otherwise wait for all deletions
       if (ctx) {
-        ctx.waitUntil(Promise.all(deletionPromises));
+        if (typeof ctx.waitUntil === 'function') {
+          ctx.waitUntil(Promise.all(deletionPromises));
+        } else {
+          this.logger.warn('waitUntil is not a function in the provided context', {
+            contextType: typeof ctx,
+            waitUntilType: typeof ctx.waitUntil
+          });
+          // Still run in background (will be ignored in tests)
+          Promise.resolve().then(() => Promise.all(deletionPromises));
+        }
         
         this.logger.info('Purging by path pattern in background (standard method)', { 
           pathPattern,
@@ -1442,16 +1509,25 @@ export class KVTransformCacheManager implements KVTransformCacheInterface {
       // If using context, run deletions and cleanup in background
       if (ctx) {
         // Run deletions in the background
-        ctx.waitUntil(Promise.all([
-          processBatches().catch(error => {
-            this.logger.error('Error in background path purge', {
-              error: error instanceof Error ? error.message : String(error),
-              pathPattern
-            });
-          }),
-          // Also run cleanup in the background
-          Promise.all(cleanupPromises)
+        if (typeof ctx.waitUntil === 'function') {
+          ctx.waitUntil(Promise.all([
+            processBatches().catch(error => {
+              this.logger.error('Error in background path purge', {
+                error: error instanceof Error ? error.message : String(error),
+                pathPattern
+              });
+            }),
+            // Also run cleanup in the background
+            Promise.all(cleanupPromises)
         ]));
+      } else {
+        this.logger.warn('waitUntil is not a function in the provided context', {
+          contextType: typeof ctx,
+          waitUntilType: typeof ctx.waitUntil
+        });
+        // Still run in background (will be ignored in tests)
+        Promise.resolve().then(() => Promise.all([processBatches(), Promise.all(cleanupPromises)]));
+      }
         
         // Update the master path list
         if (matchingPaths.length > 0) {
@@ -1955,11 +2031,24 @@ export class KVTransformCacheManager implements KVTransformCacheInterface {
       // Run maintenance based on execution context
       if (ctx) {
         // Run in the background
-        ctx.waitUntil(processBatches().catch(error => {
+        if (typeof ctx.waitUntil === 'function') {
+          ctx.waitUntil(processBatches().catch(error => {
+            this.logger.error('Error in background maintenance', {
+              error: error instanceof Error ? error.message : String(error)
+            });
+          }));
+      } else {
+        this.logger.warn('waitUntil is not a function in the provided context', {
+          contextType: typeof ctx,
+          waitUntilType: typeof ctx.waitUntil
+        });
+        // Still run in background (will be ignored in tests)
+        Promise.resolve().then(() => processBatches().catch(error => {
           this.logger.error('Error in background maintenance', {
             error: error instanceof Error ? error.message : String(error)
           });
         }));
+      }
         
         this.logger.info('Started background cache maintenance', {
           expiredEntries: expiredEntries.length,

@@ -52,11 +52,11 @@ export async function transformCacheDebugHandler(
     return handleCacheStats(cacheService);
   } else if (path.endsWith('/list')) {
     return handleCacheList(cacheService, url);
-  } else if (path.match(/\/purge\/tag\/([^\/]+)$/)) {
-    const tag = path.match(/\/purge\/tag\/([^\/]+)$/)?.[1] || '';
+  } else if (path.match(/\/purge\/tag\/([^/]+)$/)) {
+    const tag = path.match(/\/purge\/tag\/([^/]+)$/)?.[1] || '';
     return handleTagPurge(cacheService, tag, ctx);
-  } else if (path.match(/\/purge\/path\/([^\/]+)$/)) {
-    const pattern = path.match(/\/purge\/path\/([^\/]+)$/)?.[1] || '';
+  } else if (path.match(/\/purge\/path\/([^/]+)$/)) {
+    const pattern = path.match(/\/purge\/path\/([^/]+)$/)?.[1] || '';
     return handlePathPurge(cacheService, pattern, ctx);
   }
   
