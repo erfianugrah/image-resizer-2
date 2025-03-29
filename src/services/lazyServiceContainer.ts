@@ -16,7 +16,9 @@ import {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   DebugService, 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  ImageTransformationService, 
+  ImageTransformationService,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  ParameterHandlerService,
   ServiceContainer, 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   StorageService,
@@ -44,6 +46,7 @@ import { createStorageService } from './storageServiceFactory';
 import { createCacheService } from './cacheServiceFactory';
 import { createAuthService } from './authServiceFactory';
 import { createPathService } from './pathService';
+import { createParameterHandler } from '../parameters/serviceFactory';
 
 /**
  * Create a lazy-loading service container with proxy-based initialization
@@ -405,6 +408,19 @@ export function createLazyServiceContainer(env: Env): ServiceContainer {
       }
       
       return clientDetection;
+    },
+    
+    // Parameter handler service initialization
+    parameterHandler: () => {
+      // Ensure logging service is initialized
+      if (!realServices.loggingService) {
+        realServices.loggingService = serviceFactories.loggingService();
+      }
+      
+      const parameterHandlerLogger = realServices.loggingService!.getLogger('ParameterHandler');
+      
+      // Create the parameter handler service
+      return createParameterHandler(parameterHandlerLogger);
     },
     
   };

@@ -14,6 +14,7 @@ import {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   PathTransforms
 } from '../utils/path';
+import { ParameterHandler } from '../parameters';
 
 /**
  * Default implementation of the PathService
@@ -118,26 +119,27 @@ export class PathServiceImpl implements PathService {
       }
     });
     
-    // Parse options into a key-value object
-    const options: Record<string, string> = {};
-    
-    optionSegments.forEach(segment => {
-      // Remove the leading underscore
-      const optionText = segment.substring(1);
-      
-      // Split by the first equals sign
-      const equalsIndex = optionText.indexOf('=');
-      
-      if (equalsIndex > 0) {
-        const key = optionText.substring(0, equalsIndex);
-        const value = optionText.substring(equalsIndex + 1);
-        
-        options[key] = value;
-      }
-    });
-    
-    // Reconstruct the image path
+    // Only the path segments go into the image path
     const imagePath = '/' + pathSegments.join('/');
+    
+    // For the path parameters, we'll use our new parameter handler
+    // Make sure to prefix segments with / to create a valid pathname
+    const pathParamsString = optionSegments.map(segment => `/${segment}`).join('');
+    const parameterHandler = new ParameterHandler(this.logger);
+    
+    // Create a mock request to use with the parameter handler
+    // Be sure to use a path with underscores preserved for PathParser to detect
+    const mockUrl = new URL(`https://example.com${pathParamsString}`);
+    const mockRequest = new Request(mockUrl);
+    
+    // Process the request through our parameter handler
+    const parsedOptions = parameterHandler.handleRequest(mockRequest);
+    
+    // Convert the structured options back to string format for compatibility
+    const options: Record<string, string> = {};
+    Object.entries(parsedOptions).forEach(([key, value]) => {
+      options[key] = String(value);
+    });
     
     this.logger.breadcrumb('Finished parsing image path', undefined, { 
       imagePath, 
@@ -216,147 +218,17 @@ export class PathServiceImpl implements PathService {
       paramCount: Array.from(searchParams.keys()).length
     });
     
-    const options: Record<string, unknown> = {};
+    // Use the new parameter handler to process the parameters
+    const parameterHandler = new ParameterHandler(this.logger);
     
-    // Define parameter categories for systematic processing
+    // Create a mock Request to use with the parameter handler
+    const mockRequest = new Request(`https://example.com?${searchParams.toString()}`);
     
-    // Parameters that can be 'auto' or numeric
-    const autoOrNumericParams = ['width', 'height', 'quality'];
+    // Process the request and get the options
+    const options = parameterHandler.handleRequest(mockRequest);
     
-    // Parameters that should be parsed as numbers
-    const numericParams = [
-      'blur', 'brightness', 'contrast', 'dpr', 'gamma', 
-      'rotate', 'saturation', 'sharpen'
-    ];
-    
-    // Parameters that should be parsed as strings
-    const stringParams = [
-      'fit', 'format', 'gravity', 'metadata', 'background',
-      'derivative', 'origin-auth'
-    ];
-    
-    // Parameters that can be boolean or numeric
-    const booleanOrNumericParams = ['trim', 'strip', 'sharpen'];
-    
-    // Parameters that accept string values or can be parsed as boolean
-    const stringOrBooleanParams = ['flip'];
-    
-    // Parameters that are boolean only
-    const booleanParams = ['anim', 'strip', 'flop'];
-    
-    // Process 'auto' or numeric parameters
-    autoOrNumericParams.forEach(param => {
-      if (searchParams.has(param)) {
-        const paramValue = searchParams.get(param) || '';
-        if (paramValue.toLowerCase() === 'auto') {
-          options[param] = 'auto';
-          if (param === 'width') {
-            this.logger.breadcrumb(`Setting ${param} to auto`);
-          }
-        } else {
-          const numValue = parseInt(paramValue, 10);
-          if (!isNaN(numValue)) {
-            options[param] = numValue;
-            if (param === 'width') {
-              this.logger.breadcrumb(`Setting ${param}`, undefined, { [param]: numValue });
-            }
-          }
-        }
-      }
-    });
-    
-    // Process numeric parameters
-    numericParams.forEach(param => {
-      if (searchParams.has(param)) {
-        const paramValue = searchParams.get(param) || '';
-        const numValue = parseFloat(paramValue);
-        if (!isNaN(numValue)) {
-          options[param] = numValue;
-          if (param === 'blur') {
-            this.logger.breadcrumb(`Setting ${param}`, undefined, { [param]: numValue });
-          }
-        }
-      }
-    });
-    
-    // Process string parameters
-    stringParams.forEach(param => {
-      if (searchParams.has(param)) {
-        const value = searchParams.get(param) || '';
-        if (value) {
-          options[param] = value;
-        }
-      }
-    });
-    
-    // Process boolean or numeric parameters
-    booleanOrNumericParams.forEach(param => {
-      if (searchParams.has(param)) {
-        const value = searchParams.get(param) || '';
-        if (value.toLowerCase() === 'true') {
-          options[param] = true;
-        } else if (value.toLowerCase() === 'false') {
-          options[param] = false;
-        } else {
-          const numValue = parseFloat(value);
-          if (!isNaN(numValue)) {
-            options[param] = numValue;
-          }
-        }
-      }
-    });
-    
-    // Process boolean parameters
-    booleanParams.forEach(param => {
-      if (searchParams.has(param)) {
-        const value = searchParams.get(param) || '';
-        options[param] = value.toLowerCase() !== 'false';
-      }
-    });
-    
-    // Process string or boolean parameters
-    stringOrBooleanParams.forEach(param => {
-      if (searchParams.has(param)) {
-        const value = searchParams.get(param) || '';
-        
-        // For flip parameter, special handling to allow string values
-        if (param === 'flip') {
-          const lowerValue = value.toLowerCase();
-          if (lowerValue === 'true') {
-            options[param] = true;
-          } else if (lowerValue === 'false') {
-            options[param] = false;
-          } else if (['h', 'v', 'hv', 'horizontal', 'vertical', 'both'].includes(lowerValue)) {
-            // Pass through valid string values
-            options[param] = lowerValue;
-          } else if (lowerValue) {
-            // Default invalid values to 'h' (horizontal)
-            options[param] = 'h';
-            this.logger.breadcrumb(`Converted invalid ${param} value to h`, undefined, {
-              originalValue: lowerValue
-            });
-          }
-        }
-      }
-    });
-    
-    // Handle special case for draw (overlays/watermarks)
-    if (searchParams.has('draw')) {
-      try {
-        const drawValue = searchParams.get('draw') || '';
-        // Attempt to parse as JSON
-        const drawData = JSON.parse(drawValue);
-        const drawArray = Array.isArray(drawData) ? drawData : [drawData];
-        options.draw = drawArray;
-        this.logger.breadcrumb('Parsed draw parameter', undefined, { 
-          drawItems: drawArray.length
-        });
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      } catch (e) {
-        this.logger.breadcrumb('Failed to parse draw parameter as JSON');
-        // If not valid JSON, skip this parameter
-      }
-    }
+    // Note: Our ParameterHandler handles all the parameter processing logic now
+    // including auto/numeric params, boolean params, enums, etc.
     
     this.logger.breadcrumb('Completed parsing query options', undefined, {
       optionCount: Object.keys(options).length,

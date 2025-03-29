@@ -565,7 +565,9 @@ export interface KVTransformCacheMethods {
     size: number,
     hitRate: number,
     avgSize: number,
-    lastPruned: Date
+    lastPruned: Date,
+    memoryCacheSize?: number,
+    memoryCacheHitRate?: number
   }>;
   
   /**
@@ -959,6 +961,7 @@ export interface ServiceContainer {
   // Added new services
   detectorService?: ClientDetectionService;
   pathService?: PathService;
+  parameterHandler?: ParameterHandlerService;
   lifecycleManager?: LifecycleManagerService;
   metadataService?: MetadataFetchingService;
   
@@ -975,6 +978,19 @@ export interface ServiceContainer {
    * @returns Promise that resolves when all services are shut down
    */
   shutdown(): Promise<void>;
+}
+
+/**
+ * Parameter handler service for transforming and normalizing URL parameters
+ */
+export interface ParameterHandlerService {
+  /**
+   * Process parameters from a request
+   * 
+   * @param request The request to process
+   * @returns Normalized parameters for image transformation
+   */
+  handleRequest(request: Request): Record<string, any>;
 }
 
 /**
