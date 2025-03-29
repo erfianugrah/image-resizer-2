@@ -5,7 +5,7 @@
  * to manage service instantiation and dependencies.
  */
 
-import { DIContainer, ServiceContainer, ClientDetectionService, PathService, CacheService, ConfigurationService } from './interfaces';
+import { DIContainer, ServiceContainer, ClientDetectionService, PathService, CacheService, ConfigurationService, ParameterHandlerService } from './interfaces';
 import { CacheTagsManager } from './cache/CacheTagsManager';
 import { Env } from '../types';
 // Used for type definitions and future extensions
@@ -29,6 +29,7 @@ import { createCacheService } from './cacheServiceFactory';
 import { createAuthService } from './authServiceFactory';
 import { createPathService } from './pathService';
 import { createLogger } from '../utils/logger-factory';
+import { createParameterHandler } from '../parameters/serviceFactory';
 
 interface ServiceRegistration<T> {
   instance?: T;
@@ -311,6 +312,18 @@ export class DefaultDIContainer implements DIContainer {
         }
       }
       
+      // Add the parameter handler service if it's registered
+      if (this.isRegistered(ServiceTypes.PARAMETER_HANDLER_SERVICE)) {
+        try {
+          container.parameterHandler = this.resolve<ParameterHandlerService>(ServiceTypes.PARAMETER_HANDLER_SERVICE);
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        } catch (e) {
+          logger.warn('Failed to resolve ParameterHandlerService, continuing without it', {
+            error: e instanceof Error ? e.message : String(e)
+          });
+        }
+      }
+      
       return container;
     } catch (error) {
       // If any service is missing, throw an error
@@ -350,7 +363,8 @@ export const ServiceTypes = {
   LOGGING_SERVICE: 'LoggingService',
   AUTH_SERVICE: 'AuthService',
   PATH_SERVICE: 'PathService',
-  DETECTOR_SERVICE: 'DetectorService'
+  DETECTOR_SERVICE: 'DetectorService',
+  PARAMETER_HANDLER_SERVICE: 'ParameterHandlerService'
 };
 
 /**
@@ -506,6 +520,14 @@ export function createContainerBuilder(env: Env): DIContainer {
     const logger = loggingService.getLogger('AuthService');
     
     return createAuthService(config, logger);
+  });
+  
+  // Register ParameterHandlerService
+  container.registerFactory(ServiceTypes.PARAMETER_HANDLER_SERVICE, () => {
+    const loggingService = container.resolve<DefaultLoggingService>(ServiceTypes.LOGGING_SERVICE);
+    const logger = loggingService.getLogger('ParameterHandler');
+    
+    return createParameterHandler(logger);
   });
   
   return container;

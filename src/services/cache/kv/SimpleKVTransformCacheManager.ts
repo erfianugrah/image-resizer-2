@@ -17,8 +17,69 @@ import { KVNamespace, ExecutionContext } from '@cloudflare/workers-types';
 import { KVTransformCacheInterface, KVCacheConfig, CacheMetadata, TransformCacheResult } from './KVTransformCacheInterface';
 import { StorageResult } from '../../interfaces';
 import { TransformOptions } from '../../../transform';
-import { createHash } from 'crypto';
 import { Logger, LogData } from '../../../utils/logging';
+
+// LRU Cache for memory caching
+class LRUCache<K, V> {
+  private capacity: number;
+  private cache: Map<K, V>;
+  private keyOrder: K[];
+
+  constructor(capacity: number) {
+    this.capacity = capacity;
+    this.cache = new Map<K, V>();
+    this.keyOrder = [];
+  }
+
+  get(key: K): V | undefined {
+    if (!this.cache.has(key)) return undefined;
+
+    // Move key to the end (most recently used)
+    this.keyOrder = this.keyOrder.filter(k => k !== key);
+    this.keyOrder.push(key);
+
+    return this.cache.get(key);
+  }
+
+  put(key: K, value: V): void {
+    // If already exists, just update the value and move to end
+    if (this.cache.has(key)) {
+      this.cache.set(key, value);
+      this.keyOrder = this.keyOrder.filter(k => k !== key);
+      this.keyOrder.push(key);
+      return;
+    }
+
+    // Check if we need to evict
+    if (this.keyOrder.length >= this.capacity) {
+      const lruKey = this.keyOrder.shift();
+      if (lruKey !== undefined) {
+        this.cache.delete(lruKey);
+      }
+    }
+
+    // Add new entry
+    this.cache.set(key, value);
+    this.keyOrder.push(key);
+  }
+
+  has(key: K): boolean {
+    return this.cache.has(key);
+  }
+
+  clear(): void {
+    this.cache.clear();
+    this.keyOrder = [];
+  }
+
+  size(): number {
+    return this.cache.size;
+  }
+
+  keys(): K[] {
+    return [...this.keyOrder];
+  }
+}
 
 // Extended StorageResult type with buffer field
 interface TransformStorageResult extends StorageResult {
@@ -36,13 +97,27 @@ interface TransformStorageResult extends StorageResult {
  * - Eliminates separate index structures
  * - Uses background processing for non-blocking operations
  */
+// FNV-1a hashing algorithm implementation - much faster than MD5
+function fnv1a(str: string): string {
+  let hash = 0x811c9dc5; // FNV offset basis
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i);
+    // Multiply by the FNV prime
+    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+  }
+  // Convert to hex string and take last 8 chars (similar to MD5 substring)
+  return (hash >>> 0).toString(16).padStart(8, '0').substring(0, 8);
+}
+
 export class SimpleKVTransformCacheManager implements KVTransformCacheInterface {
   private config: KVCacheConfig;
   private kvNamespace: KVNamespace;
   private logger?: Logger;
+  private memoryCache: LRUCache<string, TransformCacheResult>;
   private stats = {
     hits: 0,
     misses: 0,
+    memoryCacheHits: 0,
     lastPruned: new Date(0)
   };
 
@@ -57,6 +132,14 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     this.config = config;
     this.kvNamespace = kvNamespace;
     this.logger = logger;
+    
+    // Initialize memory cache with default capacity of 100 items or config setting
+    const memoryCacheSize = config.memoryCacheSize || 100;
+    this.memoryCache = new LRUCache<string, TransformCacheResult>(memoryCacheSize);
+    
+    if (this.logger) {
+      this.logger.debug(`Initialized memory cache with capacity ${memoryCacheSize}`);
+    }
   }
   
   /**
@@ -181,7 +264,29 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     
     const key = this.generateCacheKey(request, transformOptions);
     
+    // Check memory cache first (much faster than KV)
+    const memoryCacheResult = this.memoryCache.get(key);
+    if (memoryCacheResult) {
+      this.stats.hits++;
+      this.stats.memoryCacheHits++;
+      
+      this.logDebug("Memory cache: Hit", {
+        operation: 'memory_get',
+        result: 'hit',
+        key,
+        contentType: memoryCacheResult.metadata.contentType,
+        size: memoryCacheResult.metadata.size,
+        url: url.toString(),
+        path: url.pathname,
+        durationMs: 0, // Negligible time for memory cache
+        age: Date.now() - (memoryCacheResult.metadata.timestamp || 0)
+      });
+      
+      return memoryCacheResult;
+    }
+    
     try {
+      // Not in memory cache, try KV
       // Working around TypeScript errors with KV types
       const result = await (this.kvNamespace as any).getWithMetadata(key, { type: 'arrayBuffer' });
       const duration = Date.now() - startTime;
@@ -250,11 +355,17 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
           Object.keys(transformOptions).join(',') : 'none'
       });
       
-      return {
+      // Create the cache result to return
+      const cacheResult = {
         value: result.value,
         metadata: result.metadata,
         key
       };
+      
+      // Store in memory cache for faster future access
+      this.memoryCache.put(key, cacheResult);
+      
+      return cacheResult;
     } catch (error) {
       const duration = Date.now() - startTime;
       this.stats.misses++;
@@ -614,7 +725,9 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     size: number,
     hitRate: number,
     avgSize: number,
-    lastPruned: Date
+    lastPruned: Date,
+    memoryCacheSize: number,
+    memoryCacheHitRate: number
   }> {
     if (!this.config.enabled) {
       return {
@@ -622,7 +735,9 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
         size: 0,
         hitRate: 0,
         avgSize: 0,
-        lastPruned: this.stats.lastPruned
+        lastPruned: this.stats.lastPruned,
+        memoryCacheSize: 0,
+        memoryCacheHitRate: 0
       };
     }
     
@@ -654,13 +769,17 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     const totalRequests = this.stats.hits + this.stats.misses;
     const hitRate = totalRequests > 0 ? (this.stats.hits / totalRequests) * 100 : 0;
     const avgSize = count > 0 ? totalSize / count : 0;
+    const memoryCacheHitRate = this.stats.hits > 0 ? 
+      (this.stats.memoryCacheHits / this.stats.hits) * 100 : 0;
     
     return {
       count,
       size: totalSize,
       hitRate,
       avgSize,
-      lastPruned: this.stats.lastPruned
+      lastPruned: this.stats.lastPruned,
+      memoryCacheSize: this.memoryCache.size(),
+      memoryCacheHitRate
     };
   }
 
@@ -698,12 +817,10 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
 
   /**
    * Create a short hash for a string (used in key generation)
+   * Uses FNV-1a which is much faster than MD5
    */
   private createShortHash(input: string): string {
-    return createHash('md5')
-      .update(input)
-      .digest('hex')
-      .substring(0, 8);
+    return fnv1a(input);
   }
 
   /**

@@ -7,8 +7,8 @@
 
 import { PerformanceMetrics } from "./services/interfaces";
 import { AppError, createErrorResponse, TransformError } from "./utils/errors";
-import { isAkamaiFormat } from "./utils/akamai-compatibility";
-import { setLogger as setAkamaiLogger } from "./utils/akamai-compatibility";
+import { isAkamaiFormat } from "./utils/akamai-compatibility-refactored";
+import { setLogger as setAkamaiLogger } from "./utils/akamai-compatibility-refactored";
 // Storage logger is now handled through StorageService
 // Transform logger is now handled through TransformationService
 // Debug logger is now handled through DebugService
@@ -19,8 +19,8 @@ import {
   initializePerformanceBaseline,
 } from "./utils/performance-integrations";
 import {
-  addAkamaiCompatibilityHeader,
   handleAkamaiCompatibility,
+  addAkamaiCompatibilityHeader,
   handleDebugReport,
   handleImageRequest,
   handlePerformanceReport,

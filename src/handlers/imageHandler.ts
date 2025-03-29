@@ -5,10 +5,11 @@
  */
 
 import { ServiceContainer, TransformOptions } from '../services/interfaces';
-import { parseImagePath, parseQueryOptions, extractDerivative, applyPathTransforms } from '../utils/path';
+import { extractDerivative, applyPathTransforms } from '../utils/path';
 import { ValidationError } from '../utils/errors';
 import { TransformImageCommand } from '../domain/commands';
 import { PerformanceMetrics } from '../services/interfaces';
+import { ParameterHandler } from '../parameters';
 
 /**
  * Process an image transformation request
@@ -35,8 +36,11 @@ export async function handleImageRequest(
     });
   }
   
-  // Parse the path to extract image path and options
-  const { imagePath: originalPath, options: pathOptions } = parseImagePath(url.pathname);
+  // Extract the path for the image (everything after removing any path parameters)
+  const pathSegments = url.pathname.split('/').filter(Boolean);
+  const optionSegments = pathSegments.filter(segment => segment.startsWith('_') && segment.includes('='));
+  const nonOptionSegments = pathSegments.filter(segment => !(segment.startsWith('_') && segment.includes('=')));
+  const originalPath = '/' + nonOptionSegments.join('/');
   
   // Validate path - must have some content
   if (!originalPath || originalPath === '/') {
@@ -49,25 +53,16 @@ export async function handleImageRequest(
     imagePath = applyPathTransforms(originalPath, config.pathTransforms);
   }
   
-  // Parse query parameters
-  const queryOptions = parseQueryOptions(url.searchParams);
+  // Use the new parameter handler to process all parameters
+  const parameterHandler = new ParameterHandler(logger);
+  const optionsFromUrl: TransformOptions = parameterHandler.handleRequest(request);
   
-  // Combine options (query parameters take precedence over path options)
-  const optionsFromUrl: TransformOptions = {
-    ...Object.entries(pathOptions).reduce((acc, [key, value]) => {
-      // Convert string values to numbers or booleans when appropriate
-      if (value === 'true') {
-        acc[key] = true;
-      } else if (value === 'false') {
-        acc[key] = false;
-      } else {
-        const numVal = Number(value);
-        acc[key] = isNaN(numVal) ? value : numVal;
-      }
-      return acc;
-    }, {} as TransformOptions),
-    ...queryOptions
-  };
+  // Log the parsed options
+  logger.debug('Parsed transformation options', {
+    optionCount: Object.keys(optionsFromUrl).length,
+    hasWidth: optionsFromUrl.width !== undefined,
+    hasHeight: optionsFromUrl.height !== undefined
+  });
   
   // Check for derivative in path segments
   const derivativeNames = Object.keys(config.derivatives);

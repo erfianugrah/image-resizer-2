@@ -73,7 +73,13 @@ export function createKVTransformCacheManager(options: KVTransformCacheOptions):
     cacheConfig: JSON.stringify(config, null, 2).substring(0, 100) + '...'
   });
   
-  // Always use the simplified implementation, now passing the logger
-  logger.info('Creating SimpleKVTransformCacheManager with metadata-based filtering');
+  // Set a reasonable default memory cache size if not provided
+  if (!config.memoryCacheSize) {
+    config.memoryCacheSize = 200; // 200 items in memory cache by default
+    logger.debug('Using default memory cache size of 200 items');
+  }
+  
+  // Always use the simplified implementation with memory cache
+  logger.info('Creating SimpleKVTransformCacheManager with memory cache and metadata-based filtering');
   return new SimpleKVTransformCacheManager(config, kvNamespace, logger);
 }

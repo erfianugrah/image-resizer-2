@@ -27,6 +27,29 @@ export interface PathTransforms {
 }
 
 /**
+ * Parameter interfaces for transform parameter handling
+ */
+
+export interface TransformParameter {
+  name: string;           // Parameter name (e.g., 'width', 'aspect')
+  aliasFor?: string;      // For compact parameters, the standard parameter name
+  value: string | number | boolean; // Parameter value
+  source: 'url' | 'path' | 'akamai' | 'compact' | 'derivative' | 'derived'; // Parameter source
+  priority: number;       // Precedence when conflicting parameters exist
+}
+
+export interface TransformParameterDefinition {
+  name: string;
+  aliases?: string[];     // Alternative names ('r' for 'aspect')
+  type: 'number' | 'string' | 'boolean' | 'enum' | 'size-code' | 'coordinate' | 'auto-or-number';
+  validator?: (value: any) => boolean;
+  formatter?: (value: any) => any; // Convert to Cloudflare format
+  defaultValue?: any;
+  allowedValues?: any[];
+  priority?: number;      // Used for conflict resolution
+}
+
+/**
  * Extract image path and options from URL path
  */
 export function parseImagePath(pathname: string): {

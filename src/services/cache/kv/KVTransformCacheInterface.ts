@@ -36,6 +36,7 @@ export interface KVCacheConfig {
   backgroundIndexing: boolean; // Process cache operations in background to avoid blocking
   purgeDelay: number;          // Delay between purge operations (ms)
   disallowedPaths: string[];   // Paths that should not be cached
+  memoryCacheSize?: number;    // Size of in-memory LRU cache (item count)
 }
 
 /**
@@ -135,7 +136,9 @@ export interface KVTransformCacheInterface {
     size: number,              // Total size in bytes
     hitRate: number,           // Hit rate percentage
     avgSize: number,           // Average item size in bytes
-    lastPruned: Date           // When maintenance was last performed
+    lastPruned: Date,          // When maintenance was last performed
+    memoryCacheSize: number,   // Number of items in memory cache
+    memoryCacheHitRate: number // Memory cache hit rate percentage
   }>;
   
   /**
