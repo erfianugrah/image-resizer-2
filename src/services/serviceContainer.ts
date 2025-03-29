@@ -27,6 +27,7 @@ import { DefaultLoggingService } from './loggingService';
 import { createClientDetectionService } from './clientDetectionFactory';
 import { createAuthService } from './authServiceFactory';
 import { createMetadataService } from './metadataServiceFactory';
+import { CacheTagsManager } from './cache/CacheTagsManager';
 
 /**
  * Create a service container with all required services
@@ -81,7 +82,11 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
   // Create service instances
   const storageService: StorageService = new DefaultStorageService(storageLogger, configurationService, authService) as StorageService;
   const cacheService: CacheService = new DefaultCacheService(cacheLogger, configurationService);
-  const debugService: DebugService = new DefaultDebugService(debugLogger);
+  
+  // Create CacheTagsManager for the debug service
+  const cacheTagsManager = new CacheTagsManager(debugLogger, configurationService);
+  
+  const debugService: DebugService = new DefaultDebugService(debugLogger, cacheTagsManager);
   
   // Create client detection service using factory (creates optimized version based on config)
   const clientDetectionService: ClientDetectionService = createClientDetectionService(

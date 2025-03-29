@@ -13,6 +13,10 @@ interface Env {
   CACHE_TAGS_PREFIX?: string;
   CACHE_TAGS_CUSTOM?: string;
   CACHE_TAGS_PARSE_METADATA?: string;
+  CACHE_USE_MULTIPLE_TAG_HEADERS?: string;
+  CACHE_TAGS_MAX_TAGS?: string;
+  CACHE_TAGS_SIMPLIFIED?: string;
+  CACHE_TAGS_PATH_GROUPS?: string | Record<string, string[]>;
   
   // Cache settings
   CACHE_METHOD?: string;

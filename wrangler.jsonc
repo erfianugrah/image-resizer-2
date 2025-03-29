@@ -82,6 +82,24 @@
 		"CACHE_TAGS_PREFIX": "img-dev-",
 		"CACHE_TAGS_CUSTOM": "dev,test",
 		"CACHE_TAGS_PARSE_METADATA": "true",
+		"CACHE_USE_MULTIPLE_TAG_HEADERS": "false",
+		"CACHE_TAGS_MAX_TAGS": "10",
+		"CACHE_TAGS_SIMPLIFIED": "true",
+		/* Path-based tag groups for cache purging */
+		"CACHE_TAGS_PATH_GROUPS": {
+			"products": [
+				"product-catalog",
+				"e-commerce"
+			],
+			"blog": [
+				"blog-content",
+				"articles"
+			],
+			"profile": [
+				"user-content",
+				"avatars"
+			]
+		},
 		/**
      * CACHE TTL CONFIGURATION
      * ----------------------
@@ -383,6 +401,24 @@
 				"CACHE_TAGS_PREFIX": "img-dev-",
 				"CACHE_TAGS_CUSTOM": "dev,test",
 				"CACHE_TAGS_PARSE_METADATA": "true",
+				"CACHE_USE_MULTIPLE_TAG_HEADERS": "false",
+				"CACHE_TAGS_MAX_TAGS": "10",
+				"CACHE_TAGS_SIMPLIFIED": "true",
+				/* Path-based tag groups for cache purging */
+				"CACHE_TAGS_PATH_GROUPS": {
+					"products": [
+						"product-catalog",
+						"e-commerce"
+					],
+					"blog": [
+						"blog-content",
+						"articles"
+					],
+					"profile": [
+						"user-content",
+						"avatars"
+					]
+				},
 				"CACHE_TTL_OK": "60",
 				"CACHE_TTL_CLIENT_ERROR": "10",
 				"CACHE_TTL_SERVER_ERROR": "5",
@@ -633,6 +669,24 @@
 				"CACHE_TAGS_PREFIX": "img-staging-",
 				"CACHE_TAGS_CUSTOM": "staging,test",
 				"CACHE_TAGS_PARSE_METADATA": "true",
+				"CACHE_USE_MULTIPLE_TAG_HEADERS": "false",
+				"CACHE_TAGS_MAX_TAGS": "10",
+				"CACHE_TAGS_SIMPLIFIED": "true",
+				/* Path-based tag groups for cache purging */
+				"CACHE_TAGS_PATH_GROUPS": {
+					"products": [
+						"product-catalog",
+						"e-commerce"
+					],
+					"blog": [
+						"blog-content",
+						"articles"
+					],
+					"profile": [
+						"user-content",
+						"avatars"
+					]
+				},
 				"CACHE_TTL_OK": "3600",
 				"CACHE_TTL_CLIENT_ERROR": "30",
 				"CACHE_TTL_SERVER_ERROR": "5",
@@ -860,6 +914,24 @@
 				"CACHE_TAGS_PREFIX": "img-prod-",
 				"CACHE_TAGS_CUSTOM": "",
 				"CACHE_TAGS_PARSE_METADATA": "true",
+				"CACHE_USE_MULTIPLE_TAG_HEADERS": "false",
+				"CACHE_TAGS_MAX_TAGS": "10",
+				"CACHE_TAGS_SIMPLIFIED": "true",
+				/* Path-based tag groups for cache purging */
+				"CACHE_TAGS_PATH_GROUPS": {
+					"products": [
+						"product-catalog",
+						"e-commerce"
+					],
+					"blog": [
+						"blog-content",
+						"articles"
+					],
+					"profile": [
+						"user-content",
+						"avatars"
+					]
+				},
 				"CACHE_TTL_OK": "604800",
 				"CACHE_TTL_CLIENT_ERROR": "60",
 				"CACHE_TTL_SERVER_ERROR": "10",

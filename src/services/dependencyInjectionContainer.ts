@@ -5,7 +5,8 @@
  * to manage service instantiation and dependencies.
  */
 
-import { DIContainer, ServiceContainer, ClientDetectionService, PathService } from './interfaces';
+import { DIContainer, ServiceContainer, ClientDetectionService, PathService, CacheService, ConfigurationService } from './interfaces';
+import { CacheTagsManager } from './cache/CacheTagsManager';
 import { Env } from '../types';
 // Used for type definitions and future extensions
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -412,8 +413,15 @@ export function createContainerBuilder(env: Env): DIContainer {
   
   container.registerFactory(ServiceTypes.DEBUG_SERVICE, () => {
     const loggingService = container.resolve<DefaultLoggingService>(ServiceTypes.LOGGING_SERVICE);
+    const cacheService = container.resolve<CacheService>(ServiceTypes.CACHE_SERVICE);
     const logger = loggingService.getLogger('DebugService');
-    return new DefaultDebugService(logger);
+    
+    // We need to create a CacheTagsManager instance directly
+    // since we can't access the private tagsManager property from DefaultCacheService
+    const configService = container.resolve<ConfigurationService>(ServiceTypes.CONFIGURATION_SERVICE);
+    const cacheTagsManager = new CacheTagsManager(logger, configService);
+    
+    return new DefaultDebugService(logger, cacheTagsManager);
   });
   
   container.registerFactory(ServiceTypes.STORAGE_SERVICE, () => {

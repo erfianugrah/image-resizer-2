@@ -340,6 +340,17 @@ export interface CacheService {
   initialize(): Promise<void>;
   
   /**
+   * Get the CacheTagsManager instance for consistent tag generation across services
+   * 
+   * This property exposes the tags manager component to allow other services
+   * to use the same tag generation logic for consistency.
+   * 
+   * This property is private in DefaultCacheService to encapsulate implementation details.
+   * Other services should use the generateCacheTags method instead.
+   */
+  readonly tagsManager?: any; // Using 'any' to avoid circular imports - optional to support different implementations
+  
+  /**
    * Service lifecycle method for shutdown
    * 
    * This method is called during the service container shutdown phase

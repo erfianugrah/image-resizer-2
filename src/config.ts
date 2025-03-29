@@ -36,6 +36,8 @@ interface CacheTagsConfig {
   pathBasedTags?: Record<string, string[]>;
   parseMetadataHeaders?: MetadataHeadersConfig;
   pathNormalization?: CacheTagsPathNormalization;
+  maxTags?: number;
+  simplifiedTags?: boolean;
 }
 
 /**
@@ -858,7 +860,11 @@ export const defaultConfig: ImageResizerConfig = {
         leadingSlashPattern: '^/+',
         invalidCharsPattern: '[^a-zA-Z0-9-_/.]',
         replacementChar: '-'
-      }
+      },
+      // Maximum number of tags to include to prevent overly large headers
+      maxTags: 10,
+      // When true, use a simplified tag set with just essential tags
+      simplifiedTags: true
     },
     
     // Retry settings
@@ -1863,6 +1869,35 @@ export function getConfig(env: Env): ImageResizerConfig {
     }
   }
   
+  // Parse path-based tag groups from environment variable
+  if ((env as any).CACHE_TAGS_PATH_GROUPS && config.cache.cacheTags) {
+    try {
+      let pathGroups;
+      
+      // Check if CACHE_TAGS_PATH_GROUPS is already an object
+      if (typeof (env as any).CACHE_TAGS_PATH_GROUPS === 'object' && (env as any).CACHE_TAGS_PATH_GROUPS !== null) {
+        pathGroups = (env as any).CACHE_TAGS_PATH_GROUPS;
+      } else if (typeof (env as any).CACHE_TAGS_PATH_GROUPS === 'string') {
+        // The environment value should be a JSON object string
+        pathGroups = JSON.parse((env as any).CACHE_TAGS_PATH_GROUPS);
+      }
+      
+      if (typeof pathGroups === 'object' && pathGroups !== null) {
+        config.cache.cacheTags.pathBasedTags = pathGroups;
+        console.log('Loaded path-based tag groups from environment', {
+          pathPatterns: Object.keys(pathGroups)
+        });
+      }
+    } catch (error) {
+      console.error('Error parsing CACHE_TAGS_PATH_GROUPS from environment', {
+        error: error instanceof Error ? error.message : String(error),
+        value: typeof (env as any).CACHE_TAGS_PATH_GROUPS === 'string' 
+          ? (env as any).CACHE_TAGS_PATH_GROUPS.substring(0, 100) + '...' 
+          : 'object'
+      });
+    }
+  }
+  
   // Enable metadata header parsing if configured
   if (env.CACHE_TAGS_PARSE_METADATA && config.cache.cacheTags) {
     if (!config.cache.cacheTags.parseMetadataHeaders) {
@@ -1910,6 +1945,21 @@ export function getConfig(env: Env): ImageResizerConfig {
   // Apply cache TTL by status preference from environment
   if (env.CACHE_USE_TTL_BY_STATUS) {
     config.cache.useTtlByStatus = env.CACHE_USE_TTL_BY_STATUS === 'true';
+  }
+  
+  // Apply multiple cache tag headers preference from environment
+  if ((env as any).CACHE_USE_MULTIPLE_TAG_HEADERS) {
+    config.cache.useMultipleCacheTagHeaders = (env as any).CACHE_USE_MULTIPLE_TAG_HEADERS === 'true';
+  }
+  
+  // Apply cache tags max tags from environment
+  if ((env as any).CACHE_TAGS_MAX_TAGS && config.cache.cacheTags) {
+    config.cache.cacheTags.maxTags = parseInt((env as any).CACHE_TAGS_MAX_TAGS, 10);
+  }
+  
+  // Apply simplified tags preference from environment
+  if ((env as any).CACHE_TAGS_SIMPLIFIED && config.cache.cacheTags) {
+    config.cache.cacheTags.simplifiedTags = (env as any).CACHE_TAGS_SIMPLIFIED === 'true';
   }
   
   // Apply status code range settings from environment

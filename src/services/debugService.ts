@@ -18,7 +18,7 @@ import {
 import { DebugService, StorageResult, ClientInfo, TransformOptions } from './interfaces';
 import { createEnhancedHtmlReport } from './debugVisualization';
 // The cache.ts file has been removed as part of the utility removal plan
-// generateCacheTags is now part of CacheService
+// We now need to import and use the CacheTagsManager
 
 // Enhanced interface for debug visualization data
 interface DebugVisualizationData {
@@ -76,12 +76,17 @@ interface DebugVisualizationData {
   };
 }
 
+// Import CacheTagsManager for consistent tag generation
+import { CacheTagsManager } from './cache/CacheTagsManager';
+
 export class DefaultDebugService implements DebugService {
   private logger: Logger | OptimizedLogger;
   private isOptimizedLogger: boolean;
+  private cacheTagsManager?: CacheTagsManager;
 
-  constructor(logger: Logger) {
+  constructor(logger: Logger, cacheTagsManager?: CacheTagsManager) {
     this.logger = logger;
+    this.cacheTagsManager = cacheTagsManager;
     // Check if we have an optimized logger
     this.isOptimizedLogger = !!(logger as OptimizedLogger).isLevelEnabled;
   }
@@ -1199,79 +1204,61 @@ export class DefaultDebugService implements DebugService {
     options: TransformOptions,
     config: ImageResizerConfig
   ): string[] {
-    if (!config.cache.cacheTags?.enabled) {
-      return [];
-    }
-    
-    const tags: string[] = [];
-    const prefix = config.cache.cacheTags.prefix || '';
-    
-    // Add path-based tags
-    const pathParts = path.split('/').filter(Boolean);
-    
-    // Add tags for each level of the path using the same format as cacheService
-    if (pathParts.length > 0) {
-      // Normalize the path following same rules as cacheService
-      const leadingSlashPattern = config.cache.cacheTags?.pathNormalization?.leadingSlashPattern || '^/+';
-      const invalidCharsPattern = config.cache.cacheTags?.pathNormalization?.invalidCharsPattern || '[^a-zA-Z0-9-_/.]';
-      const replacementChar = config.cache.cacheTags?.pathNormalization?.replacementChar || '-';
-      
-      const normalizedPath = path
-        .replace(new RegExp(leadingSlashPattern), '') // Remove leading slashes
-        .replace(new RegExp(invalidCharsPattern, 'g'), replacementChar) // Replace special chars
-        .split('/')
-        .filter(Boolean);
-      
-      // Add a tag for the full path
-      tags.push(`${prefix}path-${normalizedPath.join('-').replace(/\./g, '-')}`);
-      
-      // Add tags for each path segment
-      normalizedPath.forEach((segment, index) => {
-        // Only add segment tags if there are multiple segments
-        if (normalizedPath.length > 1) {
-          // Also replace dots with dashes for segments for consistency
-          tags.push(`${prefix}segment-${index}-${segment.replace(/\./g, '-')}`);
+    // First choice: Always use CacheTagsManager if available
+    if (this.cacheTagsManager) {
+      try {
+        // Create a dummy request and storage result
+        const dummyRequest = new Request('https://example.com');
+        
+        // Infer content type from file extension if possible
+        let contentType = 'image/jpeg'; // Default
+        if (path) {
+          const lowerPath = path.toLowerCase();
+          if (lowerPath.endsWith('.png')) {
+            contentType = 'image/png';
+          } else if (lowerPath.endsWith('.webp')) {
+            contentType = 'image/webp';
+          } else if (lowerPath.endsWith('.avif')) {
+            contentType = 'image/avif';
+          } else if (lowerPath.endsWith('.gif')) {
+            contentType = 'image/gif';
+          } else if (lowerPath.endsWith('.svg')) {
+            contentType = 'image/svg+xml';
+          } else if (lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg')) {
+            contentType = 'image/jpeg';
+          }
         }
-      });
-      
-      // Add filename as a separate tag
-      const filename = normalizedPath[normalizedPath.length - 1];
-      if (filename) {
-        tags.push(`${prefix}file-${filename.replace(/\./g, '-')}`);
+        
+        const storageResult: StorageResult = {
+          response: new Response(),
+          sourceType: 'remote',
+          contentType,
+          size: 0,
+          path
+        };
+        
+        // Use the CacheTagsManager for tag generation
+        return this.cacheTagsManager.generateCacheTags(dummyRequest, storageResult, options);
+      } catch (error) {
+        // Log error but don't fall back - instead, return empty array
+        this.logger.error('Error using CacheTagsManager for debug tags', {
+          error: error instanceof Error ? error.message : String(error),
+          path
+        });
+        // If an error occurs using CacheTagsManager, return an empty array
+        // rather than falling back to a different implementation
+        return [];
       }
     }
     
-    // Add transformation-based tags in the same format as cacheService
-    if (options.width) {
-      tags.push(`${prefix}width-${options.width}`);
-    }
+    // If CacheTagsManager is not available, log a warning and return empty array
+    this.logger.warn('CacheTagsManager not available for debug tags', { 
+      path,
+      usingFallback: false
+    });
     
-    if (options.height) {
-      tags.push(`${prefix}height-${options.height}`);
-    }
-    
-    // Add combined dimensions tag if both width and height are specified
-    if (options.width && options.height) {
-      tags.push(`${prefix}dimensions-${options.width}x${options.height}`);
-    }
-    
-    if (options.format && options.format !== 'auto') {
-      tags.push(`${prefix}format-${options.format}`);
-    }
-    
-    if (options.quality) {
-      tags.push(`${prefix}quality-${options.quality}`);
-    }
-    
-    if (options.fit) {
-      tags.push(`${prefix}fit-${options.fit}`);
-    }
-    
-    if (options.derivative) {
-      tags.push(`${prefix}derivative-${options.derivative}`);
-    }
-    
-    return tags;
+    // Return empty array to avoid inconsistency
+    return [];
   }
 
   private getHeadersInfo(request: Request): Record<string, string> {
