@@ -216,7 +216,7 @@ export interface ImageTransformationService {
 /**
  * Cache service for managing caching operations
  */
-export interface CacheService {
+export interface CacheService extends KVTransformCacheMethods {
   /**
    * Apply cache headers to a response based on content type, status code, and configuration
    * 
@@ -519,7 +519,70 @@ export interface ClientDetectionService {
 /**
  * Configuration service for managing configuration loading and access
  */
-export interface ConfigurationService {
+// The cache service methods for KV transform cache are defined separately
+// to allow for backwards compatibility with existing code
+export interface KVTransformCacheMethods {
+  /**
+   * Check if a transformed image is already in the KV cache
+   */
+  isTransformCached(request: Request, transformOptions: TransformOptions): Promise<boolean>;
+  
+  /**
+   * Get a transformed image from the KV cache
+   */
+  getTransformedImage(request: Request, transformOptions: TransformOptions): Promise<Response | null>;
+  
+  /**
+   * Store a transformed image in the KV cache
+   */
+  storeTransformedImage(
+    request: Request,
+    response: Response,
+    storageResult: StorageResult,
+    transformOptions: TransformOptions,
+    ctx?: ExecutionContext
+  ): Promise<void>;
+  
+  /**
+   * Purge transformed images by tag
+   */
+  purgeTransformsByTag(tag: string, ctx?: ExecutionContext): Promise<number>;
+  
+  /**
+   * Purge transformed images by path pattern
+   */
+  purgeTransformsByPath(pathPattern: string, ctx?: ExecutionContext): Promise<number>;
+  
+  /**
+   * Get statistics about the KV transform cache
+   */
+  getTransformCacheStats(): Promise<{
+    count: number,
+    size: number,
+    indexSize: number,
+    hitRate: number,
+    avgSize: number
+  }>;
+  
+  /**
+   * List entries in the transform cache
+   * 
+   * @param limit Maximum number of entries to return
+   * @param cursor Cursor for pagination
+   * @returns List of cache entries with metadata
+   */
+  listTransformCacheEntries(
+    limit?: number, 
+    cursor?: string
+  ): Promise<{
+    entries: {key: string, metadata: any}[],
+    cursor?: string,
+    complete: boolean
+  }>;
+}
+
+// The core configuration service interface without KV transform cache methods
+export interface ConfigurationServiceCore {
   /**
    * Get the complete configuration
    * 
@@ -646,6 +709,10 @@ export interface ConfigurationService {
    * @returns Promise that resolves when shutdown is complete
    */
   shutdown(): Promise<void>;
+}
+
+// Define the full ConfigurationService interface by extending both the core and KV transform methods
+export interface ConfigurationService extends ConfigurationServiceCore, Partial<KVTransformCacheMethods> {
 }
 
 /**

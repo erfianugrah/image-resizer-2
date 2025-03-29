@@ -25,6 +25,106 @@ export class CacheBypassManager {
     this.logger = logger;
     this.configService = configService;
   }
+  
+  /**
+   * Check if KV transform caching should be bypassed for this request
+   * This is a specialized version of shouldBypassCache that ignores
+   * client Cache-Control headers to ensure transforms are cached in KV
+   * regardless of client caching preferences.
+   *
+   * @param request The request to check
+   * @param options Optional transformation options for specific bypass checks
+   * @returns True if KV transform caching should be bypassed
+   */
+  shouldBypassKVTransformCache(
+    request: Request,
+    options?: TransformOptions,
+  ): boolean {
+    const config = this.configService.getConfig();
+    let url: URL;
+
+    try {
+      url = new URL(request.url);
+    } catch (urlError) {
+      this.logger.error("Invalid URL in request for KV transform cache check", {
+        url: request.url,
+        error: urlError instanceof Error ? urlError.message : String(urlError)
+      });
+      return true; // Bypass cache on error
+    }
+
+    // 1. Debug and development-specific bypass parameters
+    
+    // Check for debug mode cache bypass parameters
+    if (url.searchParams.has("debug")) {
+      const debugMode = url.searchParams.get("debug");
+      if (
+        debugMode === "cache" || debugMode === "true" || debugMode === "1" ||
+        debugMode === "all"
+      ) {
+        this.logger.debug("Debug mode KV transform cache bypass detected", {
+          url: request.url,
+          debugMode,
+          reason: "debug parameter indicates cache bypass",
+        });
+        return true;
+      }
+    }
+
+    // Force cache refresh parameter - more explicit than no-cache
+    if (
+      url.searchParams.has("refresh") || url.searchParams.has("force-refresh")
+    ) {
+      this.logger.debug("Force refresh KV transform cache bypass detected", {
+        url: request.url,
+        reason: "refresh or force-refresh parameter",
+      });
+      return true;
+    }
+
+    // 4. Content-sensitive bypass rules
+
+    // Check if we're dealing with frequently updated content based on path
+    const path = url.pathname.toLowerCase();
+
+    if (config.cache.bypassPaths && Array.isArray(config.cache.bypassPaths)) {
+      for (const bypassPath of config.cache.bypassPaths) {
+        if (path.includes(bypassPath.toLowerCase())) {
+          this.logger.debug("Path-based KV transform cache bypass detected", {
+            url: request.url,
+            path: bypassPath,
+            reason: "Path matches configured bypass path",
+          });
+          return true;
+        }
+      }
+    }
+
+    // 5. Format or quality specific bypass
+    // Specific formats might need to bypass cache (e.g., during testing of new formats)
+    if (
+      options?.format &&
+      config.cache.bypassFormats &&
+      Array.isArray(config.cache.bypassFormats) &&
+      config.cache.bypassFormats.includes(options.format)
+    ) {
+      this.logger.debug("Format-specific KV transform cache bypass detected", {
+        url: request.url,
+        format: options.format,
+        reason: "Format is in bypass list",
+      });
+      return true;
+    }
+
+    // We intentionally ignore Cache-Control and Pragma headers for KV transform caching
+    // This ensures transformations are cached regardless of client caching preferences
+
+    this.logger.debug("No KV transform cache bypass conditions detected", {
+      url: request.url,
+    });
+
+    return false;
+  }
 
   /**
    * Check if caching should be bypassed for this request
@@ -128,7 +228,9 @@ export class CacheBypassManager {
 
     // 3. Header-based cache bypass
 
-    // Check standard cache-control headers
+    // Check standard cache-control headers on the request (not response)
+    // Important: This only applies to the client request Cache-Control,
+    // not the response Cache-Control which will be set by our service
     const cacheControl = request.headers.get("Cache-Control");
     if (cacheControl) {
       if (
@@ -136,10 +238,10 @@ export class CacheBypassManager {
         cacheControl.includes("no-store") ||
         cacheControl.includes("max-age=0")
       ) {
-        this.logger.debug("Cache-Control header bypass detected", {
+        this.logger.debug("Cache-Control header bypass detected in request", {
           url: request.url,
           cacheControl,
-          reason: "Cache-Control header indicates no caching",
+          reason: "Request Cache-Control header indicates no caching",
         });
         return true;
       }

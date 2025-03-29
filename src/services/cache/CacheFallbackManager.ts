@@ -68,6 +68,19 @@ export interface CacheFallbackFunctions {
     primary: () => Promise<T>,
     fallback: () => Promise<T>
   ) => Promise<T>;
+  
+  /**
+   * Store a transformed image in the KV cache
+   * 
+   * This function is optional and will be checked at runtime
+   */
+  storeTransformedImage?: (
+    request: Request,
+    response: Response,
+    storageResult: StorageResult,
+    transformOptions: TransformOptions,
+    ctx?: ExecutionContext
+  ) => Promise<void>;
 }
 
 export class CacheFallbackManager {
@@ -125,6 +138,127 @@ export class CacheFallbackManager {
       cacheMethod: config.cache.method,
       hasOptions: !!options && Object.keys(options).length > 0,
     });
+
+    // Store the transformed image in KV cache if storageResult and options are available
+    // This is done outside regular cache flow to ensure KV caching works regardless of other caching
+    // We store transformed images in KV regardless of cache bypass settings 
+    // This allows us to cache transformations in KV even when the client requests no caching
+    if (config.cache.transformCache?.enabled && storageResult && options) {
+      try {
+        // Check for client cache-control headers but continue anyway
+        const cacheControl = request.headers.get("Cache-Control");
+        if (cacheControl && (cacheControl.includes("no-cache") || cacheControl.includes("no-store"))) {
+          this.logger.info("Client requested no cache but storing in KV transform cache anyway", {
+            url: request.url,
+            cacheControl,
+            reason: "KV transform cache ignores client caching preferences"
+          });
+        }
+        
+        // Log detailed information about the KV cache attempt
+        this.logger.debug("Preparing to store transformed image in KV cache", {
+          url: request.url,
+          hasStorageResult: !!storageResult,
+          hasOptions: !!options,
+          hasContext: !!ctx,
+          hasWaitUntil: ctx ? (typeof ctx.waitUntil === 'function') : false,
+          transformCacheEnabled: config.cache.transformCache.enabled,
+          transformCacheBinding: config.cache.transformCache.binding
+        });
+        
+        // Check if we have a context object for waitUntil
+        if (!ctx) {
+          this.logger.warn("No execution context available for KV transform cache - this will block the response", {
+            url: request.url
+          });
+        }
+        
+        // If the parent DefaultCacheService has a storeTransformedImage method (checked at runtime)
+        if (typeof (functions as any).storeTransformedImage === 'function') {
+          this.logger.debug("storeTransformedImage function found in parent service", {
+            functionType: typeof (functions as any).storeTransformedImage
+          });
+          
+          // Check if we have a context with waitUntil for background processing
+          if (ctx && typeof ctx.waitUntil === 'function') {
+            this.logger.debug("Using waitUntil for background KV transform storage");
+            
+            // Use waitUntil to avoid blocking the response
+            ctx.waitUntil(
+              (functions as any).storeTransformedImage(
+                request,
+                response.clone(),
+                storageResult,
+                options,
+                ctx  // Important: Pass the context through the chain
+              ).catch((err: Error) => {
+                this.logger.error("Error in background KV transform storage", { 
+                  error: err.message,
+                  stack: err.stack, 
+                  url: request.url 
+                });
+              })
+            );
+            
+            this.logger.debug("Background KV transform storage initiated");
+          } else {
+            // No context or waitUntil, fall back to synchronous operation
+            this.logger.warn("No waitUntil available, falling back to synchronous KV transform storage", {
+              url: request.url,
+              hasContext: !!ctx
+            });
+            
+            // This will be synchronous and could block the response
+            await (functions as any).storeTransformedImage(
+              request,
+              response.clone(),
+              storageResult,
+              options,
+              ctx  // Pass ctx even if it doesn't have waitUntil
+            ).catch((err: Error) => {
+              this.logger.error("Error in synchronous KV transform storage", { 
+                error: err.message, 
+                stack: err.stack,
+                url: request.url 
+              });
+            });
+          }
+        } else {
+          this.logger.warn("storeTransformedImage function not available in parent service", {
+            url: request.url,
+            availableFunctions: Object.keys(functions).join(',')
+          });
+        }
+      } catch (error) {
+        // Log but continue - this should not block the response
+        this.logger.error("Error initiating KV transform cache storage", {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          url: request.url,
+          phase: 'CacheFallbackManager.cacheWithFallback'
+        });
+      }
+    } else {
+      // Log why we're not storing in KV cache
+      if (!config.cache.transformCache?.enabled) {
+        this.logger.debug("KV transform cache is not enabled in config");
+      }
+      if (!storageResult) {
+        this.logger.debug("No storage result available for KV transform cache", {
+          url: request.url
+        });
+      }
+      if (!options) {
+        this.logger.debug("No transform options available for KV transform cache", {
+          url: request.url
+        });
+      }
+      if (!ctx) {
+        this.logger.debug("No execution context available for KV transform cache", {
+          url: request.url
+        });
+      }
+    }
 
     // Primary operation - try to use Cache API with full resilience
     const primaryOperation = async () => {

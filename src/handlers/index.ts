@@ -9,3 +9,4 @@ export * from './akamaiCompatibilityHandler';
 export * from './imageHandler';
 export * from './performanceHandler';
 export * from './metadataHandler';
+export * from './transformCacheDebugHandler';

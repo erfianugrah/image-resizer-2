@@ -212,7 +212,53 @@ export class TransformImageCommand implements Command<Response> {
         this.url
       );
 
-      // Cache with enhanced fallback mechanism
+      // Always store transformed image in KV cache regardless of Client Cache-Control
+      // This allows us to have the transformed image for future requests
+      if (storageResult && config.cache.transformCache?.enabled) {
+        logger.breadcrumb('Storing transformed image in KV cache using waitUntil');
+        try {
+          // Use the execution context for background processing
+          const ctx = (this.request as unknown as { ctx: ExecutionContext }).ctx;
+          
+          // Make sure we have a valid execution context with waitUntil
+          if (ctx && typeof ctx.waitUntil === 'function') {
+            // Use waitUntil to run the KV transform caching in the background
+            // This ensures KV operations don't block the response
+            ctx.waitUntil(
+              cacheService.storeTransformedImage(
+                this.request,
+                finalResponse.clone(),
+                storageResult,
+                this.options,
+                ctx
+              ).catch(err => {
+                logger.error('Error in background KV transform storage', {
+                  error: err instanceof Error ? err.message : String(err),
+                  stack: err instanceof Error ? err.stack : undefined,
+                  url: this.request.url
+                });
+              })
+            );
+            
+            logger.debug('Background KV transform cache operation initiated');
+          } else {
+            // No valid context, log a warning but continue without blocking
+            logger.warn('No valid execution context available for background KV transform caching', {
+              hasContext: !!ctx,
+              hasWaitUntil: ctx ? (typeof ctx.waitUntil === 'function') : false,
+              url: this.request.url
+            });
+          }
+        } catch (error) {
+          logger.error('Error initiating KV transform cache operation', {
+            error: error instanceof Error ? error.message : String(error),
+            url: this.request.url
+          });
+          // Continue even if KV caching fails - this is non-blocking
+        }
+      }
+
+      // Cache with enhanced fallback mechanism only if not bypassed
       if (!cacheService.shouldBypassCache(this.request, this.options)) {
         logger.breadcrumb('Caching response with enhanced strategy');
         finalResponse = await cacheService.cacheWithFallback(

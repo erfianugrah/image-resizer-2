@@ -11,6 +11,7 @@ import { CacheService, ConfigurationService, StorageResult, TransformOptions } f
 import { ImageResizerConfig } from '../config';
 import { DefaultCacheService } from './cacheService';
 import { PerformanceBaseline } from '../utils/performance-metrics';
+import type { ExecutionContext } from '@cloudflare/workers-types';
 import { 
   // These error types are imported for documentation and potential future use
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -893,5 +894,326 @@ export class OptimizedCacheService implements CacheService {
     
     this.logger.info('OptimizedCacheService shutdown complete');
     return Promise.resolve();
+  }
+
+  /**
+   * Check if a transformed image is already in the KV cache
+   * 
+   * @param request Original request
+   * @param transformOptions Transformation options
+   * @returns Promise resolving to true if the transformed image is cached
+   */
+  async isTransformCached(
+    request: Request,
+    transformOptions: TransformOptions
+  ): Promise<boolean> {
+    // Delegate to base service with performance tracking
+    const startTime = Date.now();
+    
+    try {
+      const result = await this.defaultService.isTransformCached(request, transformOptions);
+      
+      // Record performance metrics
+      const duration = Date.now() - startTime;
+      this.performanceBaseline.record('cache', 'isTransformCached', duration, {
+        url: request.url,
+        cached: result
+      });
+      
+      return result;
+    } catch (error) {
+      // Record error metrics
+      const duration = Date.now() - startTime;
+      this.performanceBaseline.record('cache', 'isTransformCachedError', duration, {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
+      // Log error but don't fail the request
+      this.logger.error('Error checking transform cache status', {
+        error: error instanceof Error ? error.message : String(error),
+        url: request.url
+      });
+      
+      return false;
+    }
+  }
+
+  /**
+   * Get a transformed image from the KV cache
+   * 
+   * @param request Original request
+   * @param transformOptions Transformation options
+   * @returns Promise resolving to the cached response or null if not found
+   */
+  async getTransformedImage(
+    request: Request,
+    transformOptions: TransformOptions
+  ): Promise<Response | null> {
+    // Delegate to base service with performance tracking
+    const startTime = Date.now();
+    
+    try {
+      // Track this request for frequency analysis
+      this.trackAccessPattern(request);
+      
+      const result = await this.defaultService.getTransformedImage(request, transformOptions);
+      
+      // Record performance metrics
+      const duration = Date.now() - startTime;
+      this.performanceBaseline.record('cache', 'getTransformedImage', duration, {
+        url: request.url,
+        hit: result !== null,
+        contentType: result?.headers.get('Content-Type')
+      });
+      
+      return result;
+    } catch (error) {
+      // Record error metrics
+      const duration = Date.now() - startTime;
+      this.performanceBaseline.record('cache', 'getTransformedImageError', duration, {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
+      // Log error but don't fail the request
+      this.logger.error('Error retrieving transformed image from cache', {
+        error: error instanceof Error ? error.message : String(error),
+        url: request.url
+      });
+      
+      return null;
+    }
+  }
+
+  /**
+   * Store a transformed image in the KV cache
+   * 
+   * @param request Original request
+   * @param response The transformed image response
+   * @param storageResult Storage result
+   * @param transformOptions Transformation options
+   * @param ctx Execution context for background operations
+   * @returns Promise resolving when the operation is complete
+   */
+  async storeTransformedImage(
+    request: Request,
+    response: Response,
+    storageResult: StorageResult,
+    transformOptions: TransformOptions,
+    ctx?: ExecutionContext
+  ): Promise<void> {
+    // Delegate to base service with performance tracking
+    const startTime = Date.now();
+    
+    try {
+      // Track this request for frequency analysis
+      this.trackAccessPattern(request);
+      
+      await this.defaultService.storeTransformedImage(
+        request,
+        response,
+        storageResult,
+        transformOptions,
+        ctx
+      );
+      
+      // Record performance metrics
+      const duration = Date.now() - startTime;
+      this.performanceBaseline.record('cache', 'storeTransformedImage', duration, {
+        url: request.url,
+        contentType: response.headers.get('Content-Type')
+      });
+    } catch (error) {
+      // Record error metrics
+      const duration = Date.now() - startTime;
+      this.performanceBaseline.record('cache', 'storeTransformedImageError', duration, {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
+      // Log error but don't fail the request
+      this.logger.error('Error storing transformed image in cache', {
+        error: error instanceof Error ? error.message : String(error),
+        url: request.url
+      });
+    }
+  }
+
+  /**
+   * Purge transformed images by tag
+   * 
+   * @param tag Cache tag to purge
+   * @param ctx Execution context for background operations
+   * @returns Promise resolving to the number of items purged
+   */
+  async purgeTransformsByTag(
+    tag: string,
+    ctx?: ExecutionContext
+  ): Promise<number> {
+    // Delegate to base service with performance tracking
+    const startTime = Date.now();
+    
+    try {
+      const purgedCount = await this.defaultService.purgeTransformsByTag(tag, ctx);
+      
+      // Record performance metrics
+      const duration = Date.now() - startTime;
+      this.performanceBaseline.record('cache', 'purgeTransformsByTag', duration, {
+        tag,
+        purgedCount
+      });
+      
+      return purgedCount;
+    } catch (error) {
+      // Record error metrics
+      const duration = Date.now() - startTime;
+      this.performanceBaseline.record('cache', 'purgeTransformsByTagError', duration, {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
+      // Log error but don't fail the request
+      this.logger.error('Error purging transformed images by tag', {
+        error: error instanceof Error ? error.message : String(error),
+        tag
+      });
+      
+      return 0;
+    }
+  }
+
+  /**
+   * Purge transformed images by path pattern
+   * 
+   * @param pathPattern Path pattern to purge
+   * @param ctx Execution context for background operations
+   * @returns Promise resolving to the number of items purged
+   */
+  async purgeTransformsByPath(
+    pathPattern: string,
+    ctx?: ExecutionContext
+  ): Promise<number> {
+    // Delegate to base service with performance tracking
+    const startTime = Date.now();
+    
+    try {
+      const purgedCount = await this.defaultService.purgeTransformsByPath(pathPattern, ctx);
+      
+      // Record performance metrics
+      const duration = Date.now() - startTime;
+      this.performanceBaseline.record('cache', 'purgeTransformsByPath', duration, {
+        pathPattern,
+        purgedCount
+      });
+      
+      return purgedCount;
+    } catch (error) {
+      // Record error metrics
+      const duration = Date.now() - startTime;
+      this.performanceBaseline.record('cache', 'purgeTransformsByPathError', duration, {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
+      // Log error but don't fail the request
+      this.logger.error('Error purging transformed images by path pattern', {
+        error: error instanceof Error ? error.message : String(error),
+        pathPattern
+      });
+      
+      return 0;
+    }
+  }
+
+  /**
+   * Get statistics about the KV transform cache
+   * 
+   * @returns Promise resolving to cache statistics
+   */
+  async getTransformCacheStats(): Promise<{
+    count: number,
+    size: number,
+    indexSize: number,
+    hitRate: number,
+    avgSize: number
+  }> {
+    // Delegate to base service with performance tracking
+    const startTime = Date.now();
+    
+    try {
+      const stats = await this.defaultService.getTransformCacheStats();
+      
+      // Record performance metrics
+      const duration = Date.now() - startTime;
+      this.performanceBaseline.record('cache', 'getTransformCacheStats', duration, {
+        count: stats.count,
+        totalSize: stats.size
+      });
+      
+      return stats;
+    } catch (error) {
+      // Record error metrics
+      const duration = Date.now() - startTime;
+      this.performanceBaseline.record('cache', 'getTransformCacheStatsError', duration, {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
+      // Log error but don't fail the request
+      this.logger.error('Error getting KV transform cache stats', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
+      return {
+        count: 0,
+        size: 0,
+        indexSize: 0,
+        hitRate: 0,
+        avgSize: 0
+      };
+    }
+  }
+  
+  /**
+   * List entries in the transform cache
+   * 
+   * @param limit Maximum number of entries to return
+   * @param cursor Cursor for pagination
+   * @returns List of cache entries with metadata
+   */
+  async listTransformCacheEntries(
+    limit?: number, 
+    cursor?: string
+  ): Promise<{
+    entries: {key: string, metadata: any}[],
+    cursor?: string,
+    complete: boolean
+  }> {
+    // Delegate to base service with performance tracking
+    const startTime = Date.now();
+    
+    try {
+      const result = await this.defaultService.listTransformCacheEntries(limit, cursor);
+      
+      // Record performance metrics
+      const duration = Date.now() - startTime;
+      this.performanceBaseline.record('cache', 'listTransformCacheEntries', duration, {
+        entriesCount: result.entries.length,
+        complete: result.complete
+      });
+      
+      return result;
+    } catch (error) {
+      // Record error metrics
+      const duration = Date.now() - startTime;
+      this.performanceBaseline.record('cache', 'listTransformCacheEntriesError', duration, {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
+      // Log error but don't fail the request
+      this.logger.error('Error listing KV transform cache entries', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
+      return {
+        entries: [],
+        complete: true
+      };
+    }
   }
 }

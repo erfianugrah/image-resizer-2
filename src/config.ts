@@ -265,6 +265,26 @@ export interface ImageResizerConfig {
     bypassParams?: string[];   // Query parameters that trigger cache bypass
     cacheTags?: CacheTagsConfig;
     
+    // KV-based transformation cache settings
+    transformCache?: {
+      enabled: boolean;
+      binding?: string;         // KV namespace binding name (defaults to IMAGE_TRANSFORMATIONS_CACHE)
+      prefix?: string;          // Key prefix (defaults to "transform")
+      maxSize?: number;         // Maximum size to cache in bytes (defaults to 10MB)
+      defaultTtl?: number;      // Default TTL in seconds (defaults to 86400 - 1 day)
+      contentTypeTtls?: Record<string, number>; // TTLs by content type
+      indexingEnabled?: boolean; // Enable secondary indices (defaults to true)
+      backgroundIndexing?: boolean; // Update indices in background (defaults to true)
+      purgeDelay?: number;      // Delay between purge operations (defaults to 100ms)
+      disallowedPaths?: string[]; // Paths not to cache
+      // Advanced optimizations
+      optimizedIndexing?: boolean; // Use minimal indices for better performance
+      smallPurgeThreshold?: number; // Maximum items for list+filter instead of indices
+      indexUpdateFrequency?: number; // How often to update indices
+      skipIndicesForSmallFiles?: boolean; // Skip indexing for small files
+      smallFileThreshold?: number; // Size threshold for "small" files in bytes
+    };
+    
     // New stale-while-revalidate settings
     enableStaleWhileRevalidate?: boolean;  // Enable stale-while-revalidate caching pattern
     staleWhileRevalidatePercentage?: number; // Percentage of main TTL to use for stale time (default: 50)
@@ -830,6 +850,38 @@ export const defaultConfig: ImageResizerConfig = {
     
     // Enable cache metrics
     enableCacheMetrics: true,
+    
+    // KV-based transformation cache settings
+    transformCache: {
+      enabled: true,
+      binding: 'IMAGE_TRANSFORMATIONS_CACHE',
+      prefix: 'transform',
+      maxSize: 26214400, // 25MB (25 * 1024 * 1024)
+      defaultTtl: 86400, // 1 day
+      contentTypeTtls: {
+        'image/jpeg': 604800, // 7 days
+        'image/png': 604800,  // 7 days
+        'image/webp': 604800, // 7 days
+        'image/avif': 604800, // 7 days
+        'image/gif': 604800,  // 7 days
+        'image/svg+xml': 2592000 // 30 days
+      },
+      indexingEnabled: true,
+      backgroundIndexing: true,
+      purgeDelay: 100, // 100ms
+      disallowedPaths: [
+        '/admin/',
+        '/preview/',
+        '/draft/',
+        '/temp/'
+      ],
+      // Advanced performance optimizations for KV caching
+      optimizedIndexing: true,          // Use minimal indices for better performance
+      smallPurgeThreshold: 20,          // For small purges (<20 items), use list+filter
+      indexUpdateFrequency: 1,          // Update indices every time by default
+      skipIndicesForSmallFiles: true,   // Skip indexing for small files to improve write perf
+      smallFileThreshold: 51200         // 50KB threshold for "small" files
+    },
     
     cacheTags: {
       enabled: true,

@@ -40,7 +40,8 @@ import {
   CloudflareCacheManager,
   TTLCalculator,
   CacheResilienceManager,
-  CachePerformanceManager
+  CachePerformanceManager,
+  KVTransformCacheManager
 } from './cache';
 
 // Type guard functions for TypeScript error handling
@@ -82,6 +83,7 @@ export class DefaultCacheService implements CacheService {
   private _tagsManager: CacheTagsManager;  // renamed to _tagsManager to avoid conflict with getter
   private bypassManager: CacheBypassManager;
   private fallbackManager: CacheFallbackManager;
+  private kvTransformCache: KVTransformCacheManager;
   
   // Getter for the tagsManager to make it accessible while keeping the implementation private
   get tagsManager(): CacheTagsManager {
@@ -107,14 +109,15 @@ export class DefaultCacheService implements CacheService {
     this._tagsManager = new CacheTagsManager(logger, configService);
     this.bypassManager = new CacheBypassManager(logger, configService);
     this.fallbackManager = new CacheFallbackManager(logger, configService);
+    this.kvTransformCache = new KVTransformCacheManager(logger, configService, this._tagsManager);
     this.cfCacheManager = new CloudflareCacheManager(logger, configService);
     this.ttlCalculator = new TTLCalculator(logger, configService);
     this.resilienceManager = new CacheResilienceManager(logger, configService);
     this.performanceManager = new CachePerformanceManager(logger, configService);
     
     this.logger.debug('Modular cache components initialized', {
-      components: 'CacheHeadersManager, CacheTagsManager, CacheBypassManager, CacheFallbackManager, CloudflareCacheManager, TTLCalculator, CacheResilienceManager, CachePerformanceManager',
-      componentsCount: 8
+      components: 'CacheHeadersManager, CacheTagsManager, CacheBypassManager, CacheFallbackManager, KVTransformCacheManager, CloudflareCacheManager, TTLCalculator, CacheResilienceManager, CachePerformanceManager',
+      componentsCount: 9
     });
   }
 
@@ -709,6 +712,9 @@ export class DefaultCacheService implements CacheService {
             this.recordFailure(errorCode),
           executeWithFallback: <T>(primary: () => Promise<T>, fallback: () => Promise<T>) => 
             this.executeWithFallback(primary, fallback),
+          // Add the storeTransformedImage method to enable KV transform caching
+          storeTransformedImage: (req: Request, resp: Response, storage: StorageResult, opts: TransformOptions, context?: ExecutionContext) => 
+            this.storeTransformedImage(req, resp, storage, opts, context)
         }
       );
     } catch (error) {
@@ -1053,5 +1059,424 @@ export class DefaultCacheService implements CacheService {
     options: TransformOptions
   ): string[] {
     return this._tagsManager.generateCacheTags(request, storageResult, options);
+  }
+  
+  /**
+   * Check if a transformed image is already in the KV cache
+   * 
+   * @param request Original request
+   * @param transformOptions Transformation options
+   * @returns Promise resolving to true if the transformed image is cached
+   */
+  async isTransformCached(
+    request: Request,
+    transformOptions: TransformOptions
+  ): Promise<boolean> {
+    try {
+      const config = this.configService.getConfig();
+      
+      // Check if KV transform cache is enabled
+      if (!config.cache.transformCache?.enabled) {
+        this.logger.debug('KV transform cache is disabled, returning false', {
+          url: request.url
+        });
+        return false;
+      }
+      
+      // Delegate to the KV transform cache manager
+      return await this.kvTransformCache.isCached(request, transformOptions);
+    } catch (error) {
+      this.logger.error('Error checking transform cache status', {
+        error: error instanceof Error ? error.message : String(error),
+        url: request.url
+      });
+      
+      return false;
+    }
+  }
+  
+  /**
+   * Get a transformed image from the KV cache
+   * 
+   * @param request Original request
+   * @param transformOptions Transformation options
+   * @returns Promise resolving to the cached response or null if not found
+   */
+  async getTransformedImage(
+    request: Request,
+    transformOptions: TransformOptions
+  ): Promise<Response | null> {
+    try {
+      const config = this.configService.getConfig();
+      
+      // Check if KV transform cache is enabled
+      if (!config.cache.transformCache?.enabled) {
+        this.logger.debug('KV transform cache is disabled, returning null', {
+          url: request.url
+        });
+        return null;
+      }
+      
+      // Delegate to the KV transform cache manager
+      const cacheResult = await this.kvTransformCache.get(request, transformOptions);
+      
+      if (!cacheResult) {
+        return null;
+      }
+      
+      // Create a response from the cached data
+      const { value, metadata } = cacheResult;
+      
+      // Construct a response with the cached data and proper headers
+      const headers = new Headers();
+      headers.set('Content-Type', metadata.contentType);
+      headers.set('Content-Length', metadata.size.toString());
+      headers.set('X-Cache', 'HIT');
+      headers.set('X-Cache-Key', cacheResult.key);
+      
+      // Additional metadata headers for debugging
+      headers.set('X-Transform-Cache-Hit', 'true');
+      headers.set('X-Original-URL', metadata.url);
+      headers.set('X-Original-Size', (metadata.originalSize || 0).toString());
+      
+      if (metadata.compressionRatio) {
+        headers.set('X-Compression-Ratio', metadata.compressionRatio.toFixed(2));
+      }
+      
+      if (metadata.tags && metadata.tags.length > 0) {
+        headers.set('Cache-Tag', metadata.tags.join(','));
+      }
+      
+      // Create the response with the cached data
+      const response = new Response(value, {
+        status: 200,
+        headers
+      });
+      
+      this.logger.debug('Retrieved transformed image from KV cache', {
+        url: request.url,
+        key: cacheResult.key,
+        size: metadata.size
+      });
+      
+      return response;
+    } catch (error) {
+      this.logger.error('Error retrieving transformed image from cache', {
+        error: error instanceof Error ? error.message : String(error),
+        url: request.url
+      });
+      
+      return null;
+    }
+  }
+  
+  /**
+   * Store a transformed image in the KV cache
+   * 
+   * This method should be called with waitUntil for non-blocking operation
+   * to avoid delaying the response to the client.
+   * 
+   * @param request Original request
+   * @param response The transformed image response
+   * @param storageResult Storage result
+   * @param transformOptions Transformation options
+   * @param ctx Execution context for background operations
+   * @returns Promise resolving when the operation is complete
+   */
+  async storeTransformedImage(
+    request: Request,
+    response: Response,
+    storageResult: StorageResult,
+    transformOptions: TransformOptions,
+    ctx?: ExecutionContext
+  ): Promise<void> {
+    try {
+      const config = this.configService.getConfig();
+      
+      // Log detailed entry information
+      this.logger.debug('storeTransformedImage called in DefaultCacheService', {
+        url: request.url,
+        hasStorageResult: !!storageResult,
+        hasTransformOptions: !!transformOptions,
+        hasContext: !!ctx,
+        hasWaitUntil: ctx ? (typeof ctx.waitUntil === 'function') : false,
+        transformOptionsKeys: transformOptions ? Object.keys(transformOptions).join(',') : 'none',
+        responseStatus: response.status,
+        responseContentType: response.headers.get('Content-Type'),
+        responseContentLength: response.headers.get('Content-Length'),
+        configEnabled: config.cache.transformCache?.enabled
+      });
+      
+      // Check if KV transform cache is enabled
+      if (!config.cache.transformCache?.enabled) {
+        this.logger.debug('KV transform cache is disabled, skipping store', {
+          url: request.url,
+          binding: config.cache.transformCache?.binding || 'not configured'
+        });
+        return;
+      }
+      
+      // For KV transform caching, we ignore client Cache-Control headers
+      // This ensures that transformations are cached in KV even if the client requests no caching
+      const cacheControl = request.headers.get("Cache-Control");
+      if (cacheControl && (cacheControl.includes("no-cache") || cacheControl.includes("no-store"))) {
+        this.logger.info('Ignoring client Cache-Control header for KV transform cache', {
+          url: request.url,
+          cacheControl: cacheControl,
+          reason: 'KV transform cache should work regardless of client caching preferences'
+        });
+        // Continue with caching despite the Cache-Control header
+      } else {
+        // For all other bypass checks, use specialized KV bypass detection
+        if (this.bypassManager.shouldBypassKVTransformCache(request, transformOptions)) {
+          this.logger.debug('Bypassing KV transform cache for request', {
+            url: request.url,
+            reason: 'shouldBypassKVTransformCache returned true'
+          });
+          return;
+        }
+      }
+      
+      // Log execution context
+      if (ctx) {
+        this.logger.debug('Execution context is available for KV operation', {
+          contextType: typeof ctx,
+          hasWaitUntil: typeof ctx.waitUntil === 'function',
+          passingTo: 'kvTransformCache.put'
+        });
+      } else {
+        this.logger.warn('No execution context provided for KV operation, this may cause issues with background processing', {
+          url: request.url
+        });
+      }
+      
+      // Check request has env
+      if (!(request as any).env) {
+        this.logger.warn('Request does not have env property, this may cause KV binding issues', {
+          url: request.url,
+          requestProps: Object.keys(request as any).filter(k => k !== 'headers').join(',')
+        });
+      }
+      
+      // Clone the response to ensure we don't consume the body
+      this.logger.debug('Cloning response before passing to KV cache manager');
+      const clonedResponse = response.clone();
+      
+      // Delegate to the KV transform cache manager
+      this.logger.debug('Delegating to KV transform cache manager', {
+        managerType: typeof this.kvTransformCache,
+        hasKVPutMethod: typeof this.kvTransformCache.put === 'function'
+      });
+      
+      await this.kvTransformCache.put(
+        request,
+        clonedResponse,
+        storageResult,
+        transformOptions,
+        ctx
+      );
+      
+      this.logger.debug('Successfully delegated to KV transform cache manager', {
+        url: request.url,
+        contentType: response.headers.get('Content-Type')
+      });
+    } catch (error) {
+      this.logger.error('Error storing transformed image in cache', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        url: request.url,
+        phase: 'DefaultCacheService.storeTransformedImage'
+      });
+      
+      // Rethrow so the error can be caught by callers (particularly important for waitUntil)
+      throw error;
+    }
+  }
+  
+  /**
+   * Purge transformed images by tag
+   * 
+   * @param tag Cache tag to purge
+   * @param ctx Execution context for background operations
+   * @returns Promise resolving to the number of items purged
+   */
+  async purgeTransformsByTag(
+    tag: string,
+    ctx?: ExecutionContext
+  ): Promise<number> {
+    try {
+      const config = this.configService.getConfig();
+      
+      // Check if KV transform cache is enabled
+      if (!config.cache.transformCache?.enabled) {
+        this.logger.debug('KV transform cache is disabled, skipping purge', {
+          tag
+        });
+        return 0;
+      }
+      
+      // Delegate to the KV transform cache manager
+      const purgedCount = await this.kvTransformCache.purgeByTag(tag, ctx);
+      
+      this.logger.info('Purged transformed images by tag', {
+        tag,
+        purgedCount
+      });
+      
+      return purgedCount;
+    } catch (error) {
+      this.logger.error('Error purging transformed images by tag', {
+        error: error instanceof Error ? error.message : String(error),
+        tag
+      });
+      
+      return 0;
+    }
+  }
+  
+  /**
+   * Purge transformed images by path pattern
+   * 
+   * @param pathPattern Path pattern to purge
+   * @param ctx Execution context for background operations
+   * @returns Promise resolving to the number of items purged
+   */
+  async purgeTransformsByPath(
+    pathPattern: string,
+    ctx?: ExecutionContext
+  ): Promise<number> {
+    try {
+      const config = this.configService.getConfig();
+      
+      // Check if KV transform cache is enabled
+      if (!config.cache.transformCache?.enabled) {
+        this.logger.debug('KV transform cache is disabled, skipping purge', {
+          pathPattern
+        });
+        return 0;
+      }
+      
+      // Delegate to the KV transform cache manager
+      const purgedCount = await this.kvTransformCache.purgeByPath(pathPattern, ctx);
+      
+      this.logger.info('Purged transformed images by path pattern', {
+        pathPattern,
+        purgedCount
+      });
+      
+      return purgedCount;
+    } catch (error) {
+      this.logger.error('Error purging transformed images by path pattern', {
+        error: error instanceof Error ? error.message : String(error),
+        pathPattern
+      });
+      
+      return 0;
+    }
+  }
+  
+  /**
+   * Get statistics about the KV transform cache
+   * 
+   * @returns Promise resolving to cache statistics
+   */
+  async getTransformCacheStats(): Promise<{
+    count: number,
+    size: number,
+    indexSize: number,
+    hitRate: number,
+    avgSize: number
+  }> {
+    try {
+      const config = this.configService.getConfig();
+      
+      // Check if KV transform cache is enabled
+      if (!config.cache.transformCache?.enabled) {
+        this.logger.debug('KV transform cache is disabled, returning empty stats');
+        return {
+          count: 0,
+          size: 0,
+          indexSize: 0,
+          hitRate: 0,
+          avgSize: 0
+        };
+      }
+      
+      // Delegate to the KV transform cache manager
+      const stats = await this.kvTransformCache.getStats();
+      
+      this.logger.debug('Retrieved KV transform cache stats', {
+        count: stats.count,
+        size: stats.size,
+        indexSize: stats.indexSize,
+        hitRate: stats.hitRate,
+        avgSize: stats.avgSize,
+        optimized: stats.optimized,
+        lastPrunedTime: stats.lastPruned.getTime()
+      });
+      
+      return stats;
+    } catch (error) {
+      this.logger.error('Error getting KV transform cache stats', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
+      return {
+        count: 0,
+        size: 0,
+        indexSize: 0,
+        hitRate: 0,
+        avgSize: 0
+      };
+    }
+  }
+  
+  /**
+   * List entries in the transform cache
+   * 
+   * @param limit Maximum number of entries to return
+   * @param cursor Cursor for pagination
+   * @returns List of cache entries with metadata
+   */
+  async listTransformCacheEntries(
+    limit?: number, 
+    cursor?: string
+  ): Promise<{
+    entries: {key: string, metadata: any}[],
+    cursor?: string,
+    complete: boolean
+  }> {
+    try {
+      const config = this.configService.getConfig();
+      
+      // Check if KV transform cache is enabled
+      if (!config.cache.transformCache?.enabled) {
+        this.logger.debug('KV transform cache is disabled, returning empty list');
+        return {
+          entries: [],
+          complete: true
+        };
+      }
+      
+      // Delegate to the KV transform cache manager
+      const result = await this.kvTransformCache.listEntries(limit, cursor);
+      
+      this.logger.debug('Listed KV transform cache entries', {
+        entriesCount: result.entries.length,
+        cursor: result.cursor,
+        complete: result.complete
+      });
+      
+      return result;
+    } catch (error) {
+      this.logger.error('Error listing KV transform cache entries', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
+      return {
+        entries: [],
+        complete: true
+      };
+    }
   }
 }

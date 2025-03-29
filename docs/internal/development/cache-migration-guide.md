@@ -1,146 +1,179 @@
-# Cache Service Migration Guide
+# Cache Migration Guide - Optimized KV Transform Cache
 
-This guide provides instructions for migrating from the original monolithic CacheService to the new modular architecture.
+This guide provides instructions for migrating to the new optimized KV Transform Cache system from the previous implementation.
 
 ## Overview
 
-The cache system has been refactored from a single monolithic implementation into a modular architecture with separate components for different caching concerns. This improves maintainability, testability, and extensibility.
+The KV Transform Cache has been significantly enhanced with a hybrid approach that balances performance and functionality. The new system offers two operational modes:
 
-## Key Changes
-
-1. **Main Service Implementation**: The `DefaultCacheService` still implements the `CacheService` interface, maintaining backward compatibility.
-
-2. **New Module Structure**: Functionality is now divided across specialized modules:
-   - `CacheTagsManager`
-   - `CacheHeadersManager`
-   - `CacheBypassManager`
-   - `CacheFallbackManager`
-   - `CloudflareCacheManager`
-   - `TTLCalculator`
-   - `CacheResilienceManager`
-
-3. **Error Handling**: More specific error types and enhanced error handling.
-
-4. **Cache Tags**: Improved cache tag handling for both Cloudflare's managed caching and the Cache API.
-
-## Migration Steps
-
-### For Service Consumers
-
-If you're using the CacheService through dependency injection, no changes are required. The DefaultCacheService still implements the CacheService interface, so all existing method calls will continue to work.
-
-```typescript
-// This code will continue to work without changes
-constructor(private cacheService: CacheService) {}
-
-async processRequest(request: Request, response: Response, ctx: ExecutionContext) {
-  return this.cacheService.cacheWithFallback(request, response, ctx);
-}
-```
-
-### For Direct CacheService Extensions
-
-If you've directly extended the original CacheService, follow these steps:
-
-1. **Identify Overridden Methods**: Determine which methods you've overridden.
-
-2. **Select Appropriate Module**: Choose the module that now contains the functionality:
-   - Cache tag related: `CacheTagsManager`
-   - Cache headers related: `CacheHeadersManager`
-   - Cache bypass logic: `CacheBypassManager`
-   - Resilience patterns: `CacheResilienceManager`
-
-3. **Override Module Instead**: Extend the appropriate module instead of the main service.
-
-4. **Update Service Factory**: Update your service factory to use your custom module.
-
-### Example: Customizing Cache Tags
-
-**Original approach (before):**
-
-```typescript
-class CustomCacheService extends DefaultCacheService {
-  generateCacheTags(request: Request, storageResult: StorageResult, options: TransformOptions): string[] {
-    // Custom cache tag logic here
-    const tags = super.generateCacheTags(request, storageResult, options);
-    tags.push('custom-tag');
-    return tags;
-  }
-}
-```
-
-**New approach (after):**
-
-```typescript
-// 1. Create a custom CacheTagsManager
-class CustomCacheTagsManager extends CacheTagsManager {
-  generateCacheTags(request: Request, storageResult: StorageResult, options: TransformOptions): string[] {
-    // Custom cache tag logic here
-    const tags = super.generateCacheTags(request, storageResult, options);
-    tags.push('custom-tag');
-    return tags;
-  }
-}
-
-// 2. Create a custom service factory
-class CustomCacheServiceFactory {
-  createCacheService(logger: Logger, configService: ConfigurationService): CacheService {
-    // Create the core service
-    const service = new DefaultCacheService(logger, configService);
-    
-    // Replace the CacheTagsManager with your custom implementation
-    service['tagsManager'] = new CustomCacheTagsManager(logger, configService);
-    
-    return service;
-  }
-}
-```
+1. **Standard Mode**: Similar to the previous implementation but with improved error handling and background processing.
+2. **Optimized Mode**: Uses a more efficient indexing strategy for better performance with large caches.
 
 ## Configuration Changes
 
-The configuration structure remains backward compatible. Any existing configuration will continue to work with the new modular implementation.
-
-New configuration options:
+Update your config.ts or wrangler.jsonc configuration with the new options:
 
 ```typescript
-// New cache options
-cache: {
-  // ... existing options remain the same
-
-  // Enhanced stale-while-revalidate
-  enableStaleWhileRevalidate: true,
-  staleWhileRevalidatePercentage: 50,
-
-  // Background caching for performance
-  enableBackgroundCaching: true,
-
-  // TTL limits
-  minTtl: 60,  // Minimum TTL in seconds
-  maxTtl: 2592000, // Maximum TTL in seconds
-
-  // Resilience patterns
-  retry: {
-    maxAttempts: 3,
-    initialDelayMs: 200, 
-    maxDelayMs: 2000
-  },
-  
-  circuitBreaker: {
-    failureThreshold: 5,
-    resetTimeoutMs: 30000,
-    successThreshold: 2
+export default {
+  // ... other config
+  cache: {
+    // ... other cache config
+    transformCache: {
+      enabled: true,
+      binding: "IMAGE_TRANSFORMATIONS_CACHE",
+      prefix: "transform",
+      maxSize: 10485760, // 10MB
+      defaultTtl: 86400, // 1 day
+      contentTypeTtls: {
+        'image/jpeg': 604800, // 7 days
+        'image/png': 604800,  // 7 days
+        'image/webp': 604800, // 7 days
+        // ... other content types
+      },
+      
+      // Advanced performance options
+      optimizedIndexing: true,          // Enable the optimized approach
+      smallPurgeThreshold: 20,          // Threshold for direct vs. list+filter purging
+      indexUpdateFrequency: 1,          // Update indices every time (set higher for fewer updates)
+      skipIndicesForSmallFiles: true,   // Skip indexing for small files
+      smallFileThreshold: 51200         // 50KB threshold for "small" files
+    }
   }
 }
 ```
 
-## Testing Your Migration
+## Migration Steps
 
-1. **Check Cache Headers**: Verify that Cache-Control headers are still applied correctly.
-2. **Verify Cache Tags**: If using cache tags, verify they're correctly applied based on your cache method.
-3. **Test Cache Bypassing**: Ensure cache bypass parameters and conditions still work.
-4. **Test Error Handling**: Verify that cache errors are handled gracefully.
+### 1. Update Dependencies
 
-## Additional Resources
+No new dependencies are required for this update.
 
-- [Modular Cache Architecture](./modular-cache-architecture.md) - Detailed description of the new architecture
-- [Cache Service Tests](../../test/services/cache) - Examples of using the different modules
+### 2. Code Migration
+
+The API surface of the cache service remains unchanged, but internal implementation has changed significantly. If you have custom implementations using the KV Transform Cache:
+
+- Use the `ctx` parameter in cache operations to enable background processing with `waitUntil`.
+- Be aware that purge operations now have optimized implementations.
+
+### 3. Data Migration
+
+**Important**: The optimized indexing mode uses a different storage format for indices. If you switch to optimized mode with an existing cache:
+
+1. Purge the entire cache first using your admin tools, OR
+2. Run the migration script:
+
+```typescript
+import { KVTransformCacheManager } from './services/cache/kv/KVTransformCacheManager';
+
+async function migrateKVIndices(env: any) {
+  // Create the cache manager with your logger and config service
+  const cacheManager = new KVTransformCacheManager(
+    logger,
+    configService,
+    tagsManager
+  );
+  
+  // Perform a full migration - this may take a while for large caches
+  const { processed, migrated } = await cacheManager.migrateToOptimizedIndices();
+  
+  console.log(`Migration complete: ${processed} entries processed, ${migrated} entries migrated`);
+}
+```
+
+### 4. Performance Monitoring
+
+After migration, monitor the cache performance using the enhanced stats:
+
+```typescript
+const stats = await cacheManager.getStats();
+console.log('Cache Stats:', {
+  entries: stats.count,
+  size: `${(stats.size / 1024 / 1024).toFixed(2)}MB`,
+  indexSize: `${(stats.indexSize / 1024).toFixed(2)}KB`,
+  hitRate: `${stats.hitRate.toFixed(1)}%`,
+  optimized: stats.optimized,
+  lastMaintenance: stats.lastPruned
+});
+```
+
+### 5. Configure Maintenance
+
+Set up regular maintenance to keep the cache optimized:
+
+```typescript
+// In your main worker handler:
+export default {
+  async scheduled(event, env, ctx) {
+    // Run maintenance during scheduled events
+    const cacheManager = getCacheManager(env);
+    await cacheManager.performMaintenance(500, ctx); // Process up to 500 entries
+  },
+  
+  async fetch(request, env, ctx) {
+    // Your normal request handling
+    // ...
+    
+    // Optionally trigger lightweight maintenance occasionally (1% of requests)
+    if (Math.random() < 0.01) {
+      ctx.waitUntil(cacheManager.performMaintenance(50, ctx)); // Light maintenance
+    }
+    
+    return response;
+  }
+};
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **KV Operation Limit Exceeded**
+   - If you see this error, increase the `indexUpdateFrequency` value to reduce KV operations.
+   - Consider enabling `skipIndicesForSmallFiles` to reduce indexing overhead.
+
+2. **Slow Purge Operations**
+   - Adjust the `smallPurgeThreshold` based on your typical purge size.
+   - For very large caches, schedule purges during off-peak hours.
+
+3. **Missing Cache Items After Migration**
+   - If items are missing after migration, check if indices were properly converted.
+   - Run a full maintenance operation: `await cacheManager.performMaintenance(1000);`
+
+### Reverting to Standard Mode
+
+If you encounter issues with optimized mode, you can revert to standard mode:
+
+1. Update your configuration:
+```typescript
+transformCache: {
+  // ...other settings
+  optimizedIndexing: false
+}
+```
+
+2. Purge all cache tags to reset the indices:
+```typescript
+// Get all tags
+const stats = await cacheManager.listAllTags();
+// Purge each tag
+for (const tag of stats.tags) {
+  await cacheManager.purgeByTag(tag);
+}
+```
+
+## Best Practices
+
+1. **Small Deployments**
+   - If your cache has fewer than 10,000 items, standard mode may be simpler.
+   - Enable background processing regardless of mode.
+
+2. **Large Deployments**
+   - For more than 10,000 items, optimized mode offers better performance.
+   - Tune the optimization parameters based on your specific workload.
+   - Schedule regular maintenance during off-peak hours.
+
+3. **Extreme Scale**
+   - For very large caches (100,000+ items), consider increasing:
+     - `indexUpdateFrequency` to 5 or 10
+     - `smallFileThreshold` to 100KB or higher
+     - `smallPurgeThreshold` to 50 or higher

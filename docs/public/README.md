@@ -38,6 +38,8 @@ Welcome to the comprehensive documentation for the Image Resizer service. This d
 - [Caching System](caching/index.md) - Caching strategies and configuration
 - [Cache Tags](caching/cache-tags.md) - Advanced cache tag system for purging
 - [Enhanced Caching](caching/enhanced-caching.md) - Performance optimization techniques
+- [Transform Cache](caching/transform/index.md) - KV-based transform caching
+- [Optimized Purging](caching/transform/optimized-purging.md) - Advanced cache purging strategies
 
 ## Integrations
 

@@ -39,4 +39,8 @@ interface Env {
   // Bindings
   IMAGES_BUCKET?: R2Bucket;
   ASSETS?: Fetcher;
+  
+  // KV namespace bindings
+  IMAGE_METADATA_CACHE?: KVNamespace;
+  IMAGE_TRANSFORMATIONS_CACHE?: KVNamespace;
 }

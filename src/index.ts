@@ -127,6 +127,52 @@ export default {
         });
         return rootResponse;
       }
+      
+      // Check for transform cache debug request
+      if (url.pathname.startsWith('/debug/transform-cache')) {
+        try {
+          // Import the transform cache debug handler dynamically
+          const { transformCacheDebugHandler } = await import(
+            "./handlers/transformCacheDebugHandler"
+          );
+          
+          performanceMonitor.startOperation("transform_cache_debug");
+          logger.debug("Handling transform cache debug request", {
+            path: url.pathname
+          });
+          
+          const transformCacheResponse = await transformCacheDebugHandler(
+            request,
+            services,
+            env,
+            ctx
+          );
+          
+          performanceMonitor.endOperation("transform_cache_debug", {
+            status: transformCacheResponse.status
+          });
+          
+          performanceMonitor.endOperation("total", {
+            type: "transform_cache_debug"
+          });
+          performanceMonitor.endRequest({
+            status: transformCacheResponse.status,
+            type: "transform_cache_debug"
+          });
+          
+          return transformCacheResponse;
+        } catch (error) {
+          logger.error("Error in transform cache debug handler", {
+            error: error instanceof Error ? error.message : String(error),
+            path: url.pathname
+          });
+          
+          // Let the request continue to be handled by the standard debug handler
+          logger.warn(
+            "Falling back to standard debug handler after transform cache debug handler error"
+          );
+        }
+      }
 
       // Check for performance report request
       const performanceResponse = await handlePerformanceReport(
