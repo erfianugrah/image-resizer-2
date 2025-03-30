@@ -1,254 +1,381 @@
 # Simplified Configuration Structure
 
-This document outlines a simplified, more maintainable configuration structure for the image resizer service. The goal is to reduce complexity while maintaining all essential functionality.
+This document describes the new simplified configuration structure for the Image Resizer. This structure aims to reduce complexity while maintaining all the functionality of the original configuration.
 
-## Design Principles
+## Goals
 
-1. **Flatten Hierarchy**: Reduce nesting levels where possible
-2. **Default-Friendly**: Make reasonable defaults the norm, requiring explicit configuration only for exceptions
-3. **Group Logically**: Group related settings together
-4. **Single Responsibility**: Each module should have a clear, focused purpose
-5. **Documentation-First**: Every configuration option should be well-documented
-6. **Type Safety**: Strong typing for all configuration values
+- **Reduce complexity** by organizing settings logically
+- **Improve discoverability** of configuration options
+- **Maintain compatibility** with existing implementations
+- **Support gradual migration** from legacy to simplified configuration
 
-## Core Modules
+## Structure Overview
 
-### Basic Structure
+The simplified configuration structure organizes settings into logical modules:
 
-Each module follows this basic pattern:
-```json
-{
-  "enabled": true,
-  "options": {
-    // Module-specific options
-  }
-}
 ```
-
-Where:
-- `enabled`: Master toggle for the entire module
-- `options`: Specific settings for the module
-
-### 1. Core Module
-
-```json
 {
   "core": {
-    "environment": "production", // (development|staging|production)
-    "debug": {
-      "enabled": false,
-      "headers": false,
-      "detailedErrors": false
-    },
-    "logging": {
-      "level": "error", // (debug|info|warn|error)
-      "structured": true
-    },
-    "features": {
-      "responsiveImages": true,
-      "clientHints": true,
-      "smartCropping": true,
-      "cacheTags": true,
-      "watermarks": false
-    }
-  }
-}
-```
-
-### 2. Transform Module
-
-```json
-{
-  "transform": {
-    "formats": {
-      "preferWebp": true,
-      "preferAvif": false,
-      "allowOriginalFormat": true,
-      "jpegQuality": 85,
-      "webpQuality": 80,
-      "avifQuality": 75
-    },
-    "sizes": {
-      "maxWidth": 2000,
-      "maxHeight": 2000,
-      "defaultFit": "scale-down" // (scale-down|contain|cover|crop)
-    },
-    "optimizations": {
-      "stripMetadata": true,
-      "autoCompress": true,
-      "optimizeForWeb": true
-    }
-  }
-}
-```
-
-### 3. Cache Module
-
-```json
-{
-  "cache": {
-    "method": "cf", // (cf|cache-api|none)
-    "ttl": {
-      "default": 86400,
-      "success": 86400,
-      "redirects": 3600,
-      "clientErrors": 60,
-      "serverErrors": 10
-    },
-    "tags": {
-      "enabled": true,
-      "prefix": "img:",
-      "includeOrigin": true,
-      "includeFormat": true
-    },
-    "bypass": {
-      "debugMode": true,
-      "noCache": true
-    }
-  }
-}
-```
-
-### 4. Storage Module
-
-```json
-{
+    // Core system settings
+  },
   "storage": {
-    "sources": ["r2", "remote", "fallback"],
-    "r2": {
-      "enabled": true,
-      "binding": "IMAGES_BUCKET"
-    },
-    "remote": {
-      "enabled": true,
-      "url": "${REMOTE_URL}",
-      "auth": {
-        "type": "none" // (none|basic|bearer|s3)
-      }
-    },
-    "fallback": {
-      "enabled": false,
-      "url": "${FALLBACK_URL}"
-    },
-    "pathTransforms": {
-      "enabled": false
+    // Storage and origin settings
+    "pathBasedOrigins": {
+      // Path-based origin routing
     }
-  }
-}
-```
-
-### 5. Client Module
-
-```json
-{
+  },
+  "transform": {
+    // Image transformation settings
+    "derivatives": {
+      // Derivative definitions
+    }
+  },
+  "cache": {
+    // Caching configuration
+  },
   "client": {
-    "detection": {
-      "enabled": true,
-      "useClientHints": true,
-      "useAcceptHeader": true,
-      "useUserAgent": true,
-      "cacheDuration": 3600
-    },
-    "responsive": {
-      "enabled": true,
-      "defaultSizes": [320, 640, 768, 1024, 1440, 1920],
-      "devicePixelRatio": true,
-      "qualityAdjustment": true
-    }
+    // Client detection settings
+  },
+  "security": {
+    // Security settings
+  },
+  "monitoring": {
+    // Monitoring and logging
   }
 }
 ```
 
-## Common Configuration Scenarios
+## Module Descriptions
 
-### Production - High Performance
+### Core Module
+
+The `core` module contains fundamental system settings:
 
 ```json
 {
   "core": {
     "environment": "production",
-    "debug": { "enabled": false },
-    "logging": { "level": "error" }
-  },
-  "transform": {
-    "formats": {
-      "preferWebp": true,
-      "preferAvif": true,
-      "jpegQuality": 82
+    "version": "1.0.0",
+    "debug": {
+      "enabled": false,
+      "headers": ["cache", "mode"],
+      "allowedEnvironments": [],
+      "verbose": false,
+      "includePerformance": true
     },
-    "optimizations": {
-      "stripMetadata": true,
-      "autoCompress": true
-    }
-  },
-  "cache": {
-    "ttl": {
-      "default": 604800, // One week
-      "success": 604800
-    }
-  },
-  "client": {
-    "detection": {
-      "cacheDuration": 86400 // One day
+    "logging": {
+      "level": "INFO",
+      "includeTimestamp": true,
+      "enableStructuredLogs": true,
+      "enableBreadcrumbs": true
+    },
+    "features": {
+      "enableAkamaiCompatibility": false
     }
   }
 }
 ```
 
-### Development - Easy Debugging
+### Storage Module
+
+The `storage` module configures where and how images are stored:
 
 ```json
 {
-  "core": {
-    "environment": "development",
-    "debug": {
+  "storage": {
+    "priority": ["r2", "remote", "fallback"],
+    "r2": {
       "enabled": true,
-      "headers": true,
-      "detailedErrors": true
+      "bindingName": "IMAGES_BUCKET"
     },
-    "logging": {
-      "level": "debug",
-      "structured": false
-    }
-  },
-  "cache": {
-    "method": "none",
-    "bypass": {
-      "debugMode": true
-    }
-  },
-  "transform": {
-    "optimizations": {
-      "stripMetadata": false
+    "remoteUrl": "https://source-images.example.com",
+    "remoteAuth": {
+      "enabled": true,
+      "type": "aws-s3",
+      "accessKeyVar": "AWS_ACCESS_KEY_ID",
+      "secretKeyVar": "AWS_SECRET_ACCESS_KEY"
+    },
+    "fallbackUrl": "https://fallback-images.example.com",
+    "fallbackAuth": {
+      "enabled": false,
+      "type": "bearer"
+    },
+    "auth": {
+      "useOriginAuth": true,
+      "sharePublicly": true,
+      "origins": {
+        // Origin-specific auth configurations
+      }
+    },
+    "pathBasedOrigins": {
+      "products": {
+        "pattern": "/products/.*",
+        "priority": ["r2", "remote"],
+        "r2": {
+          "enabled": true,
+          "bindingName": "PRODUCTS_BUCKET"
+        },
+        "remoteUrl": "https://products.example.com/images",
+        "remoteAuth": {
+          "enabled": true,
+          "type": "aws-s3",
+          "accessKeyVar": "PRODUCTS_AWS_ACCESS_KEY_ID",
+          "secretKeyVar": "PRODUCTS_AWS_SECRET_ACCESS_KEY"
+        },
+        "pathTransforms": {
+          "products": {
+            "prefix": "product-images",
+            "removePrefix": true
+          }
+        }
+      }
     }
   }
 }
 ```
 
-## Benefits of This Structure
+### Transform Module
 
-1. **More Concise**: 70% reduction in configuration file size compared to previous structure
-2. **Self-Documenting**: Clear module boundaries and intuitive naming
-3. **Simpler Validation**: Flatter structure makes schema validation more straightforward
-4. **Easier Overrides**: Specific environment settings can be applied with less nesting
-5. **Better Defaults**: Most common configuration values set as reasonable defaults
+The `transform` module configures image transformation settings:
+
+```json
+{
+  "transform": {
+    "responsive": {
+      "breakpoints": [320, 640, 768, 1024, 1440],
+      "deviceWidths": {
+        "mobile": 480,
+        "tablet": 768,
+        "desktop": 1440
+      },
+      "quality": 85,
+      "fit": "scale-down",
+      "format": "auto",
+      "metadata": "none",
+      "formatQuality": {
+        "webp": 85,
+        "avif": 80,
+        "jpeg": 85,
+        "png": 90
+      }
+    },
+    "derivatives": {
+      "thumbnail": {
+        "width": 200,
+        "height": 200,
+        "fit": "cover",
+        "quality": 80
+      },
+      "avatar": {
+        "width": 150,
+        "height": 150,
+        "fit": "cover",
+        "quality": 85
+      }
+    },
+    "metadata": {
+      "enabled": true,
+      "cacheTtl": 3600,
+      "allowClientSpecifiedTargets": true,
+      "platformPresets": {
+        "twitter": {
+          "aspectRatio": { "width": 16, "height": 9 }
+        }
+      }
+    }
+  }
+}
+```
+
+### Cache Module
+
+The `cache` module configures caching behavior:
+
+```json
+{
+  "cache": {
+    "method": "cf",
+    "ttl": {
+      "ok": 86400,
+      "clientError": 60,
+      "serverError": 10
+    },
+    "cacheEverything": true,
+    "useTtlByStatus": true,
+    "cacheTtlByStatus": {
+      "200-299": 86400,
+      "301-302": 3600,
+      "404": 60,
+      "500-599": 10
+    },
+    "cacheability": true,
+    "bypassParams": ["nocache", "refresh"],
+    "pathBasedTtl": {
+      "/products/": 86400,
+      "/profiles/": 1209600,
+      "/blog/": 86400,
+      "/static/": 2592000
+    },
+    "cacheTags": {
+      "enabled": true,
+      "prefix": "img-",
+      "includeImageDimensions": true,
+      "includeFormat": true,
+      "includeQuality": true,
+      "includeDerivative": true,
+      "pathBasedTags": {
+        "/products/": ["product", "catalog"],
+        "/profiles/": ["profile", "avatar"],
+        "/blog/": ["blog", "content"],
+        "/static/": ["static", "assets"]
+      }
+    },
+    "transformCache": {
+      "enabled": true,
+      "binding": "IMAGE_TRANSFORMATIONS_CACHE",
+      "prefix": "transform",
+      "maxSize": 26214400,
+      "defaultTtl": 86400
+    }
+  }
+}
+```
+
+### Client Module
+
+The `client` module configures client detection and adaptation:
+
+```json
+{
+  "client": {
+    "detector": {
+      "cache": {
+        "maxSize": 5000,
+        "pruneAmount": 500,
+        "enableCache": true,
+        "ttl": 3600000
+      },
+      "strategies": {
+        "clientHints": {
+          "priority": 100,
+          "enabled": true
+        },
+        "acceptHeader": {
+          "priority": 80,
+          "enabled": true
+        },
+        "userAgent": {
+          "priority": 60,
+          "enabled": true
+        }
+      }
+    },
+    "deviceClassification": {
+      "thresholds": {
+        "lowEnd": 30,
+        "highEnd": 70
+      }
+    },
+    "performanceBudget": {
+      "quality": {
+        "low": {
+          "min": 65,
+          "max": 85,
+          "target": 75
+        }
+      },
+      "preferredFormats": {
+        "low": ["webp", "jpeg"],
+        "medium": ["webp", "avif", "jpeg"],
+        "high": ["avif", "webp", "jpeg"]
+      }
+    }
+  }
+}
+```
+
+### Security Module
+
+The `security` module configures security-related settings:
+
+```json
+{
+  "security": {
+    "corsEnabled": true,
+    "corsAllowedOrigins": ["https://example.com"],
+    "corsAllowedMethods": ["GET", "HEAD", "OPTIONS"],
+    "corsAllowCredentials": false,
+    "corsMaxAge": 86400,
+    "rateLimit": {
+      "enabled": true,
+      "requestsPerMinute": 100,
+      "burstSize": 50
+    },
+    "requestValidation": {
+      "enabled": true,
+      "maxUrlLength": 2048,
+      "blockLargeRequests": true,
+      "maxRequestSize": 1048576
+    }
+  }
+}
+```
+
+### Monitoring Module
+
+The `monitoring` module configures monitoring and observability:
+
+```json
+{
+  "monitoring": {
+    "metrics": {
+      "enabled": true,
+      "reportingInterval": 60,
+      "sampleRate": 0.1
+    },
+    "alerting": {
+      "enabled": true,
+      "thresholds": {
+        "errorRate": 0.05,
+        "p95Latency": 2000,
+        "cacheHitRate": 0.8
+      }
+    },
+    "tracing": {
+      "enabled": true,
+      "sampleRate": 0.1,
+      "includeHeaders": false
+    }
+  }
+}
+```
 
 ## Migration Path
 
-For backward compatibility, the Configuration API will support both formats during a transition period:
+To ensure a smooth transition between the legacy and simplified configuration formats, we've implemented the `ConfigMigrator` utility that can convert between them:
 
-1. **Detection Phase**: System auto-detects configuration format version
-2. **Translation Phase**: Legacy configs are internally transformed to new format
-3. **Dual Support Phase**: Both formats are supported for a defined period (3-6 months)
-4. **Migration Tools**: Tools provided to help migrate existing configurations
-5. **Deprecation Phase**: Warning logs when using legacy format
-6. **Removal Phase**: After sufficient notice, legacy format support is removed
+```typescript
+// Convert from legacy to simplified
+const simplifiedConfig = configMigrator.migrateToSimplified(legacyConfig);
 
-## Implementation Approach
+// Convert from simplified to legacy
+const legacyConfig = configMigrator.migrateToLegacy(simplifiedConfig);
+```
 
-1. Create a new `ConfigurationSchema` that defines the simplified structure
-2. Implement a `ConfigMigrator` that converts legacy formats to the new format
-3. Update the validator to support both formats during transition
-4. Update the Configuration API to work with both formats
-5. Create a transition guide with examples for users
-6. Set a deprecation timeline for the legacy format
+The Configuration API can accept either format and will internally convert as needed. This allows for a gradual migration where some modules can be updated to the new format while others remain in the legacy format.
+
+## Benefits of the New Structure
+
+1. **Modular updates**: Each section can be updated independently
+2. **Better organization**: Settings are grouped logically
+3. **Improved readability**: Flatter structure with less nesting
+4. **Easier discovery**: Settings are easier to find
+5. **Less redundancy**: Reduced duplication across environments
+
+## Implementation Plan
+
+1. Create TypeScript interfaces for the simplified structure
+2. Implement bidirectional migration utilities
+3. Update the Configuration API to support both formats
+4. Document the new structure with examples
+5. Provide migration guidance for existing users

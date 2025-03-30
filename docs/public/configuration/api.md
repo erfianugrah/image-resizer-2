@@ -1,146 +1,533 @@
-# Configuration API
+# Configuration API Reference
 
-The Configuration API provides a dynamic, modular configuration system for the Image Resizer service. This document outlines the core concepts, examples, and usage patterns.
+The Configuration API provides a RESTful interface for managing the Image Resizer configuration. This API allows you to retrieve, update, and manage configuration settings dynamically without redeploying your worker.
 
-## Configuration Structure
+## Authentication
 
-The Image Resizer uses a modular configuration system organized into logical modules:
+All API endpoints require authentication using an API key:
 
-1. **Core** - Basic service settings, environment, and feature toggles
-2. **Transform** - Image transformation settings, formats, and quality
-3. **Cache** - Caching behavior, TTLs, and invalidation
-4. **Storage** - Image storage sources and authentication
-5. **Client** - Client detection and responsive features
-6. **Security** - Security headers and access controls
-7. **Monitoring** - Performance tracking and error reporting
+```
+X-API-Key: your-api-key-here
+```
 
-## Simplified Configuration Example
+The API key should be set in your worker's environment variables as `CONFIG_API_KEY`.
 
+## Base URL
+
+All API endpoints are relative to your worker's URL:
+
+```
+https://your-worker.example.com/config
+```
+
+## Endpoints
+
+### Get Full Configuration
+
+Retrieves the complete configuration.
+
+**Request:**
+```
+GET /config
+```
+
+**Response:**
 ```json
 {
   "core": {
     "environment": "production",
-    "debug": {
-      "enabled": false
+    "version": "1.0.0",
+    "debug": {...},
+    "logging": {...}
+  },
+  "storage": {...},
+  "transform": {...},
+  "cache": {...}
+}
+```
+
+### Get Module Configuration
+
+Retrieves configuration for a specific module.
+
+**Request:**
+```
+GET /config/{module}
+```
+
+Where `{module}` is one of: `core`, `storage`, `transform`, `cache`, `client`, `security`, `monitoring`.
+
+**Response:**
+```json
+{
+  "ttl": {
+    "ok": 86400,
+    "clientError": 60,
+    "serverError": 10
+  },
+  "method": "cf",
+  "cacheEverything": true,
+  ...
+}
+```
+
+### Update Full Configuration
+
+Replaces the entire configuration.
+
+**Request:**
+```
+PUT /config
+Content-Type: application/json
+
+{
+  "core": {...},
+  "storage": {...},
+  "transform": {...},
+  "cache": {...}
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Configuration updated successfully",
+  "version": 2
+}
+```
+
+### Update Module Configuration
+
+Updates configuration for a specific module.
+
+**Request:**
+```
+PUT /config/{module}
+Content-Type: application/json
+
+{
+  "ttl": {
+    "ok": 86400,
+    "clientError": 60,
+    "serverError": 10
+  },
+  "method": "cf",
+  "cacheEverything": true,
+  ...
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Module 'cache' updated successfully",
+  "version": 3
+}
+```
+
+### Get Configuration History
+
+Retrieves configuration version history.
+
+**Request:**
+```
+GET /config/history
+```
+
+**Response:**
+```json
+{
+  "versions": [
+    {
+      "version": 3,
+      "timestamp": "2023-09-15T14:22:10Z",
+      "module": "cache",
+      "action": "update"
     },
-    "logging": {
-      "level": "error"
+    {
+      "version": 2,
+      "timestamp": "2023-09-15T12:10:05Z",
+      "module": "all",
+      "action": "replace"
+    },
+    {
+      "version": 1,
+      "timestamp": "2023-09-14T09:30:00Z",
+      "module": "all",
+      "action": "create"
+    }
+  ]
+}
+```
+
+### Get Configuration Version
+
+Retrieves a specific configuration version.
+
+**Request:**
+```
+GET /config/version/{version}
+```
+
+**Response:**
+```json
+{
+  "version": 2,
+  "timestamp": "2023-09-15T12:10:05Z",
+  "config": {
+    "core": {...},
+    "storage": {...},
+    "transform": {...},
+    "cache": {...}
+  }
+}
+```
+
+### Restore Configuration Version
+
+Restores a previous configuration version.
+
+**Request:**
+```
+POST /config/restore/{version}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Configuration restored to version 2",
+  "version": 4
+}
+```
+
+### Validate Configuration
+
+Validates a configuration without applying it.
+
+**Request:**
+```
+POST /config/validate
+Content-Type: application/json
+
+{
+  "core": {...},
+  "storage": {...},
+  "transform": {...},
+  "cache": {...}
+}
+```
+
+**Response:**
+```json
+{
+  "valid": true,
+  "message": "Configuration is valid"
+}
+```
+
+Or for validation failures:
+
+```json
+{
+  "valid": false,
+  "errors": [
+    {
+      "path": "cache.ttl.ok",
+      "message": "Value must be a positive integer"
+    },
+    {
+      "path": "storage.remoteAuth.type",
+      "message": "Invalid auth type: 'unknown'. Valid values are 'aws-s3', 'bearer', 'header', 'query'"
+    }
+  ]
+}
+```
+
+### Register Module
+
+Registers a new configuration module.
+
+**Request:**
+```
+POST /config/register/{moduleName}
+Content-Type: application/json
+
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "options": {
+        "type": "object",
+        "properties": {...}
+      }
     }
   },
-  "transform": {
-    "formats": {
-      "preferWebp": true,
-      "jpegQuality": 85
-    }
+  "defaultConfig": {
+    "enabled": true,
+    "options": {...}
   },
-  "cache": {
-    "method": "cf",
-    "ttl": {
-      "default": 86400
+  "dependencies": ["core", "storage"]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Module 'analytics' registered successfully",
+  "moduleId": "analytics"
+}
+```
+
+### List Modules
+
+Lists all registered configuration modules.
+
+**Request:**
+```
+GET /config/modules
+```
+
+**Response:**
+```json
+{
+  "modules": [
+    {
+      "id": "core",
+      "description": "Core system settings",
+      "dependencies": []
+    },
+    {
+      "id": "storage",
+      "description": "Storage and origin settings",
+      "dependencies": ["core"]
+    },
+    {
+      "id": "transform",
+      "description": "Image transformation settings",
+      "dependencies": ["core"]
+    },
+    {
+      "id": "cache",
+      "description": "Caching configuration",
+      "dependencies": ["core", "storage"]
     }
-  },
+  ]
+}
+```
+
+### Resolve Environment Variables
+
+Resolves environment variable references in the configuration.
+
+**Request:**
+```
+POST /config/resolve-env
+Content-Type: application/json
+
+{
   "storage": {
-    "sources": ["r2", "remote"],
-    "r2": {
-      "enabled": true
+    "remoteAuth": {
+      "accessKeyVar": "AWS_ACCESS_KEY_ID",
+      "secretKeyVar": "AWS_SECRET_ACCESS_KEY"
     }
   }
 }
 ```
 
-## Configuration Storage
-
-Configurations are stored in Cloudflare KV with versioning:
-
-- Each configuration version has metadata (timestamp, author, changes)
-- Versions can be compared to see what changed
-- Any version can be activated as the current configuration
-- Automatic validation ensures configuration is valid
-
-## Environment Variables
-
-Configuration values can include environment variable references:
-
+**Response:**
 ```json
 {
-  "storage": {
-    "remote": {
-      "url": "${REMOTE_URL}",
-      "auth": {
-        "apiKey": "${API_KEY}"
+  "resolved": true,
+  "message": "Environment variables resolved successfully",
+  "result": {
+    "storage": {
+      "remoteAuth": {
+        "accessKeyVar": "AWS_ACCESS_KEY_ID", 
+        "secretKeyVar": "AWS_SECRET_ACCESS_KEY",
+        "_resolvedAccessKey": "AKXXXXXXXXXXXXXXXXXX", // Note: Sensitive values are masked
+        "_resolvedSecretKey": "********"
       }
     }
   }
 }
 ```
 
-These are automatically resolved at runtime from Worker environment variables.
+## Error Responses
 
-## API Endpoints
+The API returns appropriate HTTP status codes for different error cases:
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/config` | Get current configuration |
-| GET | `/api/config/versions` | List available versions |
-| GET | `/api/config/version/:id` | Get a specific version |
-| PUT | `/api/config/activate/:id` | Activate a specific version |
-| GET | `/api/config/modules/:name` | Get configuration for a module |
-| PUT | `/api/config/modules/:name` | Update a module configuration |
-| POST | `/api/config/modules` | Register a new module |
-| PUT | `/api/config/bulk-update` | Update multiple modules at once |
+- `400 Bad Request`: Invalid request parameters or JSON body
+- `401 Unauthorized`: Missing or invalid API key
+- `404 Not Found`: Requested resource not found
+- `409 Conflict`: Configuration validation failed
+- `500 Internal Server Error`: Server-side error
 
-## Using the API
+Error responses include details about the error:
 
-### Getting Configuration Values in Code
-
-```typescript
-// Get a specific module
-const cacheConfig = await configApiService.getModule('cache');
-
-// Get a specific value using dot notation
-const jpegQuality = await configApiService.getValue('transform.formats.jpegQuality', 85);
-
-// Check if a feature is enabled
-const isWebpEnabled = await configApiService.isFeatureEnabled('webpSupport');
+```json
+{
+  "success": false,
+  "error": "Validation Error",
+  "details": [
+    {
+      "path": "cache.ttl.ok",
+      "message": "Value must be a positive integer"
+    }
+  ]
+}
 ```
 
-### Updating Configuration
+## Bulk Operations
 
-```typescript
-// Update a module configuration
-await configApiService.updateModule(
-  'cache',
-  {
-    method: 'cf',
-    ttl: {
-      default: 86400,
-      clientErrors: 60
+### Bulk Update
+
+Updates multiple modules in a single operation.
+
+**Request:**
+```
+POST /config/bulk-update
+Content-Type: application/json
+
+{
+  "modules": {
+    "cache": {
+      "ttl": {
+        "ok": 86400,
+        "clientError": 60
+      }
+    },
+    "storage": {
+      "remoteUrl": "https://new-origin.example.com"
     }
   },
-  'Updated cache TTLs for better performance',
-  'jane.doe@example.com'
-);
+  "description": "Update cache TTLs and remote origin"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Bulk update completed successfully",
+  "version": 5,
+  "updated": ["cache", "storage"]
+}
 ```
 
 ## Schema Validation
 
-All configurations are validated against JSON Schema definitions:
+The Configuration API uses JSON Schema for validating configurations. You can retrieve the schema for the entire configuration or specific modules:
 
-- Type validation ensures correct data types
-- Range validation enforces valid ranges for numeric values
-- Format validation checks formats like emails and URLs
-- Required properties are enforced
-- Cross-module dependencies are validated
+**Request:**
+```
+GET /config/schema
+```
 
-## Best Practices
+**Response:**
+```json
+{
+  "type": "object",
+  "properties": {
+    "core": { ... },
+    "storage": { ... },
+    "cache": { ... },
+    ...
+  },
+  "required": ["core"]
+}
+```
 
-1. **Use environment variables** for secrets and environment-specific values
-2. **Keep configurations small** by relying on defaults when possible
-3. **Include meaningful comments** when creating new versions
-4. **Test configurations** before activating in production
-5. **Use appropriate TTLs** based on content type and update frequency
-6. **Monitor configuration changes** through the audit logs
+Or for a specific module:
 
-## Simplified Structure
+**Request:**
+```
+GET /config/schema/{module}
+```
 
-For details on the simplified configuration structure, see [Simplified Config Structure](../../internal/configuration/simplified-config-structure.md).
+**Response:**
+```json
+{
+  "type": "object",
+  "properties": {
+    "ttl": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "TTL for successful responses (200-299)"
+        },
+        "clientError": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "TTL for client error responses (400-499)"
+        },
+        "serverError": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "TTL for server error responses (500-599)"
+        }
+      },
+      "required": ["ok"]
+    },
+    "method": {
+      "type": "string",
+      "enum": ["cf", "cache-api", "none"],
+      "description": "Caching method to use"
+    },
+    "cacheEverything": {
+      "type": "boolean",
+      "description": "Whether to cache all content types"
+    }
+  },
+  "required": ["ttl", "method"]
+}
+```
+
+## Format Conversion
+
+The API can convert between legacy and simplified configuration formats:
+
+**Request:**
+```
+POST /config/convert
+Content-Type: application/json
+
+{
+  "format": "simplified",
+  "config": {
+    "environment": "production",
+    "debug": { ... },
+    "cache": { ... },
+    ...
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "format": "simplified",
+  "result": {
+    "core": {
+      "environment": "production",
+      "debug": { ... }
+    },
+    "cache": { ... },
+    ...
+  }
+}
+```
+
+Supported formats:
+- `simplified`: Modern modular format
+- `legacy`: Original flat format

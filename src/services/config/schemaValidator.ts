@@ -35,31 +35,119 @@ export class SchemaValidator {
   constructor(logger?: Logger) {
     this.logger = logger;
     
-    // Initialize Ajv with all options we need
-    this.ajv = new Ajv({
-      allErrors: true,         // Report all errors (not just the first one)
-      verbose: true,           // Include schema path in errors
-      $data: true,             // Enable $data references
-      strictSchema: false,     // Allow additional keywords that might be used for metadata
-      validateFormats: true,   // Validate formats, e.g. date-time, email
-      strictNumbers: true,     // No NaN or Infinity 
-      strictRequired: true,    // Required by name, not required: true
-      strictTypes: true,       // No implicit type conversion
-      useDefaults: true,       // Apply default values from schema
-      coerceTypes: false,      // Don't coerce types (strict validation)
-      removeAdditional: false, // Don't manipulate data
-    });
+    try {
+      // Initialize Ajv with all options we need
+      this.ajv = new Ajv({
+        allErrors: true,         // Report all errors (not just the first one)
+        verbose: true,           // Include schema path in errors
+        $data: true,             // Enable $data references
+        strictSchema: false,     // Allow additional keywords that might be used for metadata
+        validateFormats: true,   // Validate formats, e.g. date-time, email
+        strictNumbers: true,     // No NaN or Infinity 
+        strictRequired: true,    // Required by name, not required: true
+        strictTypes: true,       // No implicit type conversion
+        useDefaults: true,       // Apply default values from schema
+        coerceTypes: false,      // Don't coerce types (strict validation)
+        removeAdditional: false, // Don't manipulate data
+        code: { 
+          source: false,         // Disable code generation which can trigger eval() restrictions
+          optimize: false        // Disable optimization that might use dynamic code generation
+        }
+      });
+      
+      // Add common formats like date-time, uri, email, etc.
+      addFormats(this.ajv);
+      
+      // Add custom formats if needed
+      this.ajv.addFormat('env-var', /^\${[A-Za-z0-9_]+}$/); // Environment variable format
+      
+      // Add custom keywords
+      this.addCustomKeywords();
+      
+      this.logDebug('Schema validator initialized with Ajv');
+    } catch (error) {
+      this.logError('Failed to initialize Ajv schema validator', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
+      // Create fallback implementation if initialization fails
+      this.ajv = this.createFallbackValidator();
+      this.logWarn('Using fallback schema validator with limited capabilities');
+    }
+  }
+  
+  /**
+   * Create a simple fallback validator when Ajv fails to initialize
+   * This is a simplified implementation that doesn't use code generation
+   */
+  private createFallbackValidator(): Ajv {
+    // Create a minimal Ajv instance or a custom validator
+    const fallbackAjv = {
+      // Minimal implementation of validate method
+      validate: (schema: any, data: any): boolean => {
+        try {
+          // Basic type validation
+          if (schema.type === 'object' && typeof data !== 'object') {
+            return false;
+          }
+          
+          if (schema.type === 'array' && !Array.isArray(data)) {
+            return false;
+          }
+          
+          if (schema.type === 'string' && typeof data !== 'string') {
+            return false;
+          }
+          
+          if (schema.type === 'number' && typeof data !== 'number') {
+            return false;
+          }
+          
+          if (schema.type === 'boolean' && typeof data !== 'boolean') {
+            return false;
+          }
+          
+          // Required properties for objects
+          if (schema.required && schema.type === 'object') {
+            for (const prop of schema.required) {
+              if (data[prop] === undefined) {
+                return false;
+              }
+            }
+          }
+          
+          // Simple property validation for objects
+          if (schema.properties && schema.type === 'object') {
+            for (const [propName, propSchema] of Object.entries(schema.properties)) {
+              if (data[propName] !== undefined) {
+                // Recursive validation for nested properties
+                if (!this.ajv.validate(propSchema, data[propName])) {
+                  return false;
+                }
+              }
+            }
+          }
+          
+          return true;
+        } catch (error) {
+          this.logError('Error in fallback validator', {
+            error: error instanceof Error ? error.message : String(error)
+          });
+          return false;
+        }
+      },
+      
+      // Compile is just a wrapper around validate in our fallback
+      compile: (schema: any) => {
+        return (data: any) => this.ajv.validate(schema, data);
+      },
+      
+      // Other required Ajv methods
+      addFormat: () => {},
+      addKeyword: () => {}
+    } as unknown as Ajv;
     
-    // Add common formats like date-time, uri, email, etc.
-    addFormats(this.ajv);
-    
-    // Add custom formats if needed
-    this.ajv.addFormat('env-var', /^\${[A-Za-z0-9_]+}$/); // Environment variable format
-    
-    // Add custom keywords
-    this.addCustomKeywords();
-    
-    this.logDebug('Schema validator initialized with Ajv');
+    return fallbackAjv;
   }
   
   /**
@@ -217,8 +305,8 @@ export class SchemaValidator {
     
     // Example: check if all referenced modules in dependencies exist
     for (const [moduleName, moduleData] of Object.entries(config.modules)) {
-      if (moduleData._meta.dependencies) {
-        const dependencies = moduleData._meta.dependencies as string[];
+      if (moduleData._meta.moduleDependencies) {
+        const dependencies = moduleData._meta.moduleDependencies as string[];
         for (const dependency of dependencies) {
           if (!config.modules[dependency]) {
             throw new Error(`Module "${moduleName}" depends on "${dependency}" which is not present in the configuration`);
@@ -313,7 +401,7 @@ export class SchemaValidator {
   private addCustomKeywords(): void {
     // Example: Add a custom keyword for module dependencies
     this.ajv.addKeyword({
-      keyword: 'dependencies',
+      keyword: 'moduleDependencies',
       validate: function(schema: string[], data: any) {
         // This is just a metadata keyword, not used for validation directly
         return true;

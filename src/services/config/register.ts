@@ -10,6 +10,7 @@ import { ServiceTypes } from '../serviceTypes';
 import { Env } from '../../types';
 import { KVConfigStore } from './KVConfigStore';
 import { DefaultConfigurationApiService } from './ConfigurationApiService';
+import { ConfigStoreInterface, ConfigurationApiService } from './interfaces';
 import { coreModuleRegistration } from './modules/core';
 import { cacheModuleRegistration } from './modules/cache';
 import { transformModuleRegistration } from './modules/transform';

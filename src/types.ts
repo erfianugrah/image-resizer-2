@@ -190,8 +190,12 @@ export interface Env {
   ASSETS?: Fetcher;
   KV_TEST?: KVNamespace;
   IMAGE_METADATA_CACHE?: KVNamespace; // KV for metadata caching
+  IMAGE_METADATA_CACHE_DEV?: KVNamespace; // KV for metadata caching in dev
   IMAGE_TRANSFORMATIONS_CACHE?: KVNamespace; // KV for transform caching
-  CONFIG_STORE?: KVNamespace; // KV for configuration storage
+  IMAGE_TRANSFORMATIONS_CACHE_DEV?: KVNamespace; // KV for transform caching in dev
+  CONFIG_STORE?: KVNamespace; // Legacy KV for configuration storage
+  IMAGE_CONFIGURATION_STORE?: KVNamespace; // KV for configuration storage
+  IMAGE_CONFIGURATION_STORE_DEV?: KVNamespace; // KV for configuration storage in dev
   
   // Configuration API Authentication
   CONFIG_API_KEY?: string;
@@ -226,15 +230,16 @@ declare global {
     delete(key: string): Promise<void>;
   }
   
+  // For R2Object, use a simplified interface that avoids conflicts
   interface R2Object {
-    key: string;
-    version: string;
-    size: number;
-    etag: string;
-    httpEtag: string;
-    uploaded: Date;
-    body: ReadableStream<Uint8Array>;
-    bodyUsed: boolean;
+    readonly key: string;
+    readonly version: string;
+    readonly size: number;
+    readonly etag: string;
+    readonly httpEtag: string;
+    readonly uploaded: Date;
+    readonly body: ReadableStream<Uint8Array>;
+    readonly bodyUsed: boolean;
     writeHttpMetadata(headers: Headers): void;
     arrayBuffer(): Promise<ArrayBuffer>;
     text(): Promise<string>;
@@ -245,46 +250,14 @@ declare global {
   // Define only if it doesn't exist already
   interface WorkersFetcher extends Fetcher {}
   
+  // Let TypeScript use Workers Types definitions instead of defining our own
+  // Just declare the interface without specific implementation details
   interface KVNamespace {
-    get(key: string, options?: KVNamespaceGetOptions): Promise<string | null>;
-    getWithMetadata<Metadata = unknown>(key: string, options?: KVNamespaceGetOptions): Promise<KVNamespaceGetWithMetadataResult<Metadata>>;
-    put(key: string, value: string | ReadableStream | ArrayBuffer, options?: KVNamespacePutOptions): Promise<void>;
+    get(key: string, options?: any): Promise<any>;
+    getWithMetadata(key: string, options?: any): Promise<any>;
+    put(key: string, value: string | ReadableStream | ArrayBuffer, options?: any): Promise<void>;
     delete(key: string): Promise<void>;
-    list(options?: KVNamespaceListOptions): Promise<KVNamespaceListResult>;
-  }
-  
-  interface KVNamespaceGetOptions {
-    type?: 'text' | 'json' | 'arrayBuffer' | 'stream';
-    cacheTtl?: number;
-  }
-  
-  interface KVNamespaceGetWithMetadataResult<Metadata> {
-    value: string | null;
-    metadata: Metadata | null;
-  }
-  
-  interface KVNamespacePutOptions {
-    expiration?: number;
-    expirationTtl?: number;
-    metadata?: any;
-  }
-  
-  interface KVNamespaceListOptions {
-    prefix?: string;
-    limit?: number;
-    cursor?: string;
-  }
-  
-  interface KVNamespaceListResult {
-    keys: KVNamespaceListKey[];
-    list_complete: boolean;
-    cursor?: string;
-  }
-  
-  interface KVNamespaceListKey {
-    name: string;
-    expiration?: number;
-    metadata?: any;
+    list(options?: any): Promise<any>;
   }
 }
 

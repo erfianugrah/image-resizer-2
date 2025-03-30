@@ -194,6 +194,12 @@ export class DefaultDIContainer implements DIContainer {
         authService,
         logger,
         
+        // Add service resolution methods
+        resolve: <T>(serviceType: string): T => this.resolve<T>(serviceType),
+        registerFactory: <T>(serviceType: string, factory: () => T, singleton?: boolean): void => {
+          this.registerFactory(serviceType, factory, singleton);
+        },
+        
         // Add lifecycle management methods
         async initialize(): Promise<void> {
           logger.debug('Initializing service container lifecycle');
@@ -616,14 +622,52 @@ export function createContainerBuilder(env: Env): DIContainer {
     const loggingService = container.resolve<DefaultLoggingService>(ServiceTypes.LOGGING_SERVICE);
     const logger = loggingService.getLogger('KVConfigStore');
     
-    // Create the KV config store using the CONFIG_STORE binding from the environment
-    // Check if CONFIG_STORE is available, otherwise throw an error
-    if (!env.CONFIG_STORE) {
-      logger.error('CONFIG_STORE binding is not available in the environment');
-      throw new Error('CONFIG_STORE binding is required for the configuration API');
+    // Check for the appropriate KV binding based on environment
+    let configStore: KVNamespace | undefined;
+    
+    // Check if we're in development mode
+    if (env.ENVIRONMENT === 'development' && env.IMAGE_CONFIGURATION_STORE_DEV) {
+      configStore = env.IMAGE_CONFIGURATION_STORE_DEV;
+      logger.debug('Using development configuration store binding: IMAGE_CONFIGURATION_STORE_DEV');
+    }
+    // Otherwise, use the production binding
+    else if (env.IMAGE_CONFIGURATION_STORE) {
+      configStore = env.IMAGE_CONFIGURATION_STORE;
+      logger.debug('Using production configuration store binding: IMAGE_CONFIGURATION_STORE');
+    }
+    // Legacy fallback for backward compatibility
+    else if (env.CONFIG_STORE) {
+      configStore = env.CONFIG_STORE;
+      logger.warn('Using deprecated CONFIG_STORE binding - please update to IMAGE_CONFIGURATION_STORE');
     }
     
-    return new KVConfigStore(env.CONFIG_STORE, logger);
+    // If no store is available, create an in-memory fallback for local development
+    if (!configStore) {
+      if (env.ENVIRONMENT === 'development') {
+        logger.warn('Configuration store KV binding is not available, using in-memory fallback for development');
+        // Create a simple in-memory KV namespace implementation
+        configStore = {
+          get: async (key: string) => {
+            logger.debug(`In-memory ConfigStore GET ${key}`);
+            return null; // Always return null - this is just for testing the API endpoint
+          },
+          put: async (key: string, value: string) => {
+            logger.debug(`In-memory ConfigStore PUT ${key}: ${value.substring(0, 50)}...`);
+            return undefined;
+          },
+          list: async () => {
+            logger.debug('In-memory ConfigStore LIST keys');
+            return { keys: [] };
+          }
+        } as unknown as KVNamespace;
+      } else {
+        // Only throw error in production environments
+        logger.error('Configuration store KV binding is not available in the environment');
+        throw new Error('Configuration store KV binding (IMAGE_CONFIGURATION_STORE or IMAGE_CONFIGURATION_STORE_DEV) is required for the configuration API');
+      }
+    }
+    
+    return new KVConfigStore(configStore, logger);
   });
   
   // Register ConfigApiService

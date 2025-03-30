@@ -5,8 +5,7 @@
  * It includes authentication and validation for configuration changes.
  */
 
-import { ConfigurationApiService, ConfigurationSystem } from '../services/config/interfaces';
-import { Logger } from '../utils/logging';
+import { ConfigurationSystem } from '../services/config/interfaces';
 import { ServiceContainer } from '../services/serviceContainer';
 import { Env } from '../types';
 import { authenticateConfigRequest, createAuthResponse } from './configAuthMiddleware';
@@ -152,7 +151,7 @@ export async function handleConfigApiRequest(
     if (matchRoute(API_ROUTES.CREATE_CONFIG, method, path)) {
       // Parse request body
       let body: {
-        config?: any;
+        config?: Record<string, unknown>;
         comment?: string;
         author?: string;
         modules?: string[];
@@ -161,7 +160,7 @@ export async function handleConfigApiRequest(
       
       try {
         body = await request.json();
-      } catch (error) {
+      } catch (_error) {
         return jsonResponse({ 
           error: 'invalid_request', 
           message: 'Invalid JSON in request body' 
@@ -185,7 +184,7 @@ export async function handleConfigApiRequest(
       
       // Store the new configuration
       try {
-        const metadata = await configApi.storeConfig(body.config, {
+        const metadata = await configApi.storeConfig(body.config as unknown as ConfigurationSystem, {
           author: body.author || 'api-user',
           comment: body.comment,
           modules: Array.isArray(body.modules) ? body.modules : Object.keys(body.config.modules || {}),
@@ -318,14 +317,14 @@ export async function handleConfigApiRequest(
       
       // Parse request body
       let body: {
-        config?: any;
+        config?: Record<string, unknown>;
         comment?: string;
         author?: string;
       };
       
       try {
         body = await request.json();
-      } catch (error) {
+      } catch (_error) {
         return jsonResponse({ 
           error: 'invalid_request', 
           message: 'Invalid JSON in request body' 
@@ -377,7 +376,7 @@ export async function handleConfigApiRequest(
       const config = await configApi.getConfig();
       
       // Extract schemas from all modules
-      const schemas: Record<string, any> = {};
+      const schemas: Record<string, Record<string, unknown>> = {};
       
       for (const [moduleName, moduleData] of Object.entries(config.modules)) {
         if (moduleData._meta && moduleData._meta.schema) {
@@ -426,14 +425,14 @@ export async function handleConfigApiRequest(
         name?: string;
         version?: string;
         description?: string;
-        schema?: Record<string, any>;
-        defaults?: Record<string, any>;
+        schema?: Record<string, unknown>;
+        defaults?: Record<string, unknown>;
         dependencies?: string[];
       };
       
       try {
         body = await request.json();
-      } catch (error) {
+      } catch (_error) {
         return jsonResponse({ 
           error: 'invalid_request', 
           message: 'Invalid JSON in request body' 
@@ -477,7 +476,7 @@ export async function handleConfigApiRequest(
           description: body.description || `Module: ${body.name}`,
           schema: body.schema,
           defaults: body.defaults,
-          dependencies: body.dependencies
+          moduleDependencies: body.dependencies
         });
         
         return jsonResponse({ 
@@ -499,14 +498,14 @@ export async function handleConfigApiRequest(
     if (matchRoute(API_ROUTES.BULK_UPDATE, method, path)) {
       // Parse request body
       let body: {
-        modules?: Record<string, any>;
+        modules?: Record<string, unknown>;
         comment?: string;
         author?: string;
       };
       
       try {
         body = await request.json();
-      } catch (error) {
+      } catch (_error) {
         return jsonResponse({ 
           error: 'invalid_request', 
           message: 'Invalid JSON in request body' 
@@ -548,7 +547,7 @@ export async function handleConfigApiRequest(
         
         newConfig.modules[moduleName] = {
           ...config.modules[moduleName],
-          config: moduleConfig
+          config: moduleConfig as Record<string, any>
         };
       }
       
@@ -584,12 +583,12 @@ export async function handleConfigApiRequest(
     if (matchRoute(API_ROUTES.RESOLVE_ENV_VARS, method, path)) {
       // Parse request body
       let body: {
-        value?: any;
+        value?: unknown;
       };
       
       try {
         body = await request.json();
-      } catch (error) {
+      } catch (_error) {
         return jsonResponse({ 
           error: 'invalid_request', 
           message: 'Invalid JSON in request body' 
@@ -668,7 +667,7 @@ function matchRoute(
  * @param status HTTP status code
  * @returns Response object
  */
-function jsonResponse(data: any, status: number = 200): Response {
+function jsonResponse(data: unknown, status: number = 200): Response {
   return new Response(JSON.stringify(data, null, 2), {
     status,
     headers: {

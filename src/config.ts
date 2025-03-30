@@ -2101,7 +2101,7 @@ export function getConfig(env: Env): ImageResizerConfig {
   }
 
   // Apply R2 configuration if available
-  if (env.IMAGES_BUCKET) {
+  if ((env as any).IMAGES_BUCKET) {
     config.storage.r2.enabled = true;
   } else {
     config.storage.r2.enabled = false;

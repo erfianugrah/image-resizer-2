@@ -16,12 +16,24 @@ import { Logger } from '../../utils/logging';
  * @returns A ConfigStoreInterface implementation
  */
 export function createConfigStore(env: Env, logger?: Logger): ConfigStoreInterface {
-  // Check if the CONFIG_STORE binding exists
-  if (!env.CONFIG_STORE) {
-    throw new Error('CONFIG_STORE KV binding is not available');
+  // Check for the appropriate KV binding based on environment
+  let configStore: KVNamespace | undefined;
+  
+  // Check if we're in development mode
+  if (env.ENVIRONMENT === 'development' && env.IMAGE_CONFIGURATION_STORE_DEV) {
+    configStore = env.IMAGE_CONFIGURATION_STORE_DEV;
+  }
+  // Otherwise, use the production binding
+  else if (env.IMAGE_CONFIGURATION_STORE) {
+    configStore = env.IMAGE_CONFIGURATION_STORE;
   }
   
-  return new KVConfigStore(env.CONFIG_STORE, logger);
+  // If no store is available, throw an error
+  if (!configStore) {
+    throw new Error('Configuration store KV binding is not available');
+  }
+  
+  return new KVConfigStore(configStore, logger);
 }
 
 /**

@@ -38,7 +38,8 @@ export async function handleImageRequest(
   
   // Extract the path for the image (everything after removing any path parameters)
   const pathSegments = url.pathname.split('/').filter(Boolean);
-  const optionSegments = pathSegments.filter(segment => segment.startsWith('_') && segment.includes('='));
+  // Extract option segments (for potential future use)
+  // const optionSegments = pathSegments.filter(segment => segment.startsWith('_') && segment.includes('='));
   const nonOptionSegments = pathSegments.filter(segment => !(segment.startsWith('_') && segment.includes('=')));
   const originalPath = '/' + nonOptionSegments.join('/');
   

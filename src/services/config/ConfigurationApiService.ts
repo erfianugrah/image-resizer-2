@@ -313,7 +313,8 @@ export class DefaultConfigurationApiService implements ConfigurationApiService {
               version: registration.version,
               description: registration.description,
               schema: registration.schema,
-              defaults: registration.defaults
+              defaults: registration.defaults,
+              moduleDependencies: registration.moduleDependencies
             },
             config: registration.defaults
           }

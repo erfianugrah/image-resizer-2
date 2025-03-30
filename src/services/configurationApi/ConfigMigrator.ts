@@ -399,10 +399,10 @@ export class ConfigMigrator {
         defaults: {}
       },
       config: {
-        formats: transform.formats,
-        sizes: transform.sizes,
-        optimizations: transform.optimizations,
-        derivatives: transform.derivatives
+        formats: transform?.formats || {},
+        sizes: transform?.sizes || {},
+        optimizations: transform?.optimizations || {},
+        derivatives: transform?.derivatives || {}
       }
     };
   }
@@ -420,10 +420,10 @@ export class ConfigMigrator {
         defaults: {}
       },
       config: {
-        method: cache.method,
-        ttl: cache.ttl,
-        tags: cache.tags,
-        bypass: cache.bypass
+        method: cache?.method || 'cf',
+        ttl: cache?.ttl || { default: 86400 },
+        tags: cache?.tags || {},
+        bypass: cache?.bypass || {}
       }
     };
   }
@@ -441,11 +441,11 @@ export class ConfigMigrator {
         defaults: {}
       },
       config: {
-        sources: storage.sources,
-        r2: storage.r2,
-        remote: storage.remote,
-        fallback: storage.fallback,
-        pathTransforms: storage.pathTransforms
+        sources: storage?.sources || ['r2'],
+        r2: storage?.r2 || { enabled: true },
+        remote: storage?.remote || { enabled: false, url: '' },
+        fallback: storage?.fallback || { enabled: false },
+        pathTransforms: storage?.pathTransforms || { enabled: false }
       }
     };
   }
@@ -463,8 +463,8 @@ export class ConfigMigrator {
         defaults: {}
       },
       config: {
-        detection: client.detection,
-        responsive: client.responsive
+        detection: client?.detection || { enabled: true },
+        responsive: client?.responsive || { enabled: true }
       }
     };
   }
@@ -482,8 +482,8 @@ export class ConfigMigrator {
         defaults: {}
       },
       config: {
-        headers: security.headers,
-        cors: security.cors
+        headers: security?.headers || {},
+        cors: security?.cors || { enabled: false }
       }
     };
   }
@@ -501,8 +501,8 @@ export class ConfigMigrator {
         defaults: {}
       },
       config: {
-        performance: monitoring.performance,
-        errorTracking: monitoring.errorTracking
+        performance: monitoring?.performance || { enabled: false },
+        errorTracking: monitoring?.errorTracking || { enabled: false }
       }
     };
   }

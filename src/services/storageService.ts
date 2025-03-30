@@ -874,7 +874,7 @@ export class DefaultStorageService implements StorageService {
     request: Request
   ): Promise<StorageResult | null> {
     // Skip if R2 is not enabled or no bucket is available
-    if (!config.storage.r2?.enabled || !env.IMAGES_BUCKET) {
+    if (!config.storage.r2?.enabled || !(env as any).IMAGES_BUCKET) {
       return null;
     }
     
@@ -887,7 +887,7 @@ export class DefaultStorageService implements StorageService {
         const transformedPath = this.applyPathTransformation(imagePath, config, 'r2');
         this.logger.debug('R2 path after transformation', { originalPath: imagePath, transformedPath });
         
-        const bucket = env.IMAGES_BUCKET;
+        const bucket = (env as any).IMAGES_BUCKET;
         if (!bucket) {
           this.logger.error('R2 bucket is undefined', { path: transformedPath });
           throw new Error('R2 bucket is undefined');

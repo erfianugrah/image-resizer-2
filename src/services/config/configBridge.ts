@@ -132,8 +132,9 @@ export async function getConfigWithFallback(
       },
       storage: {
         priority: ['r2', 'remote', 'fallback'],
-        r2: { enabled: !!env.IMAGES_BUCKET, bindingName: 'IMAGES_BUCKET' }
-      }
+        r2: { enabled: !!(env as any).IMAGES_BUCKET, bindingName: 'IMAGES_BUCKET' }
+      },
+      derivatives: {}
     };
   }
 }

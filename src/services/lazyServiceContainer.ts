@@ -443,14 +443,33 @@ export function createLazyServiceContainer(env: Env): ServiceContainer {
       
       const configStoreLogger = realServices.loggingService!.getLogger('KVConfigStore');
       
-      // Check if CONFIG_STORE is available in the environment
-      if (!env.CONFIG_STORE) {
-        configStoreLogger.error('CONFIG_STORE binding is not available in the environment');
-        throw new Error('CONFIG_STORE binding is required for the configuration API');
+      // Check for the appropriate KV binding based on environment
+      let configStore: KVNamespace | undefined;
+      
+      // Check if we're in development mode
+      if (env.ENVIRONMENT === 'development' && env.IMAGE_CONFIGURATION_STORE_DEV) {
+        configStore = env.IMAGE_CONFIGURATION_STORE_DEV;
+        configStoreLogger.debug('Using development configuration store binding: IMAGE_CONFIGURATION_STORE_DEV');
+      }
+      // Otherwise, use the production binding
+      else if (env.IMAGE_CONFIGURATION_STORE) {
+        configStore = env.IMAGE_CONFIGURATION_STORE;
+        configStoreLogger.debug('Using production configuration store binding: IMAGE_CONFIGURATION_STORE');
+      }
+      // Legacy fallback for backward compatibility
+      else if (env.CONFIG_STORE) {
+        configStore = env.CONFIG_STORE;
+        configStoreLogger.warn('Using deprecated CONFIG_STORE binding - please update to IMAGE_CONFIGURATION_STORE');
+      }
+      
+      // If no store is available, throw an error
+      if (!configStore) {
+        configStoreLogger.error('Configuration store KV binding is not available in the environment');
+        throw new Error('Configuration store KV binding (IMAGE_CONFIGURATION_STORE or IMAGE_CONFIGURATION_STORE_DEV) is required for the configuration API');
       }
       
       // Create the KV config store
-      return new KVConfigStore(env.CONFIG_STORE, configStoreLogger);
+      return new KVConfigStore(configStore, configStoreLogger);
     },
     
     // Configuration API service initialization
@@ -484,12 +503,36 @@ export function createLazyServiceContainer(env: Env): ServiceContainer {
     
   };
   
+  // Create dummy implementations for the required interface methods
+  const dummyResolve = <T>(serviceType: string): T => {
+    throw new Error(`Service ${serviceType} resolution not implemented in lazy container`);
+  };
+  
+  const dummyRegisterFactory = <T>(serviceType: string, _factory: () => T, _singleton?: boolean): void => {
+    throw new Error(`Service ${serviceType} registration not implemented in lazy container`);
+  };
+  
+  // Add these to realServices
+  realServices.resolve = dummyResolve;
+  realServices.registerFactory = dummyRegisterFactory;
+
+  // Create the base service container with the dummy methods
+  const baseContainer: Partial<ServiceContainer> = {
+    resolve: dummyResolve,
+    registerFactory: dummyRegisterFactory
+  };
+  
   // Create proxy to intercept service access and perform lazy initialization
-  return new Proxy({} as ServiceContainer, {
+  return new Proxy(baseContainer as ServiceContainer, {
     get(target, prop: keyof ServiceContainer) {
       // If service already exists, return it
       if (prop in realServices) {
         return realServices[prop];
+      }
+      
+      // For the resolve and registerFactory, return the methods from the target
+      if (prop === 'resolve' || prop === 'registerFactory') {
+        return target[prop];
       }
       
       // Initialize service on first access

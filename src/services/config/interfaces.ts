@@ -29,7 +29,7 @@ export interface ConfigModuleMetadata {
   description: string;          // Module description
   schema: Record<string, any>;  // JSON schema for validation
   defaults: Record<string, any>;// Default values
-  dependencies?: string[];      // Module dependencies
+  moduleDependencies?: string[]; // Module dependencies
 }
 
 /**
@@ -62,7 +62,7 @@ export interface ModuleRegistration {
   description: string;
   schema: Record<string, any>;
   defaults: Record<string, any>;
-  dependencies?: string[];
+  moduleDependencies?: string[];
 }
 
 /**

@@ -17,13 +17,35 @@
 	// Environment-specific configurations
 	"env": {
 		"development": {
+			"workers_dev": true,
 			"vars": {
 				"ENVIRONMENT": "development",
 				"DEBUG": "true",
-				"DISABLE_CONFIG_AUTH": "true"
-			}
+				"DISABLE_CONFIG_AUTH": "true",
+			},
+			"r2_buckets": [
+				{
+					"binding": "IMAGES_BUCKET",
+					"bucket_name": "images-weur"
+				}
+			],
+			"kv_namespaces": [
+				{
+					"binding": "IMAGE_METADATA_CACHE_DEV",
+					"id": "65db00a814ee4403b288233a38c58192"
+				},
+				{
+					"binding": "IMAGE_TRANSFORMATIONS_CACHE_DEV",
+					"id": "a0f72b519db14692976ff31793eebab2",
+				},
+				{
+					"binding": "IMAGE_CONFIGURATION_STORE_DEV",
+					"id": "e2dc6b36cfa343589f9bdb45fd6538df",
+				},
+			]
 		},
 		"staging": {
+			"workers_dev": false,
 			"vars": {
 				"ENVIRONMENT": "staging",
 				"DEBUG": "true",
@@ -37,6 +59,13 @@
 			]
 		},
 		"production": {
+			"workers_dev": false,
+			"routes": [
+				{
+					"pattern": "images.erfi.dev/*",
+					"zone_id": "d6260a9cd0c27db1e9c0a453b2e4761e"
+				}
+			],
 			"vars": {
 				"ENVIRONMENT": "production",
 				"DEBUG": "false",
@@ -64,12 +93,6 @@
 			]
 		}
 	},
-	"routes": [
-		{
-			"pattern": "images.erfi.dev/*",
-			"zone_id": "d6260a9cd0c27db1e9c0a453b2e4761e"
-		}
-	],
 	// Notes for deployment and configuration:
 	// 1. Before deploying to production, set up secrets using:
 	//    - wrangler secret put CONFIG_API_KEY
