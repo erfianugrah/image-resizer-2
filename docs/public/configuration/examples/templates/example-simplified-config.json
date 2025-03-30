@@ -1,137 +1,142 @@
 {
-  "core": {
-    "environment": "production",
-    "debug": {
-      "enabled": false,
-      "headers": false,
-      "detailedErrors": false
-    },
-    "logging": {
-      "level": "error",
-      "structured": true
-    },
-    "features": {
-      "responsiveImages": true,
-      "clientHints": true,
-      "smartCropping": true,
-      "cacheTags": true,
-      "watermarks": false
-    }
+  "_meta": {
+    "version": "1.0.0",
+    "lastUpdated": "2025-03-30T00:00:00.000Z",
+    "activeModules": ["core", "storage", "transform", "cache"]
   },
-  "transform": {
-    "formats": {
-      "preferWebp": true,
-      "preferAvif": false,
-      "allowOriginalFormat": true,
-      "jpegQuality": 85,
-      "webpQuality": 80,
-      "avifQuality": 75
-    },
-    "sizes": {
-      "maxWidth": 2000,
-      "maxHeight": 2000,
-      "defaultFit": "scale-down"
-    },
-    "optimizations": {
-      "stripMetadata": true,
-      "autoCompress": true,
-      "optimizeForWeb": true
-    },
-    "derivatives": {
-      "thumbnail": {
-        "width": 200,
-        "height": 200,
-        "fit": "cover"
+  "modules": {
+    "core": {
+      "_meta": {
+        "name": "core",
+        "version": "1.0.0",
+        "description": "Core configuration module"
       },
-      "preview": {
-        "width": 600,
-        "height": 400,
-        "fit": "contain"
-      },
-      "banner": {
-        "width": 1200,
-        "height": 400,
-        "fit": "cover"
-      }
-    }
-  },
-  "cache": {
-    "method": "cf",
-    "ttl": {
-      "default": 86400,
-      "success": 86400,
-      "redirects": 3600,
-      "clientErrors": 60,
-      "serverErrors": 10
-    },
-    "tags": {
-      "enabled": true,
-      "prefix": "img:",
-      "includeOrigin": true,
-      "includeFormat": true
-    },
-    "bypass": {
-      "debugMode": true,
-      "noCache": true
-    }
-  },
-  "storage": {
-    "sources": ["r2", "remote", "fallback"],
-    "r2": {
-      "enabled": true,
-      "binding": "IMAGES_BUCKET"
-    },
-    "remote": {
-      "enabled": true,
-      "url": "${REMOTE_URL}",
-      "auth": {
-        "type": "none"
+      "config": {
+        "environment": "production",
+        "debug": {
+          "enabled": false,
+          "headers": ["cache", "mode"],
+          "allowedEnvironments": ["development"]
+        },
+        "features": {
+          "enableAkamaiCompatibility": true,
+          "optimizedLogging": true,
+          "optimizedClientDetection": true,
+          "optimizedCaching": true
+        },
+        "logging": {
+          "level": "ERROR",
+          "enableStructuredLogs": true
+        }
       }
     },
-    "fallback": {
-      "enabled": false,
-      "url": "${FALLBACK_URL}"
+    "transform": {
+      "_meta": {
+        "name": "transform",
+        "version": "1.0.0",
+        "description": "Transform configuration module"
+      },
+      "config": {
+        "defaults": {
+          "quality": 85,
+          "format": "auto",
+          "fit": "scale-down",
+          "metadata": "none"
+        },
+        "formatQuality": {
+          "webp": 80,
+          "avif": 75,
+          "jpeg": 85,
+          "png": 90
+        },
+        "derivatives": {
+          "thumbnail": {
+            "width": 200,
+            "height": 200,
+            "fit": "cover"
+          },
+          "preview": {
+            "width": 600,
+            "height": 400,
+            "fit": "contain"
+          },
+          "banner": {
+            "width": 1200,
+            "height": 400,
+            "fit": "cover"
+          }
+        },
+        "sizeCodes": {
+          "xs": 300,
+          "s": 500,
+          "m": 800,
+          "l": 1200,
+          "xl": 1600,
+          "xxl": 2000
+        }
+      }
     },
-    "pathTransforms": {
-      "enabled": false
-    }
-  },
-  "client": {
-    "detection": {
-      "enabled": true,
-      "useClientHints": true,
-      "useAcceptHeader": true,
-      "useUserAgent": true,
-      "cacheDuration": 3600
+    "cache": {
+      "_meta": {
+        "name": "cache",
+        "version": "1.0.0",
+        "description": "Cache configuration module"
+      },
+      "config": {
+        "method": "cf",
+        "ttl": {
+          "default": 86400,
+          "status": {
+            "success": 86400,
+            "redirects": 3600,
+            "clientError": 60,
+            "serverError": 10
+          }
+        },
+        "tags": {
+          "enabled": true,
+          "prefix": "img:",
+          "includeFormat": true
+        },
+        "bypass": {
+          "params": ["nocache", "refresh"],
+          "inDevelopment": true
+        },
+        "transformCache": {
+          "enabled": true,
+          "binding": "IMAGE_TRANSFORMATIONS_CACHE"
+        }
+      }
     },
-    "responsive": {
-      "enabled": true,
-      "defaultSizes": [320, 640, 768, 1024, 1440, 1920],
-      "devicePixelRatio": true,
-      "qualityAdjustment": true
-    }
-  },
-  "security": {
-    "headers": {
-      "cacheControl": true,
-      "strictTransportSecurity": true,
-      "contentTypeNosniff": true,
-      "referrerPolicy": "strict-origin-when-cross-origin"
-    },
-    "cors": {
-      "enabled": true,
-      "allowedOrigins": ["*"],
-      "allowedMethods": ["GET", "HEAD", "OPTIONS"]
-    }
-  },
-  "monitoring": {
-    "performance": {
-      "enabled": true,
-      "sampleRate": 0.1
-    },
-    "errorTracking": {
-      "enabled": true,
-      "captureStackTraces": true
+    "storage": {
+      "_meta": {
+        "name": "storage",
+        "version": "1.0.0",
+        "description": "Storage configuration module"
+      },
+      "config": {
+        "priority": ["r2", "remote", "fallback"],
+        "r2": {
+          "enabled": true,
+          "bindingName": "IMAGES_BUCKET"
+        },
+        "remote": {
+          "url": "${REMOTE_URL}",
+          "auth": {
+            "enabled": false
+          }
+        },
+        "fallback": {
+          "url": "${FALLBACK_URL}",
+          "enabled": false
+        },
+        "pathTransforms": {
+          "images": {
+            "prefix": "images/",
+            "removePrefix": true
+          }
+        }
+      }
     }
   }
 }
