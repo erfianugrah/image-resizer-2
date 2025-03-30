@@ -7,7 +7,7 @@ API_KEY="dev-api-key-for-testing"
 # Create a temporary file with the request wrapper
 cat <<EOF > /tmp/config-wrapper.json
 {
-  "config": $(cat ../docs/public/configuration/examples/auth-and-path-origins-config.json),
+  "config": $(cat $(dirname "$0")/../docs/public/configuration/examples/auth-and-path-origins-config.json),
   "comment": "Initial configuration setup",
   "author": "developer"
 }
