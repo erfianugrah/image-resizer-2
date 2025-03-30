@@ -78,38 +78,38 @@ export class CloudflareOptionsBuilder {
       if (!key.startsWith('_')) {
         // Apply any constraints or validations for specific parameters
         switch (key) {
-          case 'blur':
-            // Ensure blur is within 1-250 range
-            if (typeof value === 'number') {
-              imageOptions[key] = Math.max(1, Math.min(250, value));
-            } else {
-              imageOptions[key] = value;
-            }
-            break;
-            
-          case 'rotate':
-            // Ensure rotate is 0, 90, 180, or 270
-            if (typeof value === 'number') {
-              const normalizedRotate = Math.round(value / 90) * 90 % 360;
-              imageOptions[key] = normalizedRotate;
-            } else {
-              imageOptions[key] = value;
-            }
-            break;
-            
-          case 'format':
-            // Ensure format is supported
-            if (typeof value === 'string' && 
-                ['avif', 'webp', 'json', 'jpeg', 'png', 'gif', 'auto'].includes(value)) {
-              imageOptions[key] = value;
-            } else {
-              imageOptions[key] = 'auto';
-            }
-            break;
-            
-          default:
-            // Copy other parameters as-is
+        case 'blur':
+          // Ensure blur is within 1-250 range
+          if (typeof value === 'number') {
+            imageOptions[key] = Math.max(1, Math.min(250, value));
+          } else {
             imageOptions[key] = value;
+          }
+          break;
+            
+        case 'rotate':
+          // Ensure rotate is 0, 90, 180, or 270
+          if (typeof value === 'number') {
+            const normalizedRotate = Math.round(value / 90) * 90 % 360;
+            imageOptions[key] = normalizedRotate;
+          } else {
+            imageOptions[key] = value;
+          }
+          break;
+            
+        case 'format':
+          // Ensure format is supported
+          if (typeof value === 'string' && 
+                ['avif', 'webp', 'json', 'jpeg', 'png', 'gif', 'auto'].includes(value)) {
+            imageOptions[key] = value;
+          } else {
+            imageOptions[key] = 'auto';
+          }
+          break;
+            
+        default:
+          // Copy other parameters as-is
+          imageOptions[key] = value;
         }
       }
     });

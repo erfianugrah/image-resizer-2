@@ -1,0 +1,137 @@
+{
+  "core": {
+    "environment": "production",
+    "debug": {
+      "enabled": false,
+      "headers": false,
+      "detailedErrors": false
+    },
+    "logging": {
+      "level": "error",
+      "structured": true
+    },
+    "features": {
+      "responsiveImages": true,
+      "clientHints": true,
+      "smartCropping": true,
+      "cacheTags": true,
+      "watermarks": false
+    }
+  },
+  "transform": {
+    "formats": {
+      "preferWebp": true,
+      "preferAvif": false,
+      "allowOriginalFormat": true,
+      "jpegQuality": 85,
+      "webpQuality": 80,
+      "avifQuality": 75
+    },
+    "sizes": {
+      "maxWidth": 2000,
+      "maxHeight": 2000,
+      "defaultFit": "scale-down"
+    },
+    "optimizations": {
+      "stripMetadata": true,
+      "autoCompress": true,
+      "optimizeForWeb": true
+    },
+    "derivatives": {
+      "thumbnail": {
+        "width": 200,
+        "height": 200,
+        "fit": "cover"
+      },
+      "preview": {
+        "width": 600,
+        "height": 400,
+        "fit": "contain"
+      },
+      "banner": {
+        "width": 1200,
+        "height": 400,
+        "fit": "cover"
+      }
+    }
+  },
+  "cache": {
+    "method": "cf",
+    "ttl": {
+      "default": 86400,
+      "success": 86400,
+      "redirects": 3600,
+      "clientErrors": 60,
+      "serverErrors": 10
+    },
+    "tags": {
+      "enabled": true,
+      "prefix": "img:",
+      "includeOrigin": true,
+      "includeFormat": true
+    },
+    "bypass": {
+      "debugMode": true,
+      "noCache": true
+    }
+  },
+  "storage": {
+    "sources": ["r2", "remote", "fallback"],
+    "r2": {
+      "enabled": true,
+      "binding": "IMAGES_BUCKET"
+    },
+    "remote": {
+      "enabled": true,
+      "url": "${REMOTE_URL}",
+      "auth": {
+        "type": "none"
+      }
+    },
+    "fallback": {
+      "enabled": false,
+      "url": "${FALLBACK_URL}"
+    },
+    "pathTransforms": {
+      "enabled": false
+    }
+  },
+  "client": {
+    "detection": {
+      "enabled": true,
+      "useClientHints": true,
+      "useAcceptHeader": true,
+      "useUserAgent": true,
+      "cacheDuration": 3600
+    },
+    "responsive": {
+      "enabled": true,
+      "defaultSizes": [320, 640, 768, 1024, 1440, 1920],
+      "devicePixelRatio": true,
+      "qualityAdjustment": true
+    }
+  },
+  "security": {
+    "headers": {
+      "cacheControl": true,
+      "strictTransportSecurity": true,
+      "contentTypeNosniff": true,
+      "referrerPolicy": "strict-origin-when-cross-origin"
+    },
+    "cors": {
+      "enabled": true,
+      "allowedOrigins": ["*"],
+      "allowedMethods": ["GET", "HEAD", "OPTIONS"]
+    }
+  },
+  "monitoring": {
+    "performance": {
+      "enabled": true,
+      "sampleRate": 0.1
+    },
+    "errorTracking": {
+      "enabled": true,
+      "captureStackTraces": true
+    }
+  }
+}

@@ -191,6 +191,13 @@ export interface Env {
   KV_TEST?: KVNamespace;
   IMAGE_METADATA_CACHE?: KVNamespace; // KV for metadata caching
   IMAGE_TRANSFORMATIONS_CACHE?: KVNamespace; // KV for transform caching
+  CONFIG_STORE?: KVNamespace; // KV for configuration storage
+  
+  // Configuration API Authentication
+  CONFIG_API_KEY?: string;
+  CONFIG_ADMIN_USER?: string;
+  CONFIG_ADMIN_PASSWORD?: string;
+  DISABLE_CONFIG_AUTH?: string;
   
   // Transform Cache Configuration - adding these explicitly
   TRANSFORM_CACHE_ENABLED?: string;
@@ -213,12 +220,72 @@ export interface Env {
 
 // Cloudflare Workers types
 declare global {
-  interface R2Bucket {}
+  interface R2Bucket {
+    get(key: string): Promise<R2Object | null>;
+    put(key: string, value: ArrayBuffer | ReadableStream | string): Promise<R2Object>;
+    delete(key: string): Promise<void>;
+  }
+  
+  interface R2Object {
+    key: string;
+    version: string;
+    size: number;
+    etag: string;
+    httpEtag: string;
+    uploaded: Date;
+    body: ReadableStream<Uint8Array>;
+    bodyUsed: boolean;
+    writeHttpMetadata(headers: Headers): void;
+    arrayBuffer(): Promise<ArrayBuffer>;
+    text(): Promise<string>;
+    json<T>(): Promise<T>;
+    blob(): Promise<Blob>;
+  }
   
   // Define only if it doesn't exist already
   interface WorkersFetcher extends Fetcher {}
   
-  interface KVNamespace {}
+  interface KVNamespace {
+    get(key: string, options?: KVNamespaceGetOptions): Promise<string | null>;
+    getWithMetadata<Metadata = unknown>(key: string, options?: KVNamespaceGetOptions): Promise<KVNamespaceGetWithMetadataResult<Metadata>>;
+    put(key: string, value: string | ReadableStream | ArrayBuffer, options?: KVNamespacePutOptions): Promise<void>;
+    delete(key: string): Promise<void>;
+    list(options?: KVNamespaceListOptions): Promise<KVNamespaceListResult>;
+  }
+  
+  interface KVNamespaceGetOptions {
+    type?: 'text' | 'json' | 'arrayBuffer' | 'stream';
+    cacheTtl?: number;
+  }
+  
+  interface KVNamespaceGetWithMetadataResult<Metadata> {
+    value: string | null;
+    metadata: Metadata | null;
+  }
+  
+  interface KVNamespacePutOptions {
+    expiration?: number;
+    expirationTtl?: number;
+    metadata?: any;
+  }
+  
+  interface KVNamespaceListOptions {
+    prefix?: string;
+    limit?: number;
+    cursor?: string;
+  }
+  
+  interface KVNamespaceListResult {
+    keys: KVNamespaceListKey[];
+    list_complete: boolean;
+    cursor?: string;
+  }
+  
+  interface KVNamespaceListKey {
+    name: string;
+    expiration?: number;
+    metadata?: any;
+  }
 }
 
 export {};

@@ -30,6 +30,14 @@ import {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   PathService
 } from './interfaces';
+
+// Import configuration API service interfaces
+import { 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  ConfigStoreInterface, 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  ConfigurationApiService 
+} from './config/interfaces';
 // Service implementations are imported for lazy instantiation
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { DefaultCacheService } from './cacheService';
@@ -47,6 +55,9 @@ import { createCacheService } from './cacheServiceFactory';
 import { createAuthService } from './authServiceFactory';
 import { createPathService } from './pathService';
 import { createParameterHandler } from '../parameters/serviceFactory';
+// Import configuration API services
+import { KVConfigStore } from './config/KVConfigStore';
+import { DefaultConfigurationApiService } from './config/ConfigurationApiService';
 
 /**
  * Create a lazy-loading service container with proxy-based initialization
@@ -421,6 +432,54 @@ export function createLazyServiceContainer(env: Env): ServiceContainer {
       
       // Create the parameter handler service
       return createParameterHandler(parameterHandlerLogger);
+    },
+    
+    // Config store service initialization
+    configStore: () => {
+      // Ensure logging service is initialized
+      if (!realServices.loggingService) {
+        realServices.loggingService = serviceFactories.loggingService();
+      }
+      
+      const configStoreLogger = realServices.loggingService!.getLogger('KVConfigStore');
+      
+      // Check if CONFIG_STORE is available in the environment
+      if (!env.CONFIG_STORE) {
+        configStoreLogger.error('CONFIG_STORE binding is not available in the environment');
+        throw new Error('CONFIG_STORE binding is required for the configuration API');
+      }
+      
+      // Create the KV config store
+      return new KVConfigStore(env.CONFIG_STORE, configStoreLogger);
+    },
+    
+    // Configuration API service initialization
+    configApiService: () => {
+      // Ensure prerequisite services
+      if (!realServices.loggingService) {
+        realServices.loggingService = serviceFactories.loggingService();
+      }
+      
+      // Get or initialize the config store
+      if (!realServices.configStore) {
+        realServices.configStore = serviceFactories.configStore();
+      }
+      
+      const configApiLogger = realServices.loggingService!.getLogger('ConfigApiService');
+      
+      // Extract environment variables as a record for config value resolution
+      const envVars: Record<string, string> = {};
+      for (const key in env) {
+        if (Object.prototype.hasOwnProperty.call(env, key)) {
+          const value = env[key as keyof typeof env];
+          if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+            envVars[key] = String(value);
+          }
+        }
+      }
+      
+      // Create the configuration API service
+      return new DefaultConfigurationApiService(realServices.configStore, envVars, configApiLogger);
     },
     
   };

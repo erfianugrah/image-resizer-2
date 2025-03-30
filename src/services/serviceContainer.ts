@@ -2,6 +2,9 @@
  * Service container factory for creating and managing services
  */
 
+// Re-export the ServiceContainer interface for external use
+export type { ServiceContainer } from './interfaces';
+
 import { Env } from '../types';
 import { createLogger } from '../utils/logger-factory';
 import { 

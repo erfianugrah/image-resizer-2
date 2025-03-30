@@ -20,7 +20,7 @@ export class DefaultParameterProcessor implements ParameterProcessor {
   /**
    * Process parameters from multiple sources
    */
-  process(parameters: TransformParameter[]): Record<string, any> {
+  async process(parameters: TransformParameter[]): Promise<Record<string, any>> {
     this.logger.breadcrumb('Processing parameters', undefined, {
       parameterCount: parameters.length
     });
@@ -35,10 +35,10 @@ export class DefaultParameterProcessor implements ParameterProcessor {
     const validatedParams = this.validate(mergedParams);
     
     // Handle special cases like size codes
-    const processedParams = this.processSpecialCases(validatedParams);
+    const processedParams = await this.processSpecialCases(validatedParams);
     
     // Format parameters for Cloudflare
-    return this.formatForCloudflare(processedParams);
+    return await this.formatForCloudflare(processedParams);
   }
   
   /**
@@ -149,10 +149,10 @@ export class DefaultParameterProcessor implements ParameterProcessor {
   /**
    * Process special cases using the processor registry
    */
-  private processSpecialCases(parameters: Record<string, TransformParameter>): Record<string, TransformParameter> {
-    // Import the ProcessorRegistry here to avoid circular dependencies
-    // we can use a dynamic import in the future if needed
-    const { ProcessorRegistry } = require('./ProcessorRegistry');
+  private async processSpecialCases(parameters: Record<string, TransformParameter>): Promise<Record<string, TransformParameter>> {
+    // Import dynamically to avoid circular dependencies
+    // Use import() instead of require() to follow ESM patterns
+    const ProcessorRegistry = (await import('./ProcessorRegistry')).ProcessorRegistry;
     
     const registry = new ProcessorRegistry(this.logger);
     const processed = { ...parameters };
@@ -191,7 +191,7 @@ export class DefaultParameterProcessor implements ParameterProcessor {
   /**
    * Format parameters for Cloudflare Image Resizing
    */
-  formatForCloudflare(parameters: Record<string, TransformParameter>): Record<string, any> {
+  async formatForCloudflare(parameters: Record<string, TransformParameter>): Promise<Record<string, any>> {
     // Get the base values
     const baseOptions: Record<string, any> = {};
     
@@ -207,8 +207,9 @@ export class DefaultParameterProcessor implements ParameterProcessor {
       }
     });
     
-    // Import the CloudflareOptionsBuilder here to avoid circular dependencies
-    const { CloudflareOptionsBuilder } = require('./CloudflareOptionsBuilder');
+    // Import dynamically to avoid circular dependencies
+    // Use import() instead of require() to follow ESM patterns
+    const CloudflareOptionsBuilder = (await import('./CloudflareOptionsBuilder')).CloudflareOptionsBuilder;
     
     // Build the Cloudflare options
     const builder = new CloudflareOptionsBuilder(this.logger);
