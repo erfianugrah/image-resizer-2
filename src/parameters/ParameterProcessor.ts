@@ -21,6 +21,13 @@ export class DefaultParameterProcessor implements ParameterProcessor {
    * Process parameters from multiple sources
    */
   async process(parameters: TransformParameter[]): Promise<Record<string, any>> {
+    // Log all incoming parameters in detail for debugging
+    this.logger.debug('Processing parameters:', {
+      parameters: parameters.map(p => 
+        `${p.name}=${typeof p.value === 'object' ? JSON.stringify(p.value) : p.value}:${p.source}:${p.priority}`
+      )
+    });
+    
     this.logger.breadcrumb('Processing parameters', undefined, {
       parameterCount: parameters.length
     });
@@ -157,6 +164,42 @@ export class DefaultParameterProcessor implements ParameterProcessor {
     const registry = new ProcessorRegistry(this.logger);
     const processed = { ...parameters };
     const processedValues: Record<string, unknown> = {};
+    
+    // Handle Akamai parameters before processing
+    // Map imwidth to width and imheight to height
+    if (processed['imwidth'] && typeof processed['imwidth'].value === 'number') {
+      this.logger.debug('Mapping imwidth to width parameter', {
+        imwidth: processed['imwidth'].value
+      });
+      
+      // Add or override width parameter with imwidth value
+      processed['width'] = {
+        name: 'width',
+        value: processed['imwidth'].value,
+        source: 'akamai',
+        priority: 95 // Higher priority to override other width values
+      };
+      
+      // Remove the imwidth parameter
+      delete processed['imwidth'];
+    }
+    
+    if (processed['imheight'] && typeof processed['imheight'].value === 'number') {
+      this.logger.debug('Mapping imheight to height parameter', {
+        imheight: processed['imheight'].value
+      });
+      
+      // Add or override height parameter with imheight value
+      processed['height'] = {
+        name: 'height',
+        value: processed['imheight'].value,
+        source: 'akamai',
+        priority: 95 // Higher priority to override other height values
+      };
+      
+      // Remove the imheight parameter
+      delete processed['imheight'];
+    }
     
     // Process each parameter with the registry
     Object.values(processed).forEach(param => {

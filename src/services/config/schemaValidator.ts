@@ -121,7 +121,8 @@ export class SchemaValidator {
             for (const [propName, propSchema] of Object.entries(schema.properties)) {
               if (data[propName] !== undefined) {
                 // Recursive validation for nested properties
-                if (!this.ajv.validate(propSchema, data[propName])) {
+                // Make sure propSchema is treated as a schema object
+                if (!this.ajv.validate(propSchema as any, data[propName])) {
                   return false;
                 }
               }

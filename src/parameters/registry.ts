@@ -231,6 +231,20 @@ export const parameterRegistry: Record<string, TransformParameterDefinition> = {
     priority: 45,
   },
   // Include additional parameters here
+  
+  // Akamai specific parameters
+  imwidth: {
+    name: 'imwidth',
+    type: 'number',
+    validator: (value) => typeof value === 'number' && value > 0,
+    priority: 90, // High priority for explicit width
+  },
+  imheight: {
+    name: 'imheight',
+    type: 'number',
+    validator: (value) => typeof value === 'number' && value > 0,
+    priority: 90,
+  },
 };
 
 /**

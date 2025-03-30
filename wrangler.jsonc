@@ -68,7 +68,7 @@
 			],
 			"vars": {
 				"ENVIRONMENT": "production",
-				"DEBUG": "false",
+				"DEBUG": "true",
 				"DISABLE_CONFIG_AUTH": "false"
 			},
 			"r2_buckets": [

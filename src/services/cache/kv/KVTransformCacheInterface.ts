@@ -37,6 +37,7 @@ export interface KVCacheConfig {
   purgeDelay: number;          // Delay between purge operations (ms)
   disallowedPaths: string[];   // Paths that should not be cached
   memoryCacheSize?: number;    // Size of in-memory LRU cache (item count)
+  debug?: boolean;             // Enable additional debug logging
 }
 
 /**

@@ -398,6 +398,21 @@ export async function buildTransformOptions(
     delete transformOptions.width; // Remove 'auto' so it doesn't get sent to Cloudflare
   }
 
+  // Store explicit width/height if present before detector optimization
+  const hasExplicitWidth = typeof transformOptions.width === 'number';
+  const explicitWidth = hasExplicitWidth ? transformOptions.width : null;
+  
+  const hasExplicitHeight = typeof transformOptions.height === 'number';
+  const explicitHeight = hasExplicitHeight ? transformOptions.height : null;
+  
+  if (hasExplicitWidth || hasExplicitHeight) {
+    logger.debug("Preserving explicit dimension parameters before optimization", {
+      explicitWidth: hasExplicitWidth ? transformOptions.width : 'not_set',
+      explicitHeight: hasExplicitHeight ? transformOptions.height : 'not_set',
+      source: 'url_parameter'
+    });
+  }
+
   // Use the unified detector to get client capabilities
   const detectorStart = Date.now();
   logger.breadcrumb("Using unified detector for options optimization");
@@ -406,6 +421,27 @@ export async function buildTransformOptions(
     transformOptions,
   );
   const detectionTime = Date.now() - detectorStart;
+  
+  // Restore explicit dimensions if they were present
+  if (hasExplicitWidth && explicitWidth) {
+    optimizedOptions.width = explicitWidth;
+    optimizedOptions.__explicitWidth = true; // Mark as explicit so responsive width doesn't override
+    logger.debug("Restored explicit width parameter after optimization", {
+      width: explicitWidth,
+      optimizedWidth: optimizedOptions.width,
+      source: 'url_parameter'
+    });
+  }
+  
+  if (hasExplicitHeight && explicitHeight) {
+    optimizedOptions.height = explicitHeight;
+    optimizedOptions.__explicitHeight = true; // Mark as explicit so responsive height doesn't override
+    logger.debug("Restored explicit height parameter after optimization", {
+      height: explicitHeight,
+      optimizedHeight: optimizedOptions.height,
+      source: 'url_parameter'
+    });
+  }
 
   // Extract detection metrics for logging
   const detectionMetrics = optimizedOptions.__detectionMetrics;
@@ -428,8 +464,10 @@ export async function buildTransformOptions(
   transformOptions = optimizedOptions;
 
   // Get responsive width if not explicitly set or if auto width was requested
+  // Skip if we've marked this as having an explicit width
   if (
-    !transformOptions.width || (transformOptions as any).__autoWidth === true
+    (!transformOptions.width || (transformOptions as any).__autoWidth === true) && 
+    !(transformOptions as any).__explicitWidth
   ) {
     logger.breadcrumb("Calculating responsive width", undefined, {
       hasWidth: false,
@@ -725,9 +763,14 @@ export async function buildTransformOptions(
     delete transformOptions._conditions;
   }
 
-  // Clean up any undefined or null values
+  // Clean up any undefined or null values and remove special flags
   const result: TransformOptions = {};
   Object.keys(transformOptions).forEach((key) => {
+    // Skip internal properties that start with __
+    if (key.startsWith('__')) {
+      return;
+    }
+    
     if (transformOptions[key] !== undefined && transformOptions[key] !== null) {
       result[key] = transformOptions[key];
 
@@ -1359,6 +1402,16 @@ export async function buildTransformOptions(
   }
 
   // Let Cloudflare Image Resizing handle validation and provide warning headers
+  // Additional debug logging for width parameter source
+  if (result.width) {
+    logger.debug("Final width parameter in transform options", {
+      width: result.width,
+      isExplicit: !!(result as any).__explicitWidth,
+      wasAutoWidth: !!(transformOptions as any).__autoWidth,
+      source: (result as any).__explicitWidth ? 'url_parameter' : 'responsive_calculation'
+    });
+  }
+
   logger.breadcrumb("buildTransformOptions completed", undefined, {
     finalOptionsCount: Object.keys(result).length,
     hasWidth: !!result.width,
@@ -1387,6 +1440,7 @@ export async function buildTransformOptions(
     dpr: result.dpr,
     background: result.background,
     allParams: Object.keys(result).join(","),
+    widthSource: (result as any).__explicitWidth ? 'explicit_url_parameter' : (result.width ? 'responsive_calculation' : 'none')
   });
 
   return result;
