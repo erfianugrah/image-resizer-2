@@ -46,11 +46,11 @@ There are two ways to initialize your configuration:
 Use the provided script to load an initial configuration into your KV namespace:
 
 ```bash
-# Make the script executable
-chmod +x ./examples/configuration/load-initial-config.js
+# Use the script from the scripts directory
+chmod +x ./scripts/load-initial-config.js
 
 # Load a configuration file
-./examples/configuration/load-initial-config.js ./examples/configuration/auth-and-path-origins-config.json --key=config --env=dev
+./scripts/load-initial-config.js ./docs/public/configuration/examples/auth-and-path-origins-config.json --key=config --env=dev
 ```
 
 This script will:
@@ -172,4 +172,4 @@ After setting up the Configuration system, you may want to:
 2. Set up automated deployments with configuration updates
 3. Implement secure configuration backup and versioning
 
-For more details, check the [Configuration API Reference](./api.md) and [Example Configurations](../../examples/configuration/README.md).
+For more details, check the [Configuration API Reference](./api.md) and [Example Configurations](./examples/index.md).

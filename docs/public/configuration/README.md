@@ -53,7 +53,7 @@ The Image Resizer uses a modular configuration structure organized into logical 
 }
 ```
 
-For examples of complete configurations, see the [Examples Directory](../../examples/configuration/).
+For examples of complete configurations, see the [Examples Directory](./examples/).
 
 ## Quick Reference
 
@@ -70,7 +70,7 @@ wrangler kv:namespace create "IMAGE_CONFIGURATION_STORE_DEV" --preview
 ### Loading Initial Configuration
 
 ```bash
-./examples/configuration/load-initial-config.js ./examples/configuration/auth-and-path-origins-config.json --key=config --env=dev
+./scripts/load-initial-config.js ./docs/public/configuration/examples/auth-and-path-origins-config.json --key=config --env=dev
 ```
 
 ### Accessing Configuration
@@ -135,12 +135,12 @@ This allows for:
 ## Examples
 
 For complete, real-world examples, see:
-- [Auth and Path-Based Origins Config](../../examples/configuration/auth-and-path-origins-config.json)
-- [Migration Example](../../examples/configuration/migration-example.md)
+- [Auth and Path-Based Origins Config](./examples/auth-and-path-origins-config.json)
+- [Migration Example](./migration-example.md)
 
 ## Need Help?
 
 If you need assistance with the Configuration API:
 - Check the [Troubleshooting Guide](./troubleshooting.md)
 - Refer to the [API Reference](./api.md)
-- Look at [Example Configurations](../../examples/configuration/)
+- Look at [Example Configurations](./examples/)

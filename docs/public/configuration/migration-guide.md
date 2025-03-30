@@ -365,12 +365,12 @@ The simplified configuration structure offers several advantages:
 
 ## Example Complete Migration
 
-For a complete example of migrating a configuration, see the [Example Migration](../../examples/configuration/migration-example.md).
+For a complete example of migrating a configuration, see the [Example Migration](./migration-example.md).
 
 ## Need Help?
 
 If you need assistance with migration:
 
 1. Check the [API Reference](./api.md) for detailed endpoint information
-2. Review [Example Configurations](../../examples/configuration/README.md) for inspiration
+2. Review [Example Configurations](./examples/index.md) for inspiration
 3. Open an issue on the GitHub repository for complex migration questions

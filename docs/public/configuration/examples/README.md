@@ -39,7 +39,8 @@ curl -X POST https://your-worker.example.com/api/config \
 Or use the provided script:
 
 ```bash
-# In the examples directory
+# In the scripts directory
+cd /path/to/scripts
 ./post-config.sh
 ```
 

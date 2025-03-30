@@ -71,14 +71,14 @@ wrangler secret put CONFIG_API_KEY
 
 ## Step 4: Prepare Initial Configuration
 
-Choose an example configuration from the `examples/configuration/` directory:
+Choose an example configuration from the `docs/public/configuration/examples/` directory:
 
 ```bash
-# Make the load script executable
-chmod +x ./examples/configuration/load-initial-config.js
+# Use the load script from the scripts directory
+chmod +x ./scripts/load-initial-config.js
 
 # Load the auth and path-based origins example
-./examples/configuration/load-initial-config.js ./examples/configuration/auth-and-path-origins-config.json --key=config --env=dev
+./scripts/load-initial-config.js ./docs/public/configuration/examples/auth-and-path-origins-config.json --key=config --env=dev
 ```
 
 ## Step 5: Start Development Server
@@ -136,7 +136,7 @@ When you're ready to deploy to production:
 wrangler deploy --env production
 
 # Then, load the production configuration
-./examples/configuration/load-initial-config.js ./examples/configuration/auth-and-path-origins-config.json --key=config --env=production
+./scripts/load-initial-config.js ./docs/public/configuration/examples/auth-and-path-origins-config.json --key=config --env=production
 ```
 
 ## Step 9: Setting Up Path-Based Origins
@@ -205,6 +205,6 @@ curl "https://your-worker.example.com/products/sample-product.jpg?width=800"
 ## Next Steps
 
 - Check out the [API Reference](./api.md) for all available endpoints
-- Explore [Example Configurations](../../examples/configuration/README.md)
+- Explore [Example Configurations](./examples/index.md)
 - Learn about [Troubleshooting](./troubleshooting.md) common issues
 - Read the [Migration Guide](./migration-guide.md) if transitioning from an older version
