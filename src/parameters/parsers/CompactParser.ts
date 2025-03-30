@@ -7,7 +7,7 @@
 import { ParameterParser } from '../interfaces';
 import { Logger } from '../../utils/logging';
 import { TransformParameter } from '../../utils/path';
-import { parameterRegistry } from '../registry';
+import { parameterRegistry, sizeCodeMap } from '../registry';
 import { defaultLogger } from '../../utils/logging';
 
 export class CompactParser implements ParameterParser {
@@ -47,7 +47,19 @@ export class CompactParser implements ParameterParser {
     }
     
     // Check if any compact parameter is present
-    return Object.keys(this.compactMappings).some(compact => searchParams.has(compact));
+    const result = Object.keys(this.compactMappings).some(compact => searchParams.has(compact));
+    
+    if (result) {
+      this.logger.debug('CompactParser can parse this input', {
+        params: Array.from(searchParams.entries()).map(([k, v]) => `${k}=${v}`).join(', '),
+        hasF: searchParams.has('f'),
+        hasR: searchParams.has('r'),
+        hasW: searchParams.has('w'),
+        hasP: searchParams.has('p')
+      });
+    }
+    
+    return result;
   }
   
   /**
@@ -73,6 +85,12 @@ export class CompactParser implements ParameterParser {
     }
     
     const parameters: TransformParameter[] = [];
+    
+    // Log all parameters we'll be parsing
+    this.logger.debug('CompactParser examining parameters', {
+      allParams: Array.from(searchParams.entries()).map(([k, v]) => `${k}=${v}`).join(', '),
+      compactKeys: Object.keys(this.compactMappings).filter(k => searchParams.has(k)).join(',')
+    });
     
     // Process all compact parameters
     for (const [compact, fullName] of Object.entries(this.compactMappings)) {
@@ -109,11 +127,53 @@ export class CompactParser implements ParameterParser {
             typedValue = value.toLowerCase() === 'true';
             break;
           case 'size-code':
+            // Validate the size code for 'f' parameter
+            if (compact === 'f' && fullName === 'f') {
+              const sizeCode = value.toLowerCase();
+              if (!sizeCodeMap[sizeCode]) {
+                this.logger.warn(`Unknown size code: ${value}`, {
+                  validCodes: Object.keys(sizeCodeMap).join(',')
+                });
+              } else {
+                this.logger.info(`Valid size code found: ${value} => width=${sizeCodeMap[sizeCode]}`, {
+                  sizeCode: value,
+                  mappedWidth: sizeCodeMap[sizeCode]
+                });
+              }
+            }
+            // Keep as string
+            break;
           case 'coordinate':
           case 'enum':
           case 'string':
             // Keep as string
             break;
+        }
+        
+        // Special handling for 'f' parameter - higher priority to ensure it overrides auto-width
+        let paramPriority = paramDef.priority || 50;
+        if (compact === 'f' && fullName === 'f') {
+          paramPriority = 110; // Higher priority to ensure it takes precedence
+          
+          // Also add a direct width parameter for backward compatibility
+          const sizeCode = value.toLowerCase();
+          if (sizeCodeMap[sizeCode]) {
+            const width = sizeCodeMap[sizeCode];
+            
+            this.logger.info(`Adding width parameter from size code ${value} (${width}px)`, {
+              sizeCode: value,
+              width
+            });
+            
+            // Add an explicit width parameter with high priority
+            parameters.push({
+              name: 'width',
+              value: width,
+              source: 'derived',
+              priority: 120, // Even higher priority than the size code
+              __explicitWidth: true // Mark as explicit
+            });
+          }
         }
         
         // Create parameter object with aliasFor to show the relationship
@@ -122,19 +182,22 @@ export class CompactParser implements ParameterParser {
           aliasFor: compact !== fullName ? compact : undefined,
           value: typedValue,
           source: 'compact',
-          priority: paramDef.priority || 50
+          priority: paramPriority
         });
         
         this.logger.debug('CompactParser parsed parameter', {
           compact,
           fullName,
-          value: typedValue
+          value: typedValue,
+          priority: paramPriority,
+          type: paramDef.type
         });
       }
     }
     
     this.logger.breadcrumb('CompactParser completed parsing', undefined, {
-      parameterCount: parameters.length
+      parameterCount: parameters.length,
+      paramNames: parameters.map(p => p.name).join(',')
     });
     
     return parameters;

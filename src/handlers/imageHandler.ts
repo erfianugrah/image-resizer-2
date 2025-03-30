@@ -56,13 +56,20 @@ export async function handleImageRequest(
   
   // Use the new parameter handler to process all parameters
   const parameterHandler = new ParameterHandler(logger);
-  const optionsFromUrl: TransformOptions = parameterHandler.handleRequest(request);
+  const optionsFromUrl: TransformOptions = await parameterHandler.handleRequest(request);
   
-  // Log the parsed options
+  // Log the parsed options with more detailed info
   logger.debug('Parsed transformation options', {
     optionCount: Object.keys(optionsFromUrl).length,
     hasWidth: optionsFromUrl.width !== undefined,
-    hasHeight: optionsFromUrl.height !== undefined
+    width: optionsFromUrl.width,
+    hasExplicitWidth: optionsFromUrl.__explicitWidth === true,
+    hasHeight: optionsFromUrl.height !== undefined,
+    height: optionsFromUrl.height,
+    hasExplicitHeight: optionsFromUrl.__explicitHeight === true,
+    format: optionsFromUrl.format,
+    fit: optionsFromUrl.fit,
+    paramNames: Object.keys(optionsFromUrl).join(',')
   });
   
   // Check for derivative in path segments

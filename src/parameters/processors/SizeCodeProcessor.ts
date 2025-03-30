@@ -63,16 +63,36 @@ export class SizeCodeProcessor {
    */
   process(parameter: TransformParameter, result: Record<string, unknown>): void {
     const sizeCode = parameter.value as string;
-    const width = sizeCodeMap[sizeCode];
     
-    if (width && !result.width) {
-      this.logger.debug('Converting size code to width', {
+    // Store the original size code in the result
+    result.f = sizeCode;
+    
+    // Look up the width for this size code
+    const width = sizeCodeMap[sizeCode.toLowerCase()];
+    
+    if (width) {
+      this.logger.info('Converting size code to width', {
         sizeCode,
-        width
+        width,
+        original: parameter.value
       });
       
-      // Add width parameter to result
+      // Add width parameter to result with explicit flag
       result.width = width;
+      
+      // Add the explicit flag to indicate this width should not be overridden
+      result.__explicitWidth = true;
+      
+      this.logger.debug('Added explicit width flag for size code', {
+        sizeCode,
+        width,
+        hasExplicitFlag: true
+      });
+    } else {
+      this.logger.warn('Unknown size code encountered', {
+        sizeCode,
+        availableCodes: Object.keys(sizeCodeMap).join(',')
+      });
     }
   }
 }

@@ -777,8 +777,14 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     // Create a hash based on the pathname, search params, and stringified transform options
     // This provides uniqueness even when two sets of different parameters result in similar mainParams
     const transformString = JSON.stringify(transformOptions);
-    // Include the raw URL search params in the hash calculation to ensure different query params create different hashes
-    const hashInput = url.pathname + url.search + transformString;
+    
+    // For cache key consistency, we need to capture the exact set of URL parameters
+    // First, extract the raw URL search string, preserving exact format
+    const rawSearchParams = url.search;
+    
+    // We'll use the original search parameters directly to ensure identical hash generation
+    // Create a comprehensive hash input that maintains the exact format from the URL
+    const hashInput = `${url.pathname}${rawSearchParams}${transformString}`;
     const hash = this.createShortHash(hashInput);
     
     // Log debug info about f parameter if present

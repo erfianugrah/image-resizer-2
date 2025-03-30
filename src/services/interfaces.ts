@@ -799,7 +799,7 @@ export interface PathService {
    */
   parseQueryOptions(
     searchParams: URLSearchParams
-  ): Record<string, unknown>;
+  ): Promise<Record<string, unknown>>;
   
   /**
    * Apply transformations to an image path
@@ -1009,9 +1009,9 @@ export interface ParameterHandlerService {
    * Process parameters from a request
    * 
    * @param request The request to process
-   * @returns Normalized parameters for image transformation
+   * @returns Promise with normalized parameters for image transformation
    */
-  handleRequest(request: Request): Record<string, any>;
+  handleRequest(request: Request): Promise<Record<string, any>>;
 }
 
 /**

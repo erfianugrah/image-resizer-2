@@ -517,12 +517,36 @@ export async function buildTransformOptions(
   // Update transformOptions with the optimized values
   transformOptions = optimizedOptions;
 
-  // Get responsive width if not explicitly set or if auto width was requested
-  // Skip if we've marked this as having an explicit width
+  // Create a helper to check for and process explicit dimensions
+  const explicitDimensions = {
+    width: false,
+    height: false
+  };
+  
+  // Check for explicit dimension flags across both objects
+  ['width', 'height'].forEach(dimension => {
+    const flagName = `__explicit${dimension.charAt(0).toUpperCase() + dimension.slice(1)}`;
+    const hasFlag = !!(transformOptions as any)[flagName] || !!(optimizedOptions as any)[flagName];
+    
+    // Mark this dimension as explicit if the flag is found
+    if (hasFlag) {
+      explicitDimensions[dimension as keyof typeof explicitDimensions] = true;
+      
+      // Log detection of explicit dimension
+      logger.debug(`Detected explicit ${dimension} parameter, will preserve this value`, {
+        value: transformOptions[dimension as keyof TransformOptions] ||
+               optimizedOptions[dimension as keyof TransformOptions],
+        source: 'explicit_url_parameter'
+      });
+    }
+  });
+
+  // Get responsive width if no explicit width is provided
+  // This happens when width is missing or marked as autoWidth
+  // But we SKIP this calculation entirely if an explicit width flag is present
   if (
     (!transformOptions.width || (transformOptions as any).__autoWidth === true) && 
-    !(transformOptions as any).__explicitWidth &&
-    !(optimizedOptions as any).__explicitWidth // Also check optimizedOptions
+    !explicitDimensions.width // Skip if width is explicitly set
   ) {
     logger.breadcrumb("Calculating responsive width", undefined, {
       hasWidth: false,
