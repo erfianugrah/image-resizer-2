@@ -106,6 +106,9 @@ export interface TransformOptions {
   _conditions?: any[]; // For conditional transformations (internal use)
   _customEffects?: any[]; // For custom effects (internal use)
   _needsImageInfo?: boolean; // Flag to explicitly request image dimensions (internal use)
+  __explicitWidth?: boolean; // Flag to mark width as explicitly set by user (e.g., imwidth)
+  __explicitHeight?: boolean; // Flag to mark height as explicitly set by user (e.g., imheight)
+  __autoWidth?: boolean; // Flag to indicate width was set to "auto"
   [key: string]: any;
 }
 
@@ -364,6 +367,30 @@ export async function buildTransformOptions(
       format: "auto",
       quality: "auto" as any,
     };
+    
+    logger.debug('No transform options provided, using defaults', {
+      autoWidth: true,
+      autoHeight: true,
+      autoFormat: true,
+      autoQuality: true
+    });
+  }
+  
+  // Log extra debug info about explicit width/height from existing flags
+  if ((options as any).__explicitWidth) {
+    logger.debug('Explicit width flag detected in options', {
+      width: options.width,
+      source: 'imwidth_parameter',
+      willSkipResponsiveWidth: true
+    });
+  }
+  
+  if ((options as any).__explicitHeight) {
+    logger.debug('Explicit height flag detected in options', {
+      height: options.height,
+      source: 'imheight_parameter',
+      willSkipResponsiveHeight: true
+    });
   }
 
   // Apply derivative template if specified
@@ -398,19 +425,35 @@ export async function buildTransformOptions(
     delete transformOptions.width; // Remove 'auto' so it doesn't get sent to Cloudflare
   }
 
+  // Check for explicit width/height flags from the parameter processor
+  // These flags indicate the values came from explicit user parameters like imwidth
+  const hasExplicitWidthFlag = !!(transformOptions as any).__explicitWidth;
+  const hasExplicitHeightFlag = !!(transformOptions as any).__explicitHeight;
+  
   // Store explicit width/height if present before detector optimization
-  const hasExplicitWidth = typeof transformOptions.width === 'number';
+  const hasExplicitWidth = typeof transformOptions.width === 'number' || hasExplicitWidthFlag;
   const explicitWidth = hasExplicitWidth ? transformOptions.width : null;
   
-  const hasExplicitHeight = typeof transformOptions.height === 'number';
+  const hasExplicitHeight = typeof transformOptions.height === 'number' || hasExplicitHeightFlag;
   const explicitHeight = hasExplicitHeight ? transformOptions.height : null;
   
   if (hasExplicitWidth || hasExplicitHeight) {
     logger.debug("Preserving explicit dimension parameters before optimization", {
       explicitWidth: hasExplicitWidth ? transformOptions.width : 'not_set',
       explicitHeight: hasExplicitHeight ? transformOptions.height : 'not_set',
-      source: 'url_parameter'
+      hasExplicitWidthFlag: hasExplicitWidthFlag,
+      hasExplicitHeightFlag: hasExplicitHeightFlag,
+      source: hasExplicitWidthFlag || hasExplicitHeightFlag ? 'akamai_parameter' : 'url_parameter'
     });
+  }
+  
+  // Make sure we preserve the explicit flags through the transformation process
+  if (hasExplicitWidthFlag) {
+    transformOptions.__explicitWidth = true;
+  }
+  
+  if (hasExplicitHeightFlag) {
+    transformOptions.__explicitHeight = true;
   }
 
   // Use the unified detector to get client capabilities
@@ -429,7 +472,8 @@ export async function buildTransformOptions(
     logger.debug("Restored explicit width parameter after optimization", {
       width: explicitWidth,
       optimizedWidth: optimizedOptions.width,
-      source: 'url_parameter'
+      source: hasExplicitWidthFlag ? 'akamai_imwidth' : 'url_parameter',
+      priority: 'maximum' // Indicate this should never be overridden
     });
   }
   
@@ -439,8 +483,18 @@ export async function buildTransformOptions(
     logger.debug("Restored explicit height parameter after optimization", {
       height: explicitHeight,
       optimizedHeight: optimizedOptions.height,
-      source: 'url_parameter'
+      source: hasExplicitHeightFlag ? 'akamai_imheight' : 'url_parameter',
+      priority: 'maximum' // Indicate this should never be overridden
     });
+  }
+  
+  // Preserve the flags from the original transform options
+  if (hasExplicitWidthFlag) {
+    optimizedOptions.__explicitWidth = true;
+  }
+  
+  if (hasExplicitHeightFlag) {
+    optimizedOptions.__explicitHeight = true;
   }
 
   // Extract detection metrics for logging
@@ -467,7 +521,8 @@ export async function buildTransformOptions(
   // Skip if we've marked this as having an explicit width
   if (
     (!transformOptions.width || (transformOptions as any).__autoWidth === true) && 
-    !(transformOptions as any).__explicitWidth
+    !(transformOptions as any).__explicitWidth &&
+    !(optimizedOptions as any).__explicitWidth // Also check optimizedOptions
   ) {
     logger.breadcrumb("Calculating responsive width", undefined, {
       hasWidth: false,
@@ -1404,11 +1459,15 @@ export async function buildTransformOptions(
   // Let Cloudflare Image Resizing handle validation and provide warning headers
   // Additional debug logging for width parameter source
   if (result.width) {
+    const isAkamaiWidth = !!(transformOptions as any).__explicitWidth || !!(optimizedOptions as any).__explicitWidth;
     logger.debug("Final width parameter in transform options", {
       width: result.width,
       isExplicit: !!(result as any).__explicitWidth,
       wasAutoWidth: !!(transformOptions as any).__autoWidth,
-      source: (result as any).__explicitWidth ? 'url_parameter' : 'responsive_calculation'
+      hasExplicitFlag: !!(result as any).__explicitWidth,
+      source: isAkamaiWidth ? 'akamai_imwidth' : 
+              (result as any).__explicitWidth ? 'url_parameter' : 
+              'responsive_calculation'
     });
   }
 

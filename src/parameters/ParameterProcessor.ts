@@ -177,8 +177,12 @@ export class DefaultParameterProcessor implements ParameterProcessor {
         name: 'width',
         value: processed['imwidth'].value,
         source: 'akamai',
-        priority: 95 // Higher priority to override other width values
+        priority: 150, // Highest priority to ensure it overrides responsive width calculation
+        __explicitWidth: true // Mark as explicit for transform.ts to respect
       };
+      
+      // Set a special flag in processedValues to ensure transform.ts respects this width
+      processedValues.__explicitWidth = true;
       
       // Remove the imwidth parameter
       delete processed['imwidth'];
@@ -194,8 +198,12 @@ export class DefaultParameterProcessor implements ParameterProcessor {
         name: 'height',
         value: processed['imheight'].value,
         source: 'akamai',
-        priority: 95 // Higher priority to override other height values
+        priority: 150, // Highest priority to ensure it overrides responsive height calculation
+        __explicitHeight: true // Mark as explicit for transform.ts to respect
       };
+      
+      // Set a special flag in processedValues to ensure transform.ts respects this height
+      processedValues.__explicitHeight = true;
       
       // Remove the imheight parameter
       delete processed['imheight'];
@@ -238,6 +246,10 @@ export class DefaultParameterProcessor implements ParameterProcessor {
     // Get the base values
     const baseOptions: Record<string, any> = {};
     
+    // Check if we have explicit width or height flags to preserve
+    const hasExplicitWidth = parameters['width'] && parameters['width'].__explicitWidth;
+    const hasExplicitHeight = parameters['height'] && parameters['height'].__explicitHeight;
+    
     // Extract just the values for Cloudflare
     Object.entries(parameters).forEach(([name, param]) => {
       // Apply formatters if defined in parameter definition
@@ -248,7 +260,26 @@ export class DefaultParameterProcessor implements ParameterProcessor {
       } else {
         baseOptions[name] = param.value;
       }
+      
+      // Copy explicit flags if they exist
+      if (name === 'width' && param.__explicitWidth) {
+        baseOptions.__explicitWidth = true;
+      }
+      
+      if (name === 'height' && param.__explicitHeight) {
+        baseOptions.__explicitHeight = true;
+      }
     });
+    
+    // Log if we have explicit dimensions
+    if (hasExplicitWidth || hasExplicitHeight) {
+      this.logger.debug('Preserving explicit dimension flags in Cloudflare options', {
+        hasExplicitWidth,
+        hasExplicitHeight,
+        width: parameters['width']?.value,
+        height: parameters['height']?.value
+      });
+    }
     
     // Import dynamically to avoid circular dependencies
     // Use import() instead of require() to follow ESM patterns
@@ -261,8 +292,20 @@ export class DefaultParameterProcessor implements ParameterProcessor {
     // Extract the cf.image options
     const cfOptions = (fetchOptions.cf as any).image || {};
     
+    // Forward explicit flags to ensure they make it to transform.ts
+    if (hasExplicitWidth) {
+      cfOptions.__explicitWidth = true;
+    }
+    
+    if (hasExplicitHeight) {
+      cfOptions.__explicitHeight = true;
+    }
+    
     this.logger.breadcrumb('Formatted parameters for Cloudflare', undefined, {
-      optionCount: Object.keys(cfOptions).length
+      optionCount: Object.keys(cfOptions).length,
+      hasWidth: cfOptions.width !== undefined,
+      hasExplicitWidth: !!cfOptions.__explicitWidth,
+      width: cfOptions.width
     });
     
     return cfOptions;
