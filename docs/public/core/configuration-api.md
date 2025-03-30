@@ -135,9 +135,11 @@ To register a new module, send a POST request to `/api/config/modules` with:
     "enabled": true,
     "timeout": 30
   },
-  "dependencies": ["core"]
+  "moduleDependencies": ["core"]
 }
 ```
+
+> **Important**: The property `moduleDependencies` is used to specify dependencies on other modules. Earlier versions used the property name `dependencies`, which is now deprecated due to conflicts with the JSON Schema specification.
 
 ## Environment Variable Interpolation
 

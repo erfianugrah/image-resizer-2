@@ -47,7 +47,15 @@ The configuration system uses a simplified structure that balances flexibility a
 }
 ```
 
-See the [complete example](../../examples/configuration/example-simplified-config.json) for more details.
+See our [examples directory](./examples/index.md) for more detailed configurations:
+
+- [Comprehensive Configuration](./examples/comprehensive-config.md) - A complete example with all options
+- [Auth and Path-Based Origins](./examples/auth-path-origins.md) - Configuration for authentication and path-based origins
+
+The configuration files can be found in the examples directory:
+- [comprehensive-config-runnable.json](./examples/comprehensive-config-runnable.json) - Runnable version without comments
+- [comprehensive-config-example.jsonc](./examples/comprehensive-config-example.jsonc) - Commented version
+- [auth-and-path-origins-config.json](./examples/auth-and-path-origins-config.json) - Authentication and path-based origins
 
 ## Environment Variables
 
@@ -84,3 +92,4 @@ Configuration values can reference environment variables using `${VAR_NAME}` syn
 - [Configuration API Documentation](./api.md)
 - [Schema Reference](./schema.md)
 - [Migration Guide](./migration.md)
+- [Migration Example](./migration-example.md)

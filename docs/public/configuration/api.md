@@ -273,9 +273,11 @@ Content-Type: application/json
     "enabled": true,
     "options": {...}
   },
-  "dependencies": ["core", "storage"]
+  "moduleDependencies": ["core", "storage"]
 }
 ```
+
+> **Note**: The property `moduleDependencies` specifies dependencies on other modules. Earlier versions used `dependencies`, which is now deprecated due to conflicts with the JSON Schema specification.
 
 **Response:**
 ```json
@@ -302,22 +304,22 @@ GET /config/modules
     {
       "id": "core",
       "description": "Core system settings",
-      "dependencies": []
+      "moduleDependencies": []
     },
     {
       "id": "storage",
       "description": "Storage and origin settings",
-      "dependencies": ["core"]
+      "moduleDependencies": ["core"]
     },
     {
       "id": "transform",
       "description": "Image transformation settings",
-      "dependencies": ["core"]
+      "moduleDependencies": ["core"]
     },
     {
       "id": "cache",
       "description": "Caching configuration",
-      "dependencies": ["core", "storage"]
+      "moduleDependencies": ["core", "storage"]
     }
   ]
 }
