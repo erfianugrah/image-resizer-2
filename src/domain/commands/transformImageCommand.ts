@@ -217,6 +217,26 @@ export class TransformImageCommand implements Command<Response> {
       if (storageResult && config.cache.transformCache?.enabled) {
         logger.breadcrumb('Storing transformed image in KV cache using waitUntil');
         try {
+          // Clone the response and read the buffer synchronously before passing to waitUntil
+          // This ensures the response body is fully read before it's closed
+          const responseToCache = finalResponse.clone();
+          const responseBuffer = await responseToCache.arrayBuffer();
+          
+          // Add buffer to storage result
+          const enhancedStorageResult = {
+            ...storageResult,
+            buffer: responseBuffer,
+            storageType: storageResult.sourceType || 'transform',
+            contentType: responseToCache.headers.get('Content-Type') || storageResult.contentType,
+            size: responseBuffer.byteLength
+          };
+          
+          logger.debug('Prepared response buffer for KV caching', {
+            bufferSize: responseBuffer.byteLength,
+            contentType: enhancedStorageResult.contentType,
+            url: this.request.url
+          });
+          
           // Use the execution context for background processing
           const ctx = (this.request as unknown as { ctx: ExecutionContext }).ctx;
           
@@ -227,8 +247,11 @@ export class TransformImageCommand implements Command<Response> {
             ctx.waitUntil(
               cacheService.storeTransformedImage(
                 this.request,
-                finalResponse.clone(),
-                storageResult,
+                new Response(responseBuffer.slice(0), {
+                  status: 200,
+                  headers: responseToCache.headers
+                }),
+                enhancedStorageResult as any,
                 this.options,
                 ctx
               ).catch(err => {
@@ -240,7 +263,10 @@ export class TransformImageCommand implements Command<Response> {
               })
             );
             
-            logger.debug('Background KV transform cache operation initiated');
+            logger.debug('Background KV transform cache operation initiated with buffer', {
+              bufferSize: responseBuffer.byteLength,
+              contentType: enhancedStorageResult.contentType
+            });
           } else {
             // No valid context, log a warning but continue without blocking
             logger.warn('No valid execution context available for background KV transform caching', {

@@ -100,9 +100,22 @@ export async function handleConfigApiRequest(
   const configApi = serviceContainer.configApiService;
   
   try {
+    logger.breadcrumb('Processing Config API request', undefined, {
+      path,
+      method,
+      route: Object.keys(API_ROUTES).find(key => 
+        matchRoute(API_ROUTES[key as keyof typeof API_ROUTES], method, path)
+      ) || 'unknown'
+    });
+
     // GET /api/config - Get current configuration
     if (matchRoute(API_ROUTES.GET_CONFIG, method, path)) {
+      logger.breadcrumb('Fetching current configuration');
       const config = await configApi.getConfig();
+      logger.breadcrumb('Returning configuration', undefined, {
+        moduleCount: Object.keys(config.modules).length,
+        version: config._meta?.version || 'unknown'
+      });
       return jsonResponse(config);
     }
     

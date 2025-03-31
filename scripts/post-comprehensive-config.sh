@@ -2,7 +2,7 @@
 
 # Script to post the comprehensive configuration
 API_URL="https://images.erfi.dev/api/config"
-API_KEY="test"
+API_KEY="sJP5kuTWBiX4tx5yuYHmzGZed"
 
 # Create a temporary file with the request wrapper
 cat <<EOF > /tmp/config-wrapper.json

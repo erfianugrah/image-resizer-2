@@ -52,6 +52,21 @@ export default {
     });
     const { logger, configurationService, loggingService, lifecycleManager } =
       services;
+      
+    // Create pathService and detectorService if not already present
+    if (!services.pathService) {
+      // Import dynamically to avoid circular dependencies
+      const { createPathService } = await import('./services/pathService');
+      services.pathService = createPathService(loggingService.getLogger('PathService'), configurationService.getConfig());
+      logger.info('Created missing PathService');
+    }
+    
+    if (!services.detectorService) {
+      // Import dynamically to avoid circular dependencies
+      const { createDetectorService } = await import('./services/detectorServiceFactory');
+      services.detectorService = createDetectorService(configurationService.getConfig(), loggingService.getLogger('DetectorService'));
+      logger.info('Created missing DetectorService');
+    }
 
     // Log lifecycle information if available
     if (lifecycleManager) {

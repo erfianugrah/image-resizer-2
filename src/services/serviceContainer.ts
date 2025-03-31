@@ -88,6 +88,16 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
   // Create service instances
   const storageService: StorageService = new DefaultStorageService(storageLogger, configurationService, authService) as StorageService;
   
+  // Create path service
+  const pathServiceLogger = loggingService.getLogger('PathService');
+  const { createPathService } = require('./pathService');
+  const pathService = createPathService(pathServiceLogger, config);
+  
+  // Create detector service using factory
+  const detectorServiceLogger = loggingService.getLogger('DetectorService');
+  const { createDetectorService } = require('./detectorServiceFactory');
+  const detectorService = createDetectorService(config, detectorServiceLogger);
+  
   // Get the KV namespace from the environment
   const transformCacheBinding = config.cache.transformCache?.binding || 'IMAGE_TRANSFORMATIONS_CACHE';
   // Use type assertion to fix TS7053 error
@@ -193,6 +203,8 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
     logger: mainLogger,
     configStore: kvConfigStore,
     configApiService,
+    pathService,
+    detectorService,
     
     // Add service resolution methods to satisfy interface
     resolve: <T>(serviceType: string): T => {

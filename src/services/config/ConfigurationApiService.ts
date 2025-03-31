@@ -42,12 +42,26 @@ export class DefaultConfigurationApiService implements ConfigurationApiService {
    * Get the complete configuration
    */
   async getConfig(): Promise<ConfigurationSystem> {
+    // Log request for current configuration
+    if (this.logger) {
+      this.logger.breadcrumb('Getting complete configuration');
+    }
+    
     // Return cached config if available
     if (this.cachedConfig) {
+      if (this.logger) {
+        this.logger.debug('Returning cached configuration', {
+          moduleCount: Object.keys(this.cachedConfig.modules).length,
+          version: this.cachedConfig._meta?.version
+        });
+      }
       return this.cachedConfig;
     }
     
     // Get the current config from store
+    if (this.logger) {
+      this.logger.breadcrumb('Fetching configuration from store');
+    }
     const config = await this.configStore.getCurrentConfig();
     
     if (!config) {

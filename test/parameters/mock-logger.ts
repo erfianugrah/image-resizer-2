@@ -2,15 +2,16 @@
  * Mock logger for testing parameter handling
  */
 
-import { LogLevel } from '../../src/utils/logging';
-
 // Create an enum to match the real LogLevel
-export const MockLogLevel = {
-  DEBUG: 0,
-  INFO: 1,
-  WARN: 2,
-  ERROR: 3
-};
+export enum LogLevel {
+  DEBUG = 0,
+  INFO = 1,
+  WARN = 2,
+  ERROR = 3
+}
+
+// Export the enum as MockLogLevel for backward compatibility
+export const MockLogLevel = LogLevel;
 
 // Create a simple implementation of the Logger interface
 export const mockLogger = {

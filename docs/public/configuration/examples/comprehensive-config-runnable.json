@@ -73,7 +73,7 @@
 					"bindingName": "IMAGES_BUCKET"
 				},
 				"remote": {
-					"url": "hhttps://25f21f141824546aa72c74451a11b419.r2.cloudflarestorage.com/images-weur",
+					"url": "https://25f21f141824546aa72c74451a11b419.r2.cloudflarestorage.com/images-weur",
 					"auth": {
 						"enabled": true,
 						"type": "aws-s3",
