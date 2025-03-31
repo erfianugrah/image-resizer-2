@@ -2,6 +2,8 @@
 
 A streamlined Cloudflare Worker for image resizing that focuses on simplicity while maintaining essential functionality.
 
+## Architecture Diagrams
+
 ### Core Image Processing Flow
 
 ```mermaid
@@ -79,6 +81,10 @@ graph TD
 ```
 
 This service enhances your Cloudflare Workers setup with advanced image handling capabilities, including on-the-fly resizing, format conversion, optimization, and secure access to authenticated image origins.
+
+## Overview
+
+Image Resizer 2 is a comprehensive image transformation service built on Cloudflare Workers that provides enterprise-grade features while maintaining a clean, modular architecture.
 
 ## Features
 
@@ -248,21 +254,30 @@ Demo URL: [https://images.erfi.dev/Granna_1.JPG?im=Mirror,horizontal](https://im
 
 Demo URL: [https://images.erfi.dev/Granna_1.JPG?im.if-dimension=width>800,im.resize=width:400&debug=true](https://images.erfi.dev/Granna_1.JPG?im.if-dimension=width>800,im.resize=width:400&debug=true)
 
-## Architecture
+## Architecture Details
 
 This project implements a service-oriented architecture (SOA) for better modularity and maintainability:
+
+### Core Services
 
 - **Service Interfaces**: Clear contracts for all services with TypeScript interfaces
 - **Service Container**: Central registry of all service instances with lazy loading
 - **Command Pattern**: Encapsulated business logic in command objects
 - **Configuration Service**: Centralized configuration management
+
+### Specialized Services
+
 - **Client Detection Service**: Browser and device capability detection with request-scoped caching
 - **Cache Service**: Advanced caching strategies with tiered caching and intelligent TTL calculations
 - **Debug Service**: Enhanced debugging tools and visualizations
 - **Transformation Service**: Image transformation handling
 - **Storage Service**: Multi-source storage management with parallel fetching
+
+### Performance Features
+
 - **Interceptor Pattern**: Special handling for large images that automatically detects Cloudflare's image-resizing subrequests
 - **Performance Optimization**: Comprehensive performance improvements across all components
+- **KV Transform Cache**: Persistent storage of transformed images with efficient tagging and purging
 
 ## Project Structure
 
@@ -617,6 +632,10 @@ For complete authentication documentation, see [Authentication](docs/storage/aut
 
 > **Note:** Our documentation has been reorganized into a more navigable structure. Start with the [Documentation Home](docs/index.md) for a complete guide to all features.
 
+<table>
+<tr>
+<td width="50%" valign="top">
+
 ### Core Documentation
 - [Documentation Home](docs/index.md) - Main documentation index
 - [Architecture](docs/core/architecture.md) - System architecture and design
@@ -630,6 +649,9 @@ For complete authentication documentation, see [Authentication](docs/storage/aut
 - [Storage Options](docs/storage/index.md) - Image storage configuration and parallel fetching
 - [Authentication](docs/storage/authentication.md) - Secure access to origins
 
+</td>
+<td width="50%" valign="top">
+
 ### Integrations
 - [Akamai Compatibility](docs/integrations/akamai/index.md) - Migration from Akamai
 - [Cloudflare Integration](docs/integrations/cloudflare/index.md) - Cloudflare integration features
@@ -641,6 +663,10 @@ For complete authentication documentation, see [Authentication](docs/storage/aut
 - [Breadcrumb Tracing](docs/debugging/breadcrumbs.md) - Request flow tracking
 - [Debug Headers](docs/debugging/debug-headers.md) - Using debug headers and reports
 - [Performance Validation](docs/PERFORMANCE_VALIDATION_GUIDE.md) - Performance testing and validation
+
+</td>
+</tr>
+</table>
 
 ## License
 
