@@ -3,6 +3,23 @@
  *
  * This module provides functions for transforming images using Cloudflare's Image Resizing service
  * via the `cf.image` object.
+ * 
+ * Supported input formats:
+ * - JPEG
+ * - PNG
+ * - GIF (including animations)
+ * - WebP (including animations)
+ * - SVG
+ * 
+ * Supported output formats:
+ * - JPEG
+ * - PNG
+ * - GIF (including animations)
+ * - WebP (including animations)
+ * - SVG (passed through if no dimension changes)
+ * - AVIF
+ * 
+ * Other format types (TIFF, BMP, ICO, PDF, etc.) are passed through without transformation.
  */
 
 import { ImageResizerConfig } from "./config";
@@ -1719,6 +1736,9 @@ export async function transformImage(
     );
     return storageResult.response;
   }
+  
+  // Note: Earlier format checking in imageHandler.ts now prevents unsupported formats
+  // from reaching this point, so we no longer need to check for unsupported formats here
 
   // Log info about large images that might cause timeouts
   if (storageResult.size && storageResult.size > 10 * 1024 * 1024) {

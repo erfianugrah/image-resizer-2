@@ -48,6 +48,21 @@ export async function handleImageRequest(
     throw new ValidationError('Invalid image path', { path: originalPath });
   }
   
+  // Check if the file is a supported image format based on extension
+  // Get the supported formats from configuration, or use defaults
+  const fileExtension = originalPath.split('.').pop()?.toLowerCase();
+  const supportedImageExtensions = config.responsive.supportedFormats || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+  
+  if (fileExtension && !supportedImageExtensions.includes(fileExtension)) {
+    logger.debug('Non-supported image format detected, bypassing transformation', {
+      path: originalPath,
+      extension: fileExtension
+    });
+    
+    // Forward the request directly to avoid storage failures and unnecessary processing
+    return await fetch(request);
+  }
+  
   // Apply path transformations if configured
   let imagePath = originalPath;
   if (config.pathTransforms) {
