@@ -52,6 +52,32 @@ graph TD
     U --> K[Cache]
 ```
 
+### KV Transform Cache
+
+```mermaid
+graph TD
+    I[Image Transformer] -->|Store Transformed Image| KV[KV Transform Cache]
+    KV -->|Cache Key Generation| KG[Generate Cache Key]
+    KG -->|Normalize Parameters| NP[Normalized Transform Key]
+    KV -->|Store with Metadata| SM[Store Image + Metadata]
+    
+    R[Request] -->|Check Cache| KV
+    KV -->|Cache Hit| CH[Return Cached Image]
+    KV -->|Cache Miss| CM[Transform & Store]
+    
+    P[Admin Purge Request] -->|Purge Operations| PO[Purge Manager]
+    PO -->|By Tag| PT[Tag-Based Purging]
+    PO -->|By Path| PP[Path Pattern Purging]
+    
+    PT -->|Background Processing| KV
+    PP -->|Background Processing| KV
+    
+    KV -->|Maintenance| M[Cache Maintenance]
+    M -->|Prune Expired| PE[Remove Expired Entries]
+    M -->|Size Limits| SL[Enforce Size Limits]
+    M -->|Update Stats| US[Cache Statistics]
+```
+
 This service enhances your Cloudflare Workers setup with advanced image handling capabilities, including on-the-fly resizing, format conversion, optimization, and secure access to authenticated image origins.
 
 ## Features
