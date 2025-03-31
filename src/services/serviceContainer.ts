@@ -2,6 +2,9 @@
  * Service container factory for creating and managing services
  */
 
+// Re-export the ServiceContainer interface for external use
+export type { ServiceContainer } from './interfaces';
+
 import { Env } from '../types';
 import { createLogger } from '../utils/logger-factory';
 import { 
@@ -28,6 +31,9 @@ import { createClientDetectionService } from './clientDetectionFactory';
 import { createAuthService } from './authServiceFactory';
 import { createMetadataService } from './metadataServiceFactory';
 import { CacheTagsManager } from './cache/CacheTagsManager';
+import { KVConfigStore } from './config/KVConfigStore';
+import { DefaultConfigurationApiService } from './config/ConfigurationApiService';
+import { ConfigStoreInterface, ConfigurationApiService } from './config/interfaces';
 
 /**
  * Create a service container with all required services
@@ -128,6 +134,50 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
   
   // Connect the metadata service to the transformation service
   transformationService.setMetadataService(metadataService);
+  
+  // Create configuration store service
+  let configStore: KVNamespace | undefined;
+  const configStoreLogger = loggingService.getLogger('KVConfigStore');
+  
+  // Check if we're in development mode
+  if (env.ENVIRONMENT === 'development' && env.IMAGE_CONFIGURATION_STORE_DEV) {
+    configStore = env.IMAGE_CONFIGURATION_STORE_DEV;
+    configStoreLogger.debug('Using development configuration store binding: IMAGE_CONFIGURATION_STORE_DEV');
+  }
+  // Otherwise, use the production binding
+  else if (env.IMAGE_CONFIGURATION_STORE) {
+    configStore = env.IMAGE_CONFIGURATION_STORE;
+    configStoreLogger.debug('Using production configuration store binding: IMAGE_CONFIGURATION_STORE');
+  }
+  // Legacy fallback for backward compatibility
+  else if (env.CONFIG_STORE) {
+    configStore = env.CONFIG_STORE;
+    configStoreLogger.warn('Using deprecated CONFIG_STORE binding - please update to IMAGE_CONFIGURATION_STORE');
+  }
+  
+  // Create the KV config store if binding is available
+  let kvConfigStore: ConfigStoreInterface | undefined;
+  let configApiService: ConfigurationApiService | undefined;
+  
+  if (configStore) {
+    kvConfigStore = new KVConfigStore(configStore, configStoreLogger);
+    
+    // Create Configuration API service
+    const configApiLogger = loggingService.getLogger('ConfigApiService');
+    
+    // Extract environment variables as a record for config value resolution
+    const envVars: Record<string, string> = {};
+    for (const key in env) {
+      if (Object.prototype.hasOwnProperty.call(env, key)) {
+        const value = env[key as keyof typeof env];
+        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+          envVars[key] = String(value);
+        }
+      }
+    }
+    
+    configApiService = new DefaultConfigurationApiService(kvConfigStore, envVars, configApiLogger);
+  }
 
   // Create the service container
   const container: ServiceContainer = {
@@ -141,6 +191,16 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
     authService,
     metadataService,
     logger: mainLogger,
+    configStore: kvConfigStore,
+    configApiService,
+    
+    // Add service resolution methods to satisfy interface
+    resolve: <T>(serviceType: string): T => {
+      throw new Error(`Service ${serviceType} resolution not implemented in legacy container`);
+    },
+    registerFactory: <T>(serviceType: string, _factory: () => T, _singleton?: boolean): void => {
+      throw new Error(`Service ${serviceType} registration not implemented in legacy container`);
+    },
     
     // Add lifecycle management methods (these will be overridden by the lifecycle manager)
     async initialize(): Promise<void> {
@@ -193,6 +253,32 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
         if ('initialize' in metadataService && typeof metadataService.initialize === 'function') {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (metadataService as any).initialize();
+        }
+        
+        // Initialize configuration store if available
+        if (kvConfigStore && 'initialize' in kvConfigStore) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await (kvConfigStore as any).initialize();
+            mainLogger.debug('ConfigStore initialized successfully');
+          } catch (error) {
+            mainLogger.error('Failed to initialize ConfigStore', {
+              error: error instanceof Error ? error.message : String(error)
+            });
+          }
+        }
+        
+        // Initialize configuration API service if available
+        if (configApiService && 'initialize' in configApiService) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await (configApiService as any).initialize();
+            mainLogger.debug('ConfigApiService initialized successfully');
+          } catch (error) {
+            mainLogger.error('Failed to initialize ConfigApiService', {
+              error: error instanceof Error ? error.message : String(error)
+            });
+          }
         }
         
         mainLogger.info('Service container lifecycle initialization complete (legacy method)');
@@ -248,6 +334,31 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
           await (loggingService as any).shutdown();
         }
         
+        // Shut down configuration API services
+        if (configApiService && 'shutdown' in configApiService) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await (configApiService as any).shutdown();
+            mainLogger.debug('ConfigApiService shutdown successfully');
+          } catch (error) {
+            mainLogger.error('Failed to shutdown ConfigApiService', {
+              error: error instanceof Error ? error.message : String(error)
+            });
+          }
+        }
+        
+        if (kvConfigStore && 'shutdown' in kvConfigStore) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await (kvConfigStore as any).shutdown();
+            mainLogger.debug('ConfigStore shutdown successfully');
+          } catch (error) {
+            mainLogger.error('Failed to shutdown ConfigStore', {
+              error: error instanceof Error ? error.message : String(error)
+            });
+          }
+        }
+        
         // Shut down configuration service last
         await configurationService.shutdown();
         
@@ -269,8 +380,10 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
   }
 
   mainLogger.info('Service container initialized with all services', {
-    serviceCount: 9,
-    services: 'configuration, logging, storage, transformation, cache, debug, clientDetection, auth, metadata',
+    serviceCount: kvConfigStore && configApiService ? 11 : (kvConfigStore ? 10 : 9),
+    services: 'configuration, logging, storage, transformation, cache, debug, clientDetection, auth, metadata' + 
+              (kvConfigStore ? ', configStore' : '') + 
+              (configApiService ? ', configApiService' : ''),
     environment: config.environment
   });
 

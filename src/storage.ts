@@ -1210,13 +1210,13 @@ export async function fetchImage(
     // First, determine if R2 should be used based on storage priority
     const shouldUseR2 = config.storage.priority.includes('r2') &&
       config.storage.r2.enabled &&
-      env.IMAGES_BUCKET;
+      (env as any).IMAGES_BUCKET;
 
     // Use simpler debugging approach to avoid TypeScript errors
     logger.debug('Subrequest storage evaluation', {
       path: path,
       storageOrder: config.storage.priority.join(','),
-      r2Available: config.storage.r2.enabled && !!env.IMAGES_BUCKET
+      r2Available: config.storage.r2.enabled && !!(env as any).IMAGES_BUCKET
         ? true
         : false,
       shouldUseR2: shouldUseR2 ? true : false,
@@ -1225,7 +1225,7 @@ export async function fetchImage(
     // Check if R2 is available, enabled, and in the priority list
     if (shouldUseR2) {
       logger.debug('Using R2 for image-resizing subrequest', { path });
-      const bucket = env.IMAGES_BUCKET;
+      const bucket = (env as any).IMAGES_BUCKET;
       const fetchStart = Date.now();
 
       // Apply path transformations for R2 storage
@@ -1349,7 +1349,7 @@ export async function fetchImage(
     } else {
       logger.debug('R2 not available for image-resizing subrequest', {
         r2Enabled: config.storage.r2.enabled,
-        hasBucket: !!env.IMAGES_BUCKET,
+        hasBucket: !!(env as any).IMAGES_BUCKET,
       });
     }
   }
@@ -1358,13 +1358,13 @@ export async function fetchImage(
   const availableStorage = [...config.storage.priority];
   logger.debug('Trying storage options in priority order', {
     storageOrder: availableStorage,
-    r2Enabled: config.storage.r2.enabled && !!env.IMAGES_BUCKET,
+    r2Enabled: config.storage.r2.enabled && !!(env as any).IMAGES_BUCKET,
     remoteUrlSet: !!config.storage.remoteUrl,
     fallbackUrlSet: !!config.storage.fallbackUrl,
   });
   logger.breadcrumb('Trying storage options in priority order', undefined, {
     storageOrder: availableStorage.join(','),
-    r2Enabled: config.storage.r2.enabled && !!env.IMAGES_BUCKET ? 'yes' : 'no',
+    r2Enabled: config.storage.r2.enabled && !!(env as any).IMAGES_BUCKET ? 'yes' : 'no',
     remoteUrl: config.storage.remoteUrl ? 'configured' : 'not configured',
     fallbackUrl: config.storage.fallbackUrl ? 'configured' : 'not configured',
   });
@@ -1375,7 +1375,7 @@ export async function fetchImage(
 
     // Try to fetch from R2
     if (
-      storageType === 'r2' && config.storage.r2.enabled && env.IMAGES_BUCKET
+      storageType === 'r2' && config.storage.r2.enabled && (env as any).IMAGES_BUCKET
     ) {
       logger.debug('Trying R2 storage', { path });
       logger.breadcrumb('Attempting R2 storage fetch', undefined, { path });
@@ -1387,7 +1387,7 @@ export async function fetchImage(
         transformedPath,
       });
 
-      const bucket = env.IMAGES_BUCKET;
+      const bucket = (env as any).IMAGES_BUCKET;
       const fetchStart = Date.now();
 
       // Make sure bucket is defined before using it

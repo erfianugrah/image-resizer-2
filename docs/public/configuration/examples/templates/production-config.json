@@ -1,0 +1,350 @@
+{
+  "core": {
+    "environment": "production",
+    "debug": {
+      "enabled": false,
+      "headers": false,
+      "detailedErrors": false
+    },
+    "logging": {
+      "level": "error",
+      "structured": true
+    },
+    "features": {
+      "responsiveImages": true,
+      "clientHints": true,
+      "smartCropping": true,
+      "cacheTags": true,
+      "watermarks": true
+    }
+  },
+  "transform": {
+    "formats": {
+      "preferWebp": true,
+      "preferAvif": true,
+      "allowOriginalFormat": true,
+      "jpegQuality": 80,
+      "webpQuality": 75,
+      "avifQuality": 70
+    },
+    "sizes": {
+      "maxWidth": 4000,
+      "maxHeight": 4000,
+      "defaultFit": "scale-down"
+    },
+    "optimizations": {
+      "stripMetadata": true,
+      "autoCompress": true,
+      "optimizeForWeb": true
+    },
+    "derivatives": {
+      "thumbnail": {
+        "width": 200,
+        "height": 200,
+        "fit": "cover",
+        "quality": 85
+      },
+      "preview": {
+        "width": 600,
+        "height": 400,
+        "fit": "contain",
+        "quality": 80
+      },
+      "banner": {
+        "width": 1200,
+        "height": 400,
+        "fit": "cover",
+        "quality": 85
+      },
+      "profile": {
+        "width": 400,
+        "height": 400,
+        "fit": "cover",
+        "gravity": "face",
+        "quality": 90
+      },
+      "social": {
+        "width": 1200,
+        "height": 630,
+        "fit": "cover",
+        "quality": 85
+      },
+      "hero": {
+        "width": 1800,
+        "height": 600,
+        "fit": "cover",
+        "quality": 85
+      },
+      "gallery": {
+        "width": 800,
+        "height": 600,
+        "fit": "contain",
+        "quality": 85
+      },
+      "mobile": {
+        "width": 640,
+        "quality": 75
+      }
+    }
+  },
+  "cache": {
+    "method": "cf",
+    "ttl": {
+      "default": 604800,
+      "success": 604800,
+      "redirects": 3600,
+      "clientErrors": 60,
+      "serverErrors": 10
+    },
+    "tags": {
+      "enabled": true,
+      "prefix": "img:",
+      "includeOrigin": true,
+      "includeFormat": true
+    },
+    "bypass": {
+      "debugMode": true,
+      "noCache": true
+    }
+  },
+  "storage": {
+    "sources": ["r2", "remote", "fallback"],
+    "r2": {
+      "enabled": true,
+      "binding": "IMAGES_BUCKET"
+    },
+    "remote": {
+      "enabled": true,
+      "url": "${REMOTE_URL}",
+      "auth": {
+        "type": "s3",
+        "region": "${S3_REGION}",
+        "accessKey": "${AWS_ACCESS_KEY_ID}",
+        "secretKey": "${AWS_SECRET_ACCESS_KEY}"
+      }
+    },
+    "fallback": {
+      "enabled": true,
+      "url": "${FALLBACK_URL}",
+      "auth": {
+        "type": "bearer",
+        "token": "${FALLBACK_TOKEN}"
+      }
+    },
+    "pathTransforms": {
+      "enabled": true,
+      "rules": {
+        "^/products/([^/]+)": "/products/$1/image.jpg",
+        "^/profiles/([^/]+)": "/users/$1/avatar.jpg",
+        "^/brands/([^/]+)": "/organizations/$1/logo.png"
+      }
+    },
+    "pathBasedOrigins": {
+      "enabled": true,
+      "origins": [
+        {
+          "pattern": "^/cms/",
+          "origin": "cms",
+          "config": {
+            "url": "${CMS_URL}",
+            "auth": {
+              "type": "basic",
+              "username": "${CMS_USERNAME}",
+              "password": "${CMS_PASSWORD}"
+            }
+          }
+        },
+        {
+          "pattern": "^/assets/",
+          "origin": "cdn",
+          "config": {
+            "url": "${CDN_URL}",
+            "auth": {
+              "type": "none"
+            }
+          }
+        },
+        {
+          "pattern": "^/uploads/",
+          "origin": "userUploads",
+          "config": {
+            "url": "${USER_UPLOADS_URL}",
+            "auth": {
+              "type": "s3",
+              "region": "${USER_UPLOADS_REGION}",
+              "accessKey": "${USER_UPLOADS_ACCESS_KEY}",
+              "secretKey": "${USER_UPLOADS_SECRET_KEY}"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "client": {
+    "detection": {
+      "enabled": true,
+      "useClientHints": true,
+      "useAcceptHeader": true,
+      "useUserAgent": true,
+      "cacheDuration": 86400
+    },
+    "responsive": {
+      "enabled": true,
+      "defaultSizes": [320, 480, 640, 768, 1024, 1366, 1600, 1920, 2560],
+      "devicePixelRatio": true,
+      "qualityAdjustment": true
+    }
+  },
+  "security": {
+    "auth": {
+      "enabled": true,
+      "methods": ["signed", "api-key", "basic"],
+      "signedUrlExpiration": 3600,
+      "signedUrlSecret": "${SIGNED_URL_SECRET}",
+      "apiKeys": {
+        "enabled": true,
+        "headerName": "X-API-Key",
+        "paramName": "api_key",
+        "keys": ["${API_KEY_PRIMARY}", "${API_KEY_SECONDARY}"]
+      },
+      "basic": {
+        "enabled": true,
+        "users": {
+          "admin": "${ADMIN_PASSWORD}",
+          "readonly": "${READONLY_PASSWORD}"
+        }
+      },
+      "ipRestriction": {
+        "enabled": true,
+        "allowedIps": ["${OFFICE_IP_1}", "${OFFICE_IP_2}", "${VPN_IP_RANGE}"]
+      }
+    },
+    "headers": {
+      "cacheControl": true,
+      "strictTransportSecurity": true,
+      "contentTypeNosniff": true,
+      "referrerPolicy": "strict-origin-when-cross-origin",
+      "contentSecurityPolicy": {
+        "enabled": true,
+        "policy": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'"
+      }
+    },
+    "cors": {
+      "enabled": true,
+      "allowedOrigins": ["https://${PRIMARY_DOMAIN}", "https://${SECONDARY_DOMAIN}"],
+      "allowedMethods": ["GET", "HEAD", "OPTIONS"],
+      "allowCredentials": false,
+      "maxAge": 86400
+    },
+    "rateLimit": {
+      "enabled": true,
+      "requestsPerMinute": 600,
+      "burstSize": 60
+    }
+  },
+  "monitoring": {
+    "performance": {
+      "enabled": true,
+      "sampleRate": 0.1,
+      "datadog": {
+        "enabled": true,
+        "apiKey": "${DATADOG_API_KEY}",
+        "metrics": ["latency", "cache_hit_rate", "transform_time", "error_rate"]
+      }
+    },
+    "errorTracking": {
+      "enabled": true,
+      "captureStackTraces": true,
+      "sentry": {
+        "enabled": true,
+        "dsn": "${SENTRY_DSN}",
+        "environment": "production",
+        "sampleRate": 0.5
+      }
+    },
+    "logging": {
+      "destinations": [
+        {
+          "type": "cloudflare",
+          "enabled": true
+        },
+        {
+          "type": "logflare",
+          "enabled": true,
+          "apiKey": "${LOGFLARE_API_KEY}",
+          "sourceId": "${LOGFLARE_SOURCE_ID}"
+        }
+      ]
+    }
+  },
+  "watermarks": {
+    "enabled": true,
+    "default": "standard",
+    "types": {
+      "standard": {
+        "url": "/watermarks/logo-light.png",
+        "opacity": 0.5,
+        "position": "bottom-right",
+        "margin": 20,
+        "width": 200
+      },
+      "protected": {
+        "url": "/watermarks/protected.png",
+        "opacity": 0.7,
+        "position": "center",
+        "width": 400,
+        "repeat": true
+      },
+      "copyright": {
+        "url": "/watermarks/copyright.png",
+        "opacity": 0.6,
+        "position": "bottom-center",
+        "width": 300
+      }
+    },
+    "rules": [
+      {
+        "pattern": "^/products/premium/",
+        "type": "protected"
+      },
+      {
+        "pattern": "^/stock/",
+        "type": "copyright"
+      }
+    ]
+  },
+  "optimization": {
+    "quality": {
+      "enabled": true,
+      "default": 80,
+      "contentTypes": {
+        "photos": 85,
+        "graphics": 90,
+        "screenshots": 75
+      },
+      "deviceAdjustments": {
+        "mobile": -5,
+        "lowBandwidth": -10,
+        "highDpi": 5
+      }
+    },
+    "smartCrop": {
+      "enabled": true,
+      "contentTypes": {
+        "portrait": { "focusArea": "face" },
+        "product": { "focusArea": "center" },
+        "landscape": { "focusArea": "attention" }
+      }
+    },
+    "responsiveBreakpoints": {
+      "enabled": true,
+      "widths": [320, 480, 640, 768, 1024, 1366, 1600, 1920, 2560],
+      "heightRatios": {
+        "banner": 0.333,
+        "landscape": 0.5625,
+        "portrait": 1.25,
+        "square": 1
+      }
+    }
+  }
+}

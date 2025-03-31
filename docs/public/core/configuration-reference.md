@@ -2,6 +2,8 @@
 
 This document provides a comprehensive reference for all configuration options available in the Image Resizer.
 
+> **Note**: We're moving to a new simplified configuration structure. See the [Configuration API documentation](../configuration/api.md) and [Simplified Configuration Structure](../configuration/index.md) for details on the new approach.
+
 ## Configuration Structure
 
 The Image Resizer configuration is organized into the following main sections:

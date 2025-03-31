@@ -12,15 +12,51 @@ import { defaultLogger } from '../utils/logging';
 
 export class DefaultParameterProcessor implements ParameterProcessor {
   private logger: Logger;
+  private sizeCodeMap: Record<string, number>;
   
   constructor(logger?: Logger) {
     this.logger = logger || defaultLogger;
+    
+    // Import size code map directly to avoid circular dependencies
+    this.sizeCodeMap = {
+      'xxu': 40,
+      'xu': 80,
+      'u': 160,
+      'xxxs': 300,
+      'xxs': 400,
+      'xs': 500,
+      's': 600,
+      'm': 700,
+      'l': 750,
+      'xl': 900,
+      'xxl': 1100,
+      'xxxl': 1400,
+      'sg': 1600,
+      'g': 2000,
+      'xg': 3000,
+      'xxg': 4000
+    };
+  }
+  
+  /**
+   * Get the width value for a size code
+   */
+  private getSizeCodeWidth(sizeCode: string): number | null {
+    const code = sizeCode.toLowerCase();
+    return this.sizeCodeMap[code] || null;
   }
   
   /**
    * Process parameters from multiple sources
    */
-  process(parameters: TransformParameter[]): Record<string, any> {
+  async process(parameters: TransformParameter[]): Promise<Record<string, any>> {
+    // Log all incoming parameters in detail for debugging
+    this.logger.debug('Processing parameters:', {
+      parameters: parameters.map(p => 
+        `${p.name}=${typeof p.value === 'object' ? JSON.stringify(p.value) : p.value}:${p.source}:${p.priority}`
+      )
+    });
+    
     this.logger.breadcrumb('Processing parameters', undefined, {
       parameterCount: parameters.length
     });
@@ -35,10 +71,10 @@ export class DefaultParameterProcessor implements ParameterProcessor {
     const validatedParams = this.validate(mergedParams);
     
     // Handle special cases like size codes
-    const processedParams = this.processSpecialCases(validatedParams);
+    const processedParams = await this.processSpecialCases(validatedParams);
     
     // Format parameters for Cloudflare
-    return this.formatForCloudflare(processedParams);
+    return await this.formatForCloudflare(processedParams);
   }
   
   /**
@@ -149,14 +185,116 @@ export class DefaultParameterProcessor implements ParameterProcessor {
   /**
    * Process special cases using the processor registry
    */
-  private processSpecialCases(parameters: Record<string, TransformParameter>): Record<string, TransformParameter> {
-    // Import the ProcessorRegistry here to avoid circular dependencies
-    // we can use a dynamic import in the future if needed
-    const { ProcessorRegistry } = require('./ProcessorRegistry');
+  private async processSpecialCases(parameters: Record<string, TransformParameter>): Promise<Record<string, TransformParameter>> {
+    // Import dynamically to avoid circular dependencies
+    // Use import() instead of require() to follow ESM patterns
+    const ProcessorRegistry = (await import('./ProcessorRegistry')).ProcessorRegistry;
     
     const registry = new ProcessorRegistry(this.logger);
     const processed = { ...parameters };
     const processedValues: Record<string, unknown> = {};
+    
+    // Pre-process 'f' parameter directly - this needs special handling for 'f' (size code) parameter
+    if (processed['f'] && typeof processed['f'].value === 'string') {
+      // Get the size code value
+      const sizeCode = processed['f'].value as string;
+      
+      // Get the width for this size code from the registry
+      const sizeCodeWidth = this.getSizeCodeWidth(sizeCode);
+      if (sizeCodeWidth) {
+        this.logger.info(`Direct handling of 'f=${sizeCode}' size code, mapping to width=${sizeCodeWidth}`, {
+          sizeCode,
+          mappedWidth: sizeCodeWidth,
+          priority: 'maximum'
+        });
+        
+        // Add an explicit width parameter with high priority
+        processed['width'] = {
+          name: 'width',
+          value: sizeCodeWidth,
+          source: 'derived',
+          priority: 150, // Make sure this overrides other width settings
+          __explicitWidth: true
+        };
+        
+        // Mark width as explicit in processedValues
+        processedValues.__explicitWidth = true;
+      }
+    }
+    
+    // Define parameter mappings for explicit dimensions and other special cases
+    interface ParameterMapping {
+      target?: string;
+      flag?: string;
+      source?: string;
+    }
+    
+    const parameterMappings: Record<string, ParameterMapping> = {
+      // Explicit dimensions that should override automatic calculations
+      'imwidth': { target: 'width', flag: '__explicitWidth', source: 'akamai' },
+      'imheight': { target: 'height', flag: '__explicitHeight', source: 'akamai' },
+      
+      // Add any other special parameter mappings here
+      'width': { flag: '__explicitWidth', source: 'direct' },  // Direct width should also be marked explicit
+      'height': { flag: '__explicitHeight', source: 'direct' } // Direct height should also be marked explicit
+    };
+    
+    // Process explicit dimension parameters from various sources
+    Object.entries(parameterMappings).forEach(([paramName, mapping]) => {
+      // Skip if the parameter is not present
+      if (!processed[paramName]) return;
+      
+      // If this is a mapping parameter (like imwidth -> width)
+      if (mapping.target && processed[paramName]) {
+        const sourceParam = processed[paramName];
+        const targetParam = mapping.target;
+        const targetPriority = parameterRegistry[targetParam]?.priority || 100;
+        
+        this.logger.debug(`Mapping ${paramName} to ${targetParam} parameter`, {
+          value: sourceParam.value,
+          source: mapping.source || sourceParam.source,
+          priority: targetPriority + 20 // Higher than default priority
+        });
+        
+        // Create a new parameter object with the base properties
+        const newParam: TransformParameter = {
+          name: targetParam,
+          value: sourceParam.value,
+          source: (mapping.source || sourceParam.source) as 'url' | 'path' | 'akamai' | 'compact' | 'derivative' | 'derived',
+          priority: targetPriority + 20, // Higher than default priority
+        };
+        
+        // Add the explicit flag if defined
+        if (mapping.flag) {
+          // Use type assertion for adding dynamic properties
+          (newParam as any)[mapping.flag] = true;
+          processedValues[mapping.flag] = true; // Set in processedValues too
+        }
+        
+        // Add the new parameter
+        processed[targetParam] = newParam;
+        
+        // Remove the original parameter if it's a mapping (like imwidth)
+        if (targetParam !== paramName) {
+          delete processed[paramName];
+        }
+      } 
+      // If this is a direct parameter that needs flagging (like width)
+      else if (mapping.flag && !mapping.target) {
+        const param = processed[paramName];
+        
+        // Add the flag to the parameter via type assertion
+        (param as any)[mapping.flag] = true;
+        
+        // Add the flag to processedValues
+        processedValues[mapping.flag] = true;
+        
+        this.logger.debug(`Marked ${paramName} parameter as explicit`, {
+          value: param.value,
+          flag: mapping.flag 
+        });
+      }
+    });
     
     // Process each parameter with the registry
     Object.values(processed).forEach(param => {
@@ -180,9 +318,18 @@ export class DefaultParameterProcessor implements ParameterProcessor {
       }
     });
     
-    // Remove the 'f' parameter if we created a 'width' parameter
+    // IMPORTANT: Keep the 'f' parameter for cache key generation but make sure width is set correctly
+    // Although we've mapped 'f' to width, we want to keep the 'f' parameter in the processed results 
+    // to ensure it's included in the cache key generation
     if (processedValues.width && processed.f) {
-      delete processed.f;
+      // Don't delete processed.f here - let it be included in the cache key
+      // But make sure we have proper width propagation
+      if (processed.width && typeof processed.width.value === 'number') {
+        this.logger.debug('Ensured width is correctly set from f parameter', {
+          fValue: processed.f.value,
+          width: processed.width.value
+        });
+      }
     }
     
     return processed;
@@ -191,9 +338,13 @@ export class DefaultParameterProcessor implements ParameterProcessor {
   /**
    * Format parameters for Cloudflare Image Resizing
    */
-  formatForCloudflare(parameters: Record<string, TransformParameter>): Record<string, any> {
+  async formatForCloudflare(parameters: Record<string, TransformParameter>): Promise<Record<string, any>> {
     // Get the base values
     const baseOptions: Record<string, any> = {};
+    
+    // Check if we have explicit width or height flags to preserve
+    const hasExplicitWidth = parameters['width'] && parameters['width'].__explicitWidth;
+    const hasExplicitHeight = parameters['height'] && parameters['height'].__explicitHeight;
     
     // Extract just the values for Cloudflare
     Object.entries(parameters).forEach(([name, param]) => {
@@ -205,10 +356,30 @@ export class DefaultParameterProcessor implements ParameterProcessor {
       } else {
         baseOptions[name] = param.value;
       }
+      
+      // Copy explicit flags if they exist
+      if (name === 'width' && param.__explicitWidth) {
+        baseOptions.__explicitWidth = true;
+      }
+      
+      if (name === 'height' && param.__explicitHeight) {
+        baseOptions.__explicitHeight = true;
+      }
     });
     
-    // Import the CloudflareOptionsBuilder here to avoid circular dependencies
-    const { CloudflareOptionsBuilder } = require('./CloudflareOptionsBuilder');
+    // Log if we have explicit dimensions
+    if (hasExplicitWidth || hasExplicitHeight) {
+      this.logger.debug('Preserving explicit dimension flags in Cloudflare options', {
+        hasExplicitWidth,
+        hasExplicitHeight,
+        width: parameters['width']?.value,
+        height: parameters['height']?.value
+      });
+    }
+    
+    // Import dynamically to avoid circular dependencies
+    // Use import() instead of require() to follow ESM patterns
+    const CloudflareOptionsBuilder = (await import('./CloudflareOptionsBuilder')).CloudflareOptionsBuilder;
     
     // Build the Cloudflare options
     const builder = new CloudflareOptionsBuilder(this.logger);
@@ -217,8 +388,20 @@ export class DefaultParameterProcessor implements ParameterProcessor {
     // Extract the cf.image options
     const cfOptions = (fetchOptions.cf as any).image || {};
     
+    // Forward explicit flags to ensure they make it to transform.ts
+    if (hasExplicitWidth) {
+      cfOptions.__explicitWidth = true;
+    }
+    
+    if (hasExplicitHeight) {
+      cfOptions.__explicitHeight = true;
+    }
+    
     this.logger.breadcrumb('Formatted parameters for Cloudflare', undefined, {
-      optionCount: Object.keys(cfOptions).length
+      optionCount: Object.keys(cfOptions).length,
+      hasWidth: cfOptions.width !== undefined,
+      hasExplicitWidth: !!cfOptions.__explicitWidth,
+      width: cfOptions.width
     });
     
     return cfOptions;

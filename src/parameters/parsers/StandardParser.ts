@@ -60,6 +60,57 @@ export class StandardParser implements ParameterParser {
       // Skip empty values
       if (!value) continue;
       
+      // Special handling for imwidth/imheight parameters if not already in registry
+      if (key === 'imwidth') {
+        const numValue = parseInt(value, 10);
+        if (!isNaN(numValue)) {
+          this.logger.debug('StandardParser found imwidth parameter', {
+            value: numValue
+          });
+          
+          parameters.push({
+            name: 'imwidth', 
+            value: numValue,
+            source: 'url',
+            priority: 90
+          });
+          
+          // Also add as regular width for more universal support
+          parameters.push({
+            name: 'width',
+            value: numValue,
+            source: 'url',
+            priority: 85 // Slightly lower priority than direct
+          });
+          
+          continue; // Skip rest of processing for this parameter
+        }
+      } else if (key === 'imheight') {
+        const numValue = parseInt(value, 10);
+        if (!isNaN(numValue)) {
+          this.logger.debug('StandardParser found imheight parameter', {
+            value: numValue
+          });
+          
+          parameters.push({
+            name: 'imheight', 
+            value: numValue,
+            source: 'url',
+            priority: 90
+          });
+          
+          // Also add as regular height for more universal support
+          parameters.push({
+            name: 'height',
+            value: numValue,
+            source: 'url',
+            priority: 85 // Slightly lower priority than direct
+          });
+          
+          continue; // Skip rest of processing for this parameter
+        }
+      }
+      
       // Find parameter definition in registry
       const paramDef = parameterRegistry[key];
       

@@ -97,16 +97,49 @@ interface TransformStorageResult extends StorageResult {
  * - Eliminates separate index structures
  * - Uses background processing for non-blocking operations
  */
-// FNV-1a hashing algorithm implementation - much faster than MD5
+/**
+ * Enhanced FNV-1a hashing algorithm implementation
+ * This implementation takes special care to handle Unicode characters correctly
+ * and maintains proper unsigned 32-bit arithmetic throughout the calculation.
+ * 
+ * @param {string} str - The input string to hash
+ * @return {string} The 8-character hex representation of the hash
+ */
 function fnv1a(str: string): string {
-  let hash = 0x811c9dc5; // FNV offset basis
-  for (let i = 0; i < str.length; i++) {
-    hash ^= str.charCodeAt(i);
-    // Multiply by the FNV prime
-    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+  // Use precise constants for 32-bit FNV-1a
+  const FNV_PRIME_32 = 16777619;
+  const FNV_OFFSET_BASIS_32 = 2166136261;
+  
+  // Use TextEncoder if available, otherwise fall back to char codes
+  let bytes: Uint8Array;
+  
+  if (typeof TextEncoder !== 'undefined') {
+    // Convert the string to a UTF-8 encoded byte array for proper handling of all characters
+    const encoder = new TextEncoder();
+    bytes = encoder.encode(str);
+  } else {
+    // Fallback for environments without TextEncoder
+    bytes = new Uint8Array(str.length);
+    for (let i = 0; i < str.length; i++) {
+      bytes[i] = str.charCodeAt(i) & 0xff;
+    }
   }
-  // Convert to hex string and take last 8 chars (similar to MD5 substring)
-  return (hash >>> 0).toString(16).padStart(8, '0').substring(0, 8);
+  
+  // Start with the offset basis
+  let hash = FNV_OFFSET_BASIS_32 >>> 0; // Ensure we start with a proper unsigned int
+  
+  // For each byte in the input
+  for (let i = 0; i < bytes.length; i++) {
+    // XOR the hash with the current byte
+    hash ^= bytes[i];
+    
+    // Multiply by the FNV prime (using a more accurate calculation with imul)
+    // imul performs 32-bit integer multiplication
+    hash = Math.imul(hash, FNV_PRIME_32) >>> 0; // Keep as unsigned 32-bit integer
+  }
+  
+  // Convert to hex string and ensure it's 8 characters long
+  return hash.toString(16).padStart(8, '0');
 }
 
 export class SimpleKVTransformCacheManager implements KVTransformCacheInterface {
@@ -671,19 +704,122 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     const mainParams: string[] = [];
     if (transformOptions.width) mainParams.push(`w${transformOptions.width}`);
     if (transformOptions.height) mainParams.push(`h${transformOptions.height}`);
-    if (transformOptions.aspect) mainParams.push(transformOptions.aspect.replace(':', '-'));
+    if (transformOptions.aspect) mainParams.push(`r${transformOptions.aspect.replace(':', '-')}`);
     if (transformOptions.focal) mainParams.push(`p${transformOptions.focal.replace(',', '-')}`);
     if (transformOptions.quality) mainParams.push(`q${transformOptions.quality}`);
+    
+    // Include 'f' parameter if present (size code or format code)
+    if (transformOptions.f) mainParams.push(`f${transformOptions.f}`);
+    
+    // Include remaining common transform parameters
+    if (transformOptions.fit) mainParams.push(`fit${transformOptions.fit}`);
+    if (transformOptions.dpr) mainParams.push(`dpr${transformOptions.dpr}`);
+    if (transformOptions.background) mainParams.push(`bg${transformOptions.background.substring(0, 6)}`);
+    if (transformOptions.blur) mainParams.push(`blur${transformOptions.blur}`);
+    if (transformOptions.brightness) mainParams.push(`br${transformOptions.brightness}`);
+    if (transformOptions.contrast) mainParams.push(`con${transformOptions.contrast}`);
+    if (transformOptions.saturation) mainParams.push(`sat${transformOptions.saturation}`);
+    if (transformOptions.sharpen) mainParams.push(`sh${transformOptions.sharpen}`);
+    if (transformOptions.rotate) mainParams.push(`rot${transformOptions.rotate}`);
+    if (transformOptions.gamma) mainParams.push(`g${transformOptions.gamma}`);
+    if (transformOptions.compression) mainParams.push(`comp${transformOptions.compression}`);
+    if (transformOptions.gravity && typeof transformOptions.gravity === 'string') mainParams.push(`grav${transformOptions.gravity}`);
     
     // Determine output format
     const format = transformOptions.format || 'auto';
     
-    // Create a short hash for uniqueness
-    const hash = this.createShortHash(url.pathname + JSON.stringify(transformOptions));
+    // Extract raw URL parameters for any custom parameters
+    // This ensures all parameters are part of the cache key
+    const urlParams = new URLSearchParams(url.search);
+    const customParams: string[] = [];
+    
+    // First, make sure the 'f' parameter is included if it's in the URL
+    const urlFParam = urlParams.get('f');
+    if (urlFParam && !transformOptions.f) {
+      mainParams.push(`f${urlFParam}`);
+      
+      if (typeof console !== 'undefined' && console.debug) {
+        console.debug('Adding f parameter from URL to cache key:', {
+          fValue: urlFParam,
+          source: 'url'
+        });
+      }
+    }
+    
+    for (const [key, value] of urlParams.entries()) {
+      // Include any parameters that affect the image and aren't already covered
+      // Especially important for custom parameters and format codes
+      if (!['w', 'h', 'width', 'height', 'r', 'aspect', 'p', 'focal', 'q', 'quality', 'format'].includes(key)) {
+        // Skip 'f' parameter as we've already handled it above
+        if (key !== 'f') {
+          customParams.push(`${key}${value}`);
+        }
+      }
+    }
+    
+    // Sort custom parameters for consistent order
+    if (customParams.length > 0) {
+      customParams.sort();
+      mainParams.push(...customParams);
+    }
+    
+    // Log detailed transform options for debugging
+    if (typeof console !== 'undefined' && console.debug) {
+      console.debug('Generating cache key with transform options:', {
+        url: request.url,
+        transformOptions: JSON.stringify(transformOptions),
+        mainParams,
+        format,
+        urlParams: url.search
+      });
+    }
+    
+    // Create a hash based on the pathname, search params, and stringified transform options
+    // This provides uniqueness even when two sets of different parameters result in similar mainParams
+    const transformString = JSON.stringify(transformOptions);
+    
+    // For cache key consistency, we need to capture the exact set of URL parameters
+    // First, extract the raw URL search string, preserving exact format
+    const rawSearchParams = url.search;
+    
+    // We'll use the original search parameters directly to ensure identical hash generation
+    // Create a comprehensive hash input that maintains the exact format from the URL
+    const hashInput = `${url.pathname}${rawSearchParams}${transformString}`;
+    const hash = this.createShortHash(hashInput);
+    
+    // Log debug info about f parameter if present
+    if (transformOptions.f && typeof console !== 'undefined' && console.debug) {
+      console.debug('F parameter in cache key:', {
+        fValue: transformOptions.f,
+        fType: typeof transformOptions.f,
+        inParams: mainParams.some(p => p.startsWith('f')),
+        inHash: hashInput.includes(`"f":"${transformOptions.f}"`) || hashInput.includes(`"f":${transformOptions.f}`)
+      });
+    }
     
     // Combine components into a human-readable key
     const params = mainParams.length > 0 ? mainParams.join('-') : 'default';
-    return `${this.config.prefix}:${basename}:${params}:${format}:${hash}`;
+    const cacheKey = `${this.config.prefix}:${basename}:${params}:${format}:${hash}`;
+    
+    // Log the generated cache key for debugging
+    if (typeof console !== 'undefined' && console.debug) {
+      // Calculate truncated version of hash input for logging
+      const hashInputSummary = hashInput.length > 200 ? 
+        `${hashInput.substring(0, 100)}...${hashInput.substring(hashInput.length - 100)}` : 
+        hashInput;
+        
+      console.debug('Generated cache key:', {
+        cacheKey,
+        basename,
+        params,
+        format,
+        hash,
+        hashInputSummary,
+        rawTransformOptions: transformString
+      });
+    }
+    
+    return cacheKey;
   }
 
   /**
@@ -817,10 +953,33 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
 
   /**
    * Create a short hash for a string (used in key generation)
-   * Uses FNV-1a which is much faster than MD5
+   * Uses an enhanced FNV-1a implementation which is both fast and reliable
+   * 
+   * @param {string} input - The input string to hash
+   * @return {string} The 8-character hex hash
    */
   private createShortHash(input: string): string {
-    return fnv1a(input);
+    // Log hash inputs for debugging when needed
+    if (this.config.debug && typeof console !== 'undefined' && console.debug) {
+      // Truncate long inputs to prevent log flooding
+      const truncatedInput = input.length > 100 
+        ? `${input.substring(0, 50)}...${input.substring(input.length - 50)}`
+        : input;
+      
+      console.debug('Creating hash for input', {
+        inputLength: input.length,
+        inputPrefix: truncatedInput
+      });
+    }
+    
+    // Generate the hash using our improved FNV-1a implementation
+    const hash = fnv1a(input);
+    
+    if (this.config.debug && typeof console !== 'undefined' && console.debug) {
+      console.debug('Hash created', { hash });
+    }
+    
+    return hash;
   }
 
   /**

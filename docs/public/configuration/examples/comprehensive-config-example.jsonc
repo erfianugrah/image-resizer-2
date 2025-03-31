@@ -1,0 +1,566 @@
+{
+  /**
+   * Configuration System Metadata
+   * Contains information about the overall configuration.
+   */
+  "_meta": {
+    // Version of the overall configuration schema
+    "version": "1.0.0",
+    
+    // When the configuration was last updated
+    "lastUpdated": "2025-03-30T08:30:00.000Z",
+    
+    // List of modules that are currently active
+    "activeModules": ["core", "storage", "transform", "cache"]
+  },
+  
+  /**
+   * Configuration Modules
+   * Each module is a self-contained configuration section.
+   */
+  "modules": {
+    /**
+     * Core Module
+     * Contains fundamental settings for the service.
+     */
+    "core": {
+      "_meta": {
+        "name": "core",
+        "version": "1.0.0",
+        "description": "Core configuration module"
+      },
+      "config": {
+        // Environment the service is running in
+        "environment": "production",
+        
+        // Debug settings
+        "debug": {
+          // Whether debug mode is enabled
+          "enabled": true,
+          
+          // Whether to include verbose debugging information
+          "verbose": true,
+          
+          // Headers to include in debug output
+          "headers": ["ir", "cache", "mode", "client-hints", "ua", "device", "strategy"],
+          
+          // Environments where debug is allowed
+          "allowedEnvironments": ["development", "staging"],
+          
+          // Whether to include performance metrics in debug output
+          "includePerformance": true
+        },
+        
+        // Feature flags
+        "features": {
+          // Enable Akamai compatibility mode
+          "enableAkamaiCompatibility": true,
+          
+          // Enable advanced Akamai features
+          "enableAkamaiAdvancedFeatures": true,
+          
+          // Use optimized logging system
+          "optimizedLogging": true,
+          
+          // Enable lazy service initialization
+          "lazyServiceInitialization": true,
+          
+          // Use optimized client detection system
+          "optimizedClientDetection": true,
+          
+          // Use optimized caching system
+          "optimizedCaching": true,
+          
+          // Use optimized metadata fetching
+          "optimizedMetadataFetching": true
+        },
+        
+        // Logging settings
+        "logging": {
+          // Log level (DEBUG, INFO, WARN, ERROR)
+          "level": "INFO",
+          
+          // Whether to include timestamp in log output
+          "includeTimestamp": true,
+          
+          // Whether to use structured logging format
+          "enableStructuredLogs": true,
+          
+          // Whether to include breadcrumbs for request tracing
+          "enableBreadcrumbs": true,
+          
+          // Use Pino logger implementation
+          "usePino": true,
+          
+          // Format logs in a human-readable format
+          "prettyPrint": false,
+          
+          // Use colors in pretty-printed logs
+          "colorize": false
+        }
+      }
+    },
+    
+    /**
+     * Storage Module
+     * Configuration for storage providers and access.
+     */
+    "storage": {
+      "_meta": {
+        "name": "storage",
+        "version": "1.0.0",
+        "description": "Storage configuration module"
+      },
+      "config": {
+        // Priority order for storage providers
+        "priority": ["r2", "remote", "fallback"],
+        
+        // R2 storage configuration
+        "r2": {
+          "enabled": true,
+          "bindingName": "IMAGES_BUCKET"
+        },
+        
+        // Remote storage configuration
+        "remote": {
+          "url": "https://cdn.example.com/images",
+          "auth": {
+            "enabled": true,
+            "type": "aws-s3",
+            "region": "us-east-1",
+            "service": "s3",
+            "accessKeyVar": "AWS_ACCESS_KEY_ID",
+            "secretKeyVar": "AWS_SECRET_ACCESS_KEY"
+          },
+          "fetchOptions": {
+            "userAgent": "Cloudflare-Image-Resizer/1.0-PROD",
+            "headers": {
+              "Accept": "image/*"
+            }
+          }
+        },
+        
+        // Fallback URL if primary sources fail
+        "fallback": {
+          "url": "https://cdn.fallback.com",
+          "auth": {
+            "enabled": false,
+            "type": "bearer",
+            "tokenHeaderName": "Authorization"
+          }
+        },
+        
+        // Authentication settings
+        "auth": {
+          // Whether to use origin-specific authentication
+          "useOriginAuth": true,
+          
+          // Whether to make images publicly accessible
+          "sharePublicly": true,
+          
+          // Security level for access control
+          "securityLevel": "strict",
+          
+          // Cache TTL for authentication tokens
+          "cacheTtl": 86400,
+          
+          // Origin-specific authentication settings
+          "origins": {
+            // Secure origin with bearer token auth
+            "secure": {
+              "domain": "secure-images.example.com",
+              "type": "bearer",
+              "tokenHeaderName": "Authorization",
+              "tokenExpiration": 3600
+            },
+            
+            // S3 origin with AWS auth
+            "s3": {
+              "domain": "s3.amazonaws.com",
+              "type": "aws-s3",
+              "region": "us-east-1",
+              "service": "s3",
+              "accessKeyVar": "AWS_ACCESS_KEY_ID",
+              "secretKeyVar": "AWS_SECRET_ACCESS_KEY"
+            },
+            
+            // API origin with key-based auth
+            "api": {
+              "domain": "api-images.example.com",
+              "type": "header",
+              "headers": {
+                // Use environment variable for API key
+                "X-API-Key": "${API_KEY}"
+              }
+            }
+          }
+        },
+        
+        /**
+         * Path-Based Origins
+         * Configure different storage sources based on URL path patterns.
+         */
+        "pathBasedOrigins": {
+          // Product images configuration
+          "products": {
+            "pattern": "/products/.*",
+            "priority": ["r2", "remote"],
+            "r2": {
+              "enabled": true,
+              "bindingName": "PRODUCTS_BUCKET"
+            },
+            "remoteUrl": "https://products.example.com/images",
+            "remoteAuth": {
+              "enabled": true,
+              "type": "aws-s3",
+              "region": "us-east-1",
+              "service": "s3",
+              "accessKeyVar": "PRODUCTS_AWS_ACCESS_KEY_ID",
+              "secretKeyVar": "PRODUCTS_AWS_SECRET_ACCESS_KEY"
+            },
+            "pathTransforms": {
+              "prefix": "product-images",
+              "removePrefix": true
+            }
+          },
+          
+          // Profile/avatar images configuration
+          "profiles": {
+            "pattern": "/profiles/.*",
+            "priority": ["r2", "remote"],
+            "r2": {
+              "enabled": true,
+              "bindingName": "PROFILES_BUCKET"
+            },
+            "remoteUrl": "https://profiles.example.com/avatars",
+            "remoteAuth": {
+              "enabled": false
+            },
+            "pathTransforms": {
+              "prefix": "avatars",
+              "removePrefix": true
+            }
+          },
+          
+          // Blog images configuration
+          "blog": {
+            "pattern": "/blog/.*",
+            "priority": ["remote", "r2"],
+            "remoteUrl": "https://blog-media.example.com",
+            "remoteAuth": {
+              "enabled": true,
+              "type": "header",
+              "headers": {
+                "X-API-Key": "${BLOG_API_KEY}"
+              }
+            },
+            "r2": {
+              "enabled": true,
+              "bindingName": "BLOG_BUCKET"
+            },
+            "pathTransforms": {
+              "prefix": "media",
+              "removePrefix": true
+            }
+          },
+          
+          // Static assets configuration
+          "static": {
+            "pattern": "/static/.*",
+            "priority": ["r2"],
+            "r2": {
+              "enabled": true,
+              "bindingName": "STATIC_BUCKET"
+            },
+            "pathTransforms": {
+              "prefix": "",
+              "removePrefix": true
+            }
+          }
+        },
+        
+        /**
+         * Path Transforms
+         * Configure path transformations for directory structure.
+         */
+        "pathTransforms": {
+          "images": {
+            "prefix": "",
+            "removePrefix": true
+          },
+          "assets": {
+            "prefix": "img/",
+            "removePrefix": true,
+            "r2": {
+              "prefix": "img/",
+              "removePrefix": true
+            },
+            "remote": {
+              "prefix": "assets/",
+              "removePrefix": true
+            },
+            "fallback": {
+              "prefix": "public/",
+              "removePrefix": true
+            }
+          },
+          "content": {
+            "prefix": "content-images/",
+            "removePrefix": true
+          }
+        }
+      }
+    },
+    
+    /**
+     * Transform Module
+     * Configuration for image transformation operations.
+     */
+    "transform": {
+      "_meta": {
+        "name": "transform",
+        "version": "1.0.0",
+        "description": "Transformation configuration module"
+      },
+      "config": {
+        /**
+         * Default transformation settings
+         */
+        "defaults": {
+          // Default image quality
+          "quality": 85,
+          
+          // Default output format
+          "format": "auto",
+          
+          // Default fit mode
+          "fit": "scale-down",
+          
+          // Metadata handling
+          "metadata": "none"
+        },
+        
+        /**
+         * Format-specific quality settings
+         */
+        "formatQuality": {
+          "webp": 85,
+          "avif": 80,
+          "jpeg": 85,
+          "png": 90,
+          "gif": 85
+        },
+        
+        /**
+         * Image Derivatives
+         * Predefined transformation presets for common use cases.
+         */
+        "derivatives": {
+          // Thumbnail preset
+          "thumbnail": {
+            "width": 320,
+            "height": 150,
+            "fit": "cover",
+            "gravity": "auto"
+          },
+          
+          // Avatar preset
+          "avatar": {
+            "width": 180,
+            "height": 180,
+            "fit": "cover",
+            "gravity": "face"
+          },
+          
+          // Banner preset
+          "banner": {
+            "width": 1600,
+            "height": 400,
+            "fit": "cover",
+            "gravity": "auto"
+          },
+          
+          // Product image preset
+          "product": {
+            "width": 800,
+            "height": 800,
+            "fit": "contain",
+            "background": "white"
+          },
+          
+          // Open Graph image preset
+          "og": {
+            "width": 1200,
+            "height": 630,
+            "fit": "cover",
+            "gravity": "auto"
+          },
+          
+          // Twitter image preset
+          "twitter": {
+            "width": 1200,
+            "height": 600,
+            "fit": "cover",
+            "gravity": "auto"
+          },
+          
+          // Mobile image preset
+          "mobile": {
+            "width": 480,
+            "format": "auto",
+            "quality": 80
+          },
+          
+          // Desktop image preset
+          "desktop": {
+            "width": 1440,
+            "format": "auto",
+            "quality": 85
+          }
+        },
+        
+        /**
+         * Size Codes
+         * Shorthand codes that map to specific widths.
+         */
+        "sizeCodes": {
+          "xxu": 40,    // Extra extra ultra small
+          "xu": 80,     // Extra ultra small
+          "u": 160,     // Ultra small
+          "xxxs": 300,  // Triple extra small
+          "xxs": 400,   // Double extra small
+          "xs": 500,    // Extra small
+          "s": 600,     // Small
+          "m": 700,     // Medium
+          "l": 750,     // Large
+          "xl": 900,    // Extra large
+          "xxl": 1100,  // Double extra large
+          "xxxl": 1400, // Triple extra large
+          "sg": 1600,   // Small giant
+          "g": 2000,    // Giant
+          "xg": 3000,   // Extra giant
+          "xxg": 4000   // Double extra giant
+        }
+      }
+    },
+    
+    /**
+     * Cache Module
+     * Configuration for caching behavior.
+     */
+    "cache": {
+      "_meta": {
+        "name": "cache",
+        "version": "1.0.0",
+        "description": "Cache configuration module"
+      },
+      "config": {
+        // Caching method ("cf" for Cloudflare)
+        "method": "cf",
+        
+        // TTL settings
+        "ttl": {
+          // Default TTL for all responses
+          "default": 86400, // 24 hours
+          
+          // TTL settings by status code category
+          "status": {
+            "success": 86400,    // 24 hours for 2xx responses
+            "redirects": 3600,   // 1 hour for 3xx responses
+            "clientError": 60,   // 1 minute for 4xx responses
+            "serverError": 10    // 10 seconds for 5xx responses
+          },
+          
+          // TTL settings by content type
+          "contentType": {
+            "image/jpeg": 604800,  // 7 days
+            "image/png": 604800,   // 7 days
+            "image/webp": 604800,  // 7 days
+            "image/avif": 604800,  // 7 days
+            "image/gif": 604800,   // 7 days
+            "image/svg+xml": 2592000 // 30 days
+          }
+        },
+        
+        // Whether to cache all content types
+        "cacheEverything": true,
+        
+        // Use different TTLs based on status code
+        "useTtlByStatus": true,
+        
+        // Status code based TTL configuration
+        "cacheTtlByStatus": {
+          "200-299": 604800,       // 7 days for success codes
+          "301-302": 86400,        // 1 day for redirects
+          "404": 60,               // 1 minute for not found
+          "500-599": 10            // 10 seconds for server errors
+        },
+        
+        // Whether content is cacheable
+        "cacheability": true,
+        
+        // Cache tags configuration
+        "tags": {
+          "enabled": true,
+          "prefix": "img-",
+          "includeImageDimensions": true,
+          "includeFormat": true,
+          "includeQuality": true,
+          "includeDerivative": true,
+          "customTags": [],
+          "maxTags": 10
+        },
+        
+        // Cache bypass configuration
+        "bypass": {
+          "paths": [
+            "/admin/",
+            "/preview/",
+            "/draft/",
+            "/temp/",
+            "/test/"
+          ],
+          "params": ["nocache", "refresh", "force-refresh"],
+          "inDevelopment": true,
+          "forAdmin": true,
+          "formats": []
+        },
+        
+        // Parameters that bypass cache
+        "bypassParams": ["nocache", "refresh"],
+        
+        // Path-specific TTL settings
+        "pathBasedTtl": {
+          "/products/": 86400,     // 1 day for products
+          "/profiles/": 1209600,   // 2 weeks for profiles
+          "/blog/": 86400,         // 1 day for blog
+          "/static/": 2592000      // 30 days for static assets
+        },
+        
+        // Path-specific cache tags
+        "pathBasedTags": {
+          "/products/": ["product", "catalog"],
+          "/profiles/": ["profile", "avatar"],
+          "/blog/": ["blog", "content"],
+          "/static/": ["static", "assets"]
+        },
+        
+        // KV Transform cache configuration
+        "transformCache": {
+          "enabled": true,
+          "binding": "IMAGE_TRANSFORMATIONS_CACHE",
+          "prefix": "transform",
+          "maxSize": 26214400, // 25MB
+          "defaultTtl": 86400, // 1 day
+          "backgroundIndexing": true,
+          "disallowedPaths": [
+            "/admin/",
+            "/preview/",
+            "/draft/",
+            "/temp/"
+          ]
+        }
+      }
+    }
+  }
+}

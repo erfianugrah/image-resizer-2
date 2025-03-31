@@ -30,6 +30,10 @@ import { createAuthService } from './authServiceFactory';
 import { createPathService } from './pathService';
 import { createLogger } from '../utils/logger-factory';
 import { createParameterHandler } from '../parameters/serviceFactory';
+// Import configuration services
+import { ConfigStoreInterface, ConfigurationApiService } from './config/interfaces';
+import { KVConfigStore } from './config/KVConfigStore';
+import { DefaultConfigurationApiService } from './config/ConfigurationApiService';
 
 interface ServiceRegistration<T> {
   instance?: T;
@@ -190,6 +194,12 @@ export class DefaultDIContainer implements DIContainer {
         authService,
         logger,
         
+        // Add service resolution methods
+        resolve: <T>(serviceType: string): T => this.resolve<T>(serviceType),
+        registerFactory: <T>(serviceType: string, factory: () => T, singleton?: boolean): void => {
+          this.registerFactory(serviceType, factory, singleton);
+        },
+        
         // Add lifecycle management methods
         async initialize(): Promise<void> {
           logger.debug('Initializing service container lifecycle');
@@ -204,6 +214,31 @@ export class DefaultDIContainer implements DIContainer {
           if ('initialize' in loggingService && typeof loggingService.initialize === 'function') {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             await (loggingService as any).initialize();
+          }
+          
+          // Initialize configuration API services early in the lifecycle
+          if (container.configStore && 'initialize' in container.configStore) {
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              await (container.configStore as any).initialize();
+              logger.debug('ConfigStore initialized successfully');
+            } catch (error) {
+              logger.error('Failed to initialize ConfigStore', {
+                error: error instanceof Error ? error.message : String(error)
+              });
+            }
+          }
+          
+          if (container.configApiService && 'initialize' in container.configApiService) {
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              await (container.configApiService as any).initialize();
+              logger.debug('ConfigApiService initialized successfully');
+            } catch (error) {
+              logger.error('Failed to initialize ConfigApiService', {
+                error: error instanceof Error ? error.message : String(error)
+              });
+            }
           }
           
           if ('initialize' in authService && typeof authService.initialize === 'function') {
@@ -278,6 +313,31 @@ export class DefaultDIContainer implements DIContainer {
             await (loggingService as any).shutdown();
           }
           
+          // Shut down configuration API services before main configuration
+          if (container.configApiService && 'shutdown' in container.configApiService) {
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              await (container.configApiService as any).shutdown();
+              logger.debug('ConfigApiService shutdown successfully');
+            } catch (error) {
+              logger.error('Failed to shutdown ConfigApiService', {
+                error: error instanceof Error ? error.message : String(error)
+              });
+            }
+          }
+          
+          if (container.configStore && 'shutdown' in container.configStore) {
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              await (container.configStore as any).shutdown();
+              logger.debug('ConfigStore shutdown successfully');
+            } catch (error) {
+              logger.error('Failed to shutdown ConfigStore', {
+                error: error instanceof Error ? error.message : String(error)
+              });
+            }
+          }
+          
           // Shut down configuration service last
           if ('shutdown' in configurationService && typeof configurationService.shutdown === 'function') {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -324,6 +384,30 @@ export class DefaultDIContainer implements DIContainer {
         }
       }
       
+      // Add the config store service if it's registered
+      if (this.isRegistered(ServiceTypes.CONFIG_STORE)) {
+        try {
+          container.configStore = this.resolve<ConfigStoreInterface>(ServiceTypes.CONFIG_STORE);
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        } catch (e) {
+          logger.warn('Failed to resolve ConfigStore, continuing without it', {
+            error: e instanceof Error ? e.message : String(e)
+          });
+        }
+      }
+      
+      // Add the config API service if it's registered
+      if (this.isRegistered(ServiceTypes.CONFIG_API_SERVICE)) {
+        try {
+          container.configApiService = this.resolve<ConfigurationApiService>(ServiceTypes.CONFIG_API_SERVICE);
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        } catch (e) {
+          logger.warn('Failed to resolve ConfigApiService, continuing without it', {
+            error: e instanceof Error ? e.message : String(e)
+          });
+        }
+      }
+      
       return container;
     } catch (error) {
       // If any service is missing, throw an error
@@ -364,7 +448,10 @@ export const ServiceTypes = {
   AUTH_SERVICE: 'AuthService',
   PATH_SERVICE: 'PathService',
   DETECTOR_SERVICE: 'DetectorService',
-  PARAMETER_HANDLER_SERVICE: 'ParameterHandlerService'
+  PARAMETER_HANDLER_SERVICE: 'ParameterHandlerService',
+  // Configuration API services
+  CONFIG_STORE: 'ConfigStore',
+  CONFIG_API_SERVICE: 'ConfigApiService'
 };
 
 /**
@@ -528,6 +615,79 @@ export function createContainerBuilder(env: Env): DIContainer {
     const logger = loggingService.getLogger('ParameterHandler');
     
     return createParameterHandler(logger);
+  });
+  
+  // Register ConfigStore
+  container.registerFactory(ServiceTypes.CONFIG_STORE, () => {
+    const loggingService = container.resolve<DefaultLoggingService>(ServiceTypes.LOGGING_SERVICE);
+    const logger = loggingService.getLogger('KVConfigStore');
+    
+    // Check for the appropriate KV binding based on environment
+    let configStore: KVNamespace | undefined;
+    
+    // Check if we're in development mode
+    if (env.ENVIRONMENT === 'development' && env.IMAGE_CONFIGURATION_STORE_DEV) {
+      configStore = env.IMAGE_CONFIGURATION_STORE_DEV;
+      logger.debug('Using development configuration store binding: IMAGE_CONFIGURATION_STORE_DEV');
+    }
+    // Otherwise, use the production binding
+    else if (env.IMAGE_CONFIGURATION_STORE) {
+      configStore = env.IMAGE_CONFIGURATION_STORE;
+      logger.debug('Using production configuration store binding: IMAGE_CONFIGURATION_STORE');
+    }
+    // Legacy fallback for backward compatibility
+    else if (env.CONFIG_STORE) {
+      configStore = env.CONFIG_STORE;
+      logger.warn('Using deprecated CONFIG_STORE binding - please update to IMAGE_CONFIGURATION_STORE');
+    }
+    
+    // If no store is available, create an in-memory fallback for local development
+    if (!configStore) {
+      if (env.ENVIRONMENT === 'development') {
+        logger.warn('Configuration store KV binding is not available, using in-memory fallback for development');
+        // Create a simple in-memory KV namespace implementation
+        configStore = {
+          get: async (key: string) => {
+            logger.debug(`In-memory ConfigStore GET ${key}`);
+            return null; // Always return null - this is just for testing the API endpoint
+          },
+          put: async (key: string, value: string) => {
+            logger.debug(`In-memory ConfigStore PUT ${key}: ${value.substring(0, 50)}...`);
+            return undefined;
+          },
+          list: async () => {
+            logger.debug('In-memory ConfigStore LIST keys');
+            return { keys: [] };
+          }
+        } as unknown as KVNamespace;
+      } else {
+        // Only throw error in production environments
+        logger.error('Configuration store KV binding is not available in the environment');
+        throw new Error('Configuration store KV binding (IMAGE_CONFIGURATION_STORE or IMAGE_CONFIGURATION_STORE_DEV) is required for the configuration API');
+      }
+    }
+    
+    return new KVConfigStore(configStore, logger);
+  });
+  
+  // Register ConfigApiService
+  container.registerFactory(ServiceTypes.CONFIG_API_SERVICE, () => {
+    const loggingService = container.resolve<DefaultLoggingService>(ServiceTypes.LOGGING_SERVICE);
+    const configStore = container.resolve<ConfigStoreInterface>(ServiceTypes.CONFIG_STORE);
+    const logger = loggingService.getLogger('ConfigApiService');
+    
+    // Extract environment variables as a record for config value resolution
+    const envVars: Record<string, string> = {};
+    for (const key in env) {
+      if (Object.prototype.hasOwnProperty.call(env, key)) {
+        const value = env[key as keyof typeof env];
+        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+          envVars[key] = String(value);
+        }
+      }
+    }
+    
+    return new DefaultConfigurationApiService(configStore, envVars, logger);
   });
   
   return container;

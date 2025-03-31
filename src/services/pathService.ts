@@ -209,11 +209,11 @@ export class PathServiceImpl implements PathService {
    * Parse query parameters for image options
    * 
    * @param searchParams URL search parameters
-   * @returns Object with parsed and normalized transformation options
+   * @returns Promise with parsed and normalized transformation options
    */
-  parseQueryOptions(
+  async parseQueryOptions(
     searchParams: URLSearchParams
-  ): Record<string, unknown> {
+  ): Promise<Record<string, unknown>> {
     this.logger.breadcrumb('Parsing query options', undefined, {
       paramCount: Array.from(searchParams.keys()).length
     });
@@ -230,18 +230,21 @@ export class PathServiceImpl implements PathService {
     // Note: Our ParameterHandler handles all the parameter processing logic now
     // including auto/numeric params, boolean params, enums, etc.
     
+    // We need to resolve the promise since ParameterHandler.handleRequest is now async
+    const resolvedOptions = await options;
+    
     this.logger.breadcrumb('Completed parsing query options', undefined, {
-      optionCount: Object.keys(options).length,
-      hasWidth: options.width !== undefined,
-      hasHeight: options.height !== undefined,
-      hasFormat: options.format !== undefined,
-      hasBlur: options.blur !== undefined,
-      hasFlip: options.flip !== undefined,
-      flipValue: options.flip !== undefined ? 
-        (typeof options.flip === 'string' ? options.flip : String(options.flip)) : 'undefined'
+      optionCount: Object.keys(resolvedOptions).length,
+      hasWidth: resolvedOptions.width !== undefined,
+      hasHeight: resolvedOptions.height !== undefined,
+      hasFormat: resolvedOptions.format !== undefined,
+      hasBlur: resolvedOptions.blur !== undefined,
+      hasFlip: resolvedOptions.flip !== undefined,
+      flipValue: resolvedOptions.flip !== undefined ? 
+        (typeof resolvedOptions.flip === 'string' ? resolvedOptions.flip : String(resolvedOptions.flip)) : 'undefined'
     });
     
-    return options;
+    return resolvedOptions;
   }
 
   /**

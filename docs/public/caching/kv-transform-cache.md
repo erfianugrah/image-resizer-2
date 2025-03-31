@@ -133,8 +133,15 @@ console.log(`Cache contains ${stats.count} entries, total size: ${stats.size} by
 ### Cache Keys
 
 Each transformed image is stored with a unique cache key based on:
-- The request URL (without cache-busting query parameters)
-- The transformation options applied
+- Prefix (default: `transform`)
+- Image path basename
+- Normalized transform parameters (w800-h600-fcover)
+- Output format (webp, avif, etc.)
+- Hash of original URL path, search parameters, and transform options
+
+For example: `transform:Granna_1.JPG:w800-h600-r16-9:webp:a1b2c3d4`
+
+The hash ensures that different parameter combinations always generate unique cache keys, while the normalized format makes keys human-readable for debugging.
 
 ### Metadata
 
@@ -164,6 +171,10 @@ To avoid blocking response times, index updates and purging operations are perfo
 3. **Use Path Patterns for Structure**: Organize images in path patterns that make sense for your application's purging needs.
 4. **Limit Cache Entry Size**: Configure `maxSize` appropriately to avoid storing very large images.
 5. **Monitor Cache Statistics**: Regularly check cache stats to ensure optimal performance.
+6. **Use Consistent Parameters**: Standardize width, quality, and format settings to maximize cache hits.
+7. **Use Explicit Width Parameters**: Always specify width explicitly rather than relying on responsive calculations for better cache efficiency.
+8. **Consider Size Codes**: Use size codes (`f` parameter) for common dimensions to ensure consistency.
+9. **Parameter Handling**: Be aware that different parameter types (standard, compact, Akamai) are all supported and will generate appropriate cache keys.
 
 ## Performance Considerations
 

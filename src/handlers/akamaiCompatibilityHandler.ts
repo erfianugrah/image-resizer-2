@@ -78,7 +78,7 @@ export function addAkamaiCompatibilityHeader(
   isAkamai: boolean,
   services: ServiceContainer
 ): Response {
-  const { logger, configurationService } = services;
+  const { logger } = services;
   
   // If not Akamai format, return original response
   if (!isAkamai) {

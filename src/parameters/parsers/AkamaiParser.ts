@@ -130,6 +130,12 @@ export class AkamaiParser implements ParameterParser {
       'imrotate': 'rotate'
     };
     
+    // Add debug logging for Akamai parameters
+    this.logger.debug('Checking for Akamai specific parameters', {
+      searchParams: Array.from(searchParams.entries()).map(([k, v]) => `${k}=${v}`).join(', '),
+      hasImwidth: searchParams.has('imwidth')
+    });
+    
     for (const [akamaiParam, cloudflareParam] of Object.entries(akamaiSpecificMappings)) {
       if (searchParams.has(akamaiParam)) {
         const value = searchParams.get(akamaiParam) || '';
@@ -144,6 +150,25 @@ export class AkamaiParser implements ParameterParser {
           if (!isNaN(numValue)) {
             parsedValue = numValue;
           }
+        }
+        
+        // For imwidth and imheight, pass through as is (we'll convert in the processor)
+        if (akamaiParam === 'imwidth' || akamaiParam === 'imheight') {
+          const numValue = parseInt(value, 10);
+          if (!isNaN(numValue)) {
+            this.logger.debug(`Processing ${akamaiParam} parameter`, {
+              rawValue: value,
+              parsedValue: numValue
+            });
+            
+            parameters.push({
+              name: akamaiParam, // Keep original name
+              value: numValue,
+              source: 'akamai',
+              priority: 90 // Higher priority for direct parameters
+            });
+          }
+          continue; // Skip the default mapping for these parameters
         }
         
         parameters.push({

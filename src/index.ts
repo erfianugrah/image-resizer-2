@@ -264,6 +264,65 @@ export default {
           );
         }
       }
+      
+      // Handle Configuration API requests (path starts with /api/config)
+      if (url.pathname.startsWith("/api/config")) {
+        try {
+          // Import the config API handler dynamically
+          const { handleConfigApiRequest } = await import(
+            "./handlers/configApiHandler"
+          );
+          
+          performanceMonitor.startOperation("config_api");
+          logger.debug("Handling configuration API request", {
+            path: url.pathname,
+            method: request.method
+          });
+          
+          const configApiResponse = await handleConfigApiRequest(
+            request,
+            url,
+            services,
+            env
+          );
+          
+          performanceMonitor.endOperation("config_api", {
+            status: configApiResponse.status
+          });
+          
+          performanceMonitor.endOperation("total", {
+            type: "config_api"
+          });
+          performanceMonitor.endRequest({
+            status: configApiResponse.status,
+            type: "config_api"
+          });
+          
+          return configApiResponse;
+        } catch (error) {
+          logger.error("Error in configuration API handler", {
+            error: error instanceof Error ? error.message : String(error),
+            path: url.pathname,
+            method: request.method
+          });
+          
+          // Return an error response for Config API errors
+          const errorResponse = createErrorResponse(
+            new AppError("Error processing configuration request", { 
+              details: { error: error instanceof Error ? error.message : String(error) }, 
+              status: 500 
+            })
+          );
+          
+          performanceMonitor.endOperation("total", { type: "config_api_error" });
+          performanceMonitor.endRequest({
+            status: errorResponse.status,
+            type: "config_api_error"
+          });
+          
+          return errorResponse;
+        }
+      }
 
       // Handle Akamai compatibility if applicable
       performanceMonitor.startOperation("akamai_compat");

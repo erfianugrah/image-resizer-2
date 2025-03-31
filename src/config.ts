@@ -377,6 +377,8 @@ export interface ImageResizerConfig {
       mobileRegex?: string;
       tabletRegex?: string;
     };
+    // Supported input formats that will be processed by the transformer
+    supportedFormats?: string[];
   };
   
   // Metadata processing settings
@@ -960,7 +962,8 @@ export const defaultConfig: ImageResizerConfig = {
     deviceDetection: {
       mobileRegex: 'Mobile|Android|iPhone|iPad|iPod',
       tabletRegex: 'iPad|Android(?!.*Mobile)'
-    }
+    },
+    supportedFormats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']
   },
   
   storage: {
@@ -1265,7 +1268,8 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
         'avif': 75,
         'jpeg': 80,
         'png': 85
-      }
+      },
+      supportedFormats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']
     },
     storage: {
       priority: ['r2', 'remote', 'fallback'],
@@ -1772,7 +1776,8 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
         'avif': 80,
         'jpeg': 85,
         'png': 90
-      }
+      },
+      supportedFormats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']
     },
     storage: {
       priority: ['r2', 'remote', 'fallback'],
@@ -2101,7 +2106,7 @@ export function getConfig(env: Env): ImageResizerConfig {
   }
 
   // Apply R2 configuration if available
-  if (env.IMAGES_BUCKET) {
+  if ((env as any).IMAGES_BUCKET) {
     config.storage.r2.enabled = true;
   } else {
     config.storage.r2.enabled = false;

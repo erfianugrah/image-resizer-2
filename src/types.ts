@@ -190,7 +190,18 @@ export interface Env {
   ASSETS?: Fetcher;
   KV_TEST?: KVNamespace;
   IMAGE_METADATA_CACHE?: KVNamespace; // KV for metadata caching
+  IMAGE_METADATA_CACHE_DEV?: KVNamespace; // KV for metadata caching in dev
   IMAGE_TRANSFORMATIONS_CACHE?: KVNamespace; // KV for transform caching
+  IMAGE_TRANSFORMATIONS_CACHE_DEV?: KVNamespace; // KV for transform caching in dev
+  CONFIG_STORE?: KVNamespace; // Legacy KV for configuration storage
+  IMAGE_CONFIGURATION_STORE?: KVNamespace; // KV for configuration storage
+  IMAGE_CONFIGURATION_STORE_DEV?: KVNamespace; // KV for configuration storage in dev
+  
+  // Configuration API Authentication
+  CONFIG_API_KEY?: string;
+  CONFIG_ADMIN_USER?: string;
+  CONFIG_ADMIN_PASSWORD?: string;
+  DISABLE_CONFIG_AUTH?: string;
   
   // Transform Cache Configuration - adding these explicitly
   TRANSFORM_CACHE_ENABLED?: string;
@@ -213,12 +224,41 @@ export interface Env {
 
 // Cloudflare Workers types
 declare global {
-  interface R2Bucket {}
+  interface R2Bucket {
+    get(key: string): Promise<R2Object | null>;
+    put(key: string, value: ArrayBuffer | ReadableStream | string): Promise<R2Object>;
+    delete(key: string): Promise<void>;
+  }
+  
+  // For R2Object, use a simplified interface that avoids conflicts
+  interface R2Object {
+    readonly key: string;
+    readonly version: string;
+    readonly size: number;
+    readonly etag: string;
+    readonly httpEtag: string;
+    readonly uploaded: Date;
+    readonly body: ReadableStream<Uint8Array>;
+    readonly bodyUsed: boolean;
+    writeHttpMetadata(headers: Headers): void;
+    arrayBuffer(): Promise<ArrayBuffer>;
+    text(): Promise<string>;
+    json<T>(): Promise<T>;
+    blob(): Promise<Blob>;
+  }
   
   // Define only if it doesn't exist already
   interface WorkersFetcher extends Fetcher {}
   
-  interface KVNamespace {}
+  // Let TypeScript use Workers Types definitions instead of defining our own
+  // Just declare the interface without specific implementation details
+  interface KVNamespace {
+    get(key: string, options?: any): Promise<any>;
+    getWithMetadata(key: string, options?: any): Promise<any>;
+    put(key: string, value: string | ReadableStream | ArrayBuffer, options?: any): Promise<void>;
+    delete(key: string): Promise<void>;
+    list(options?: any): Promise<any>;
+  }
 }
 
 export {};

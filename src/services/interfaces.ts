@@ -10,6 +10,7 @@ import { Logger } from '../utils/logging';
 import { PathTransforms } from '../utils/path';
 import { Env } from '../types';
 import type { ExecutionContext } from '@cloudflare/workers-types';
+import { ConfigurationApiService, ConfigStoreInterface } from './config/interfaces';
 
 /**
  * Performance timing points for tracking request processing
@@ -798,7 +799,7 @@ export interface PathService {
    */
   parseQueryOptions(
     searchParams: URLSearchParams
-  ): Record<string, unknown>;
+  ): Promise<Record<string, unknown>>;
   
   /**
    * Apply transformations to an image path
@@ -964,6 +965,8 @@ export interface ServiceContainer {
   parameterHandler?: ParameterHandlerService;
   lifecycleManager?: LifecycleManagerService;
   metadataService?: MetadataFetchingService;
+  configStore?: ConfigStoreInterface;
+  configApiService?: ConfigurationApiService;
   
   /**
    * Initialize all services in the container
@@ -978,6 +981,24 @@ export interface ServiceContainer {
    * @returns Promise that resolves when all services are shut down
    */
   shutdown(): Promise<void>;
+  
+  /**
+   * Get an instance of a registered service by its type
+   * 
+   * @param serviceType The service type identifier
+   * @returns An instance of the requested service
+   * @throws Error if the service is not registered
+   */
+  resolve<T>(serviceType: string): T;
+  
+  /**
+   * Register a factory function for creating a service implementation
+   * 
+   * @param serviceType The service type identifier
+   * @param factory Factory function that will create the implementation
+   * @param singleton Whether this service should be treated as a singleton (default: true)
+   */
+  registerFactory<T>(serviceType: string, factory: () => T, singleton?: boolean): void;
 }
 
 /**
@@ -988,9 +1009,9 @@ export interface ParameterHandlerService {
    * Process parameters from a request
    * 
    * @param request The request to process
-   * @returns Normalized parameters for image transformation
+   * @returns Promise with normalized parameters for image transformation
    */
-  handleRequest(request: Request): Record<string, any>;
+  handleRequest(request: Request): Promise<Record<string, any>>;
 }
 
 /**

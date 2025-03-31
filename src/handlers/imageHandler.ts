@@ -38,13 +38,29 @@ export async function handleImageRequest(
   
   // Extract the path for the image (everything after removing any path parameters)
   const pathSegments = url.pathname.split('/').filter(Boolean);
-  const optionSegments = pathSegments.filter(segment => segment.startsWith('_') && segment.includes('='));
+  // Extract option segments (for potential future use)
+  // const optionSegments = pathSegments.filter(segment => segment.startsWith('_') && segment.includes('='));
   const nonOptionSegments = pathSegments.filter(segment => !(segment.startsWith('_') && segment.includes('=')));
   const originalPath = '/' + nonOptionSegments.join('/');
   
   // Validate path - must have some content
   if (!originalPath || originalPath === '/') {
     throw new ValidationError('Invalid image path', { path: originalPath });
+  }
+  
+  // Check if the file is a supported image format based on extension
+  // Get the supported formats from configuration, or use defaults
+  const fileExtension = originalPath.split('.').pop()?.toLowerCase();
+  const supportedImageExtensions = config.responsive.supportedFormats || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+  
+  if (fileExtension && !supportedImageExtensions.includes(fileExtension)) {
+    logger.debug('Non-supported image format detected, bypassing transformation', {
+      path: originalPath,
+      extension: fileExtension
+    });
+    
+    // Forward the request directly to avoid storage failures and unnecessary processing
+    return await fetch(request);
   }
   
   // Apply path transformations if configured
@@ -55,13 +71,20 @@ export async function handleImageRequest(
   
   // Use the new parameter handler to process all parameters
   const parameterHandler = new ParameterHandler(logger);
-  const optionsFromUrl: TransformOptions = parameterHandler.handleRequest(request);
+  const optionsFromUrl: TransformOptions = await parameterHandler.handleRequest(request);
   
-  // Log the parsed options
+  // Log the parsed options with more detailed info
   logger.debug('Parsed transformation options', {
     optionCount: Object.keys(optionsFromUrl).length,
     hasWidth: optionsFromUrl.width !== undefined,
-    hasHeight: optionsFromUrl.height !== undefined
+    width: optionsFromUrl.width,
+    hasExplicitWidth: optionsFromUrl.__explicitWidth === true,
+    hasHeight: optionsFromUrl.height !== undefined,
+    height: optionsFromUrl.height,
+    hasExplicitHeight: optionsFromUrl.__explicitHeight === true,
+    format: optionsFromUrl.format,
+    fit: optionsFromUrl.fit,
+    paramNames: Object.keys(optionsFromUrl).join(',')
   });
   
   // Check for derivative in path segments

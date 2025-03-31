@@ -30,6 +30,14 @@ import {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   PathService
 } from './interfaces';
+
+// Import configuration API service interfaces
+import { 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  ConfigStoreInterface, 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  ConfigurationApiService 
+} from './config/interfaces';
 // Service implementations are imported for lazy instantiation
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { DefaultCacheService } from './cacheService';
@@ -47,6 +55,9 @@ import { createCacheService } from './cacheServiceFactory';
 import { createAuthService } from './authServiceFactory';
 import { createPathService } from './pathService';
 import { createParameterHandler } from '../parameters/serviceFactory';
+// Import configuration API services
+import { KVConfigStore } from './config/KVConfigStore';
+import { DefaultConfigurationApiService } from './config/ConfigurationApiService';
 
 /**
  * Create a lazy-loading service container with proxy-based initialization
@@ -423,14 +434,105 @@ export function createLazyServiceContainer(env: Env): ServiceContainer {
       return createParameterHandler(parameterHandlerLogger);
     },
     
+    // Config store service initialization
+    configStore: () => {
+      // Ensure logging service is initialized
+      if (!realServices.loggingService) {
+        realServices.loggingService = serviceFactories.loggingService();
+      }
+      
+      const configStoreLogger = realServices.loggingService!.getLogger('KVConfigStore');
+      
+      // Check for the appropriate KV binding based on environment
+      let configStore: KVNamespace | undefined;
+      
+      // Check if we're in development mode
+      if (env.ENVIRONMENT === 'development' && env.IMAGE_CONFIGURATION_STORE_DEV) {
+        configStore = env.IMAGE_CONFIGURATION_STORE_DEV;
+        configStoreLogger.debug('Using development configuration store binding: IMAGE_CONFIGURATION_STORE_DEV');
+      }
+      // Otherwise, use the production binding
+      else if (env.IMAGE_CONFIGURATION_STORE) {
+        configStore = env.IMAGE_CONFIGURATION_STORE;
+        configStoreLogger.debug('Using production configuration store binding: IMAGE_CONFIGURATION_STORE');
+      }
+      // Legacy fallback for backward compatibility
+      else if (env.CONFIG_STORE) {
+        configStore = env.CONFIG_STORE;
+        configStoreLogger.warn('Using deprecated CONFIG_STORE binding - please update to IMAGE_CONFIGURATION_STORE');
+      }
+      
+      // If no store is available, throw an error
+      if (!configStore) {
+        configStoreLogger.error('Configuration store KV binding is not available in the environment');
+        throw new Error('Configuration store KV binding (IMAGE_CONFIGURATION_STORE or IMAGE_CONFIGURATION_STORE_DEV) is required for the configuration API');
+      }
+      
+      // Create the KV config store
+      return new KVConfigStore(configStore, configStoreLogger);
+    },
+    
+    // Configuration API service initialization
+    configApiService: () => {
+      // Ensure prerequisite services
+      if (!realServices.loggingService) {
+        realServices.loggingService = serviceFactories.loggingService();
+      }
+      
+      // Get or initialize the config store
+      if (!realServices.configStore) {
+        realServices.configStore = serviceFactories.configStore();
+      }
+      
+      const configApiLogger = realServices.loggingService!.getLogger('ConfigApiService');
+      
+      // Extract environment variables as a record for config value resolution
+      const envVars: Record<string, string> = {};
+      for (const key in env) {
+        if (Object.prototype.hasOwnProperty.call(env, key)) {
+          const value = env[key as keyof typeof env];
+          if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+            envVars[key] = String(value);
+          }
+        }
+      }
+      
+      // Create the configuration API service
+      return new DefaultConfigurationApiService(realServices.configStore, envVars, configApiLogger);
+    },
+    
+  };
+  
+  // Create dummy implementations for the required interface methods
+  const dummyResolve = <T>(serviceType: string): T => {
+    throw new Error(`Service ${serviceType} resolution not implemented in lazy container`);
+  };
+  
+  const dummyRegisterFactory = <T>(serviceType: string, _factory: () => T, _singleton?: boolean): void => {
+    throw new Error(`Service ${serviceType} registration not implemented in lazy container`);
+  };
+  
+  // Add these to realServices
+  realServices.resolve = dummyResolve;
+  realServices.registerFactory = dummyRegisterFactory;
+
+  // Create the base service container with the dummy methods
+  const baseContainer: Partial<ServiceContainer> = {
+    resolve: dummyResolve,
+    registerFactory: dummyRegisterFactory
   };
   
   // Create proxy to intercept service access and perform lazy initialization
-  return new Proxy({} as ServiceContainer, {
+  return new Proxy(baseContainer as ServiceContainer, {
     get(target, prop: keyof ServiceContainer) {
       // If service already exists, return it
       if (prop in realServices) {
         return realServices[prop];
+      }
+      
+      // For the resolve and registerFactory, return the methods from the target
+      if (prop === 'resolve' || prop === 'registerFactory') {
+        return target[prop];
       }
       
       // Initialize service on first access

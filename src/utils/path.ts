@@ -36,6 +36,8 @@ export interface TransformParameter {
   value: string | number | boolean; // Parameter value
   source: 'url' | 'path' | 'akamai' | 'compact' | 'derivative' | 'derived'; // Parameter source
   priority: number;       // Precedence when conflicting parameters exist
+  __explicitWidth?: boolean; // Flag to mark width as explicitly set by user (e.g., imwidth)
+  __explicitHeight?: boolean; // Flag to mark height as explicitly set by user (e.g., imheight)
 }
 
 export interface TransformParameterDefinition {

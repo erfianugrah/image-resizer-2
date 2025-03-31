@@ -1,0 +1,281 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "lastUpdated": "2025-03-30T08:30:00.000Z",
+    "activeModules": ["core", "storage", "transform", "cache"]
+  },
+  "modules": {
+    "core": {
+      "_meta": {
+        "name": "core",
+        "version": "1.0.0",
+        "description": "Core configuration module"
+      },
+      "config": {
+        "environment": "production",
+        "version": "1.0.0",
+        "debug": {
+          "enabled": true,
+          "headers": ["cache", "mode"],
+          "allowedEnvironments": [],
+          "verbose": true,
+          "includePerformance": true
+        },
+        "logging": {
+          "level": "DEBUG",
+          "includeTimestamp": true,
+          "enableStructuredLogs": true,
+          "enableBreadcrumbs": true
+        }
+      }
+    },
+    "storage": {
+      "_meta": {
+        "name": "storage",
+        "version": "1.0.0",
+        "description": "Storage configuration module"
+      },
+      "config": {
+        "priority": ["r2", "remote", "fallback"],
+        "r2": {
+          "enabled": true,
+          "bindingName": "IMAGES_BUCKET"
+        },
+        "fetchOptions": {
+          "userAgent": "Cloudflare-Image-Resizer/1.0-PROD",
+          "headers": {
+            "Accept": "image/*"
+          }
+        },
+        "remoteUrl": "https://25f21f141824546aa72c74451a11b419.r2.cloudflarestorage.com/images-weur",
+        "remoteAuth": {
+          "enabled": true,
+          "type": "aws-s3",
+          "region": "us-east-1",
+          "service": "s3",
+          "accessKeyVar": "AWS_ACCESS_KEY_ID",
+          "secretKeyVar": "AWS_SECRET_ACCESS_KEY"
+        },
+        "fallbackUrl": "https://cdn.erfianugrah.com",
+        "fallbackAuth": {
+          "enabled": false,
+          "type": "bearer",
+          "tokenHeaderName": "Authorization"
+        },
+        "auth": {
+          "useOriginAuth": true,
+          "sharePublicly": true,
+          "securityLevel": "strict",
+          "cacheTtl": 86400,
+          "origins": {
+            "secure": {
+              "domain": "secure-images.example.com",
+              "type": "bearer",
+              "tokenHeaderName": "Authorization",
+              "tokenExpiration": 3600
+            },
+            "s3": {
+              "domain": "s3.amazonaws.com",
+              "type": "aws-s3",
+              "region": "us-east-1",
+              "service": "s3",
+              "accessKeyVar": "AWS_ACCESS_KEY_ID",
+              "secretKeyVar": "AWS_SECRET_ACCESS_KEY"
+            },
+            "api": {
+              "domain": "api-images.example.com",
+              "type": "header",
+              "headers": {
+                "X-API-Key": "${API_KEY}"
+              }
+            }
+          }
+        },
+        "pathBasedOrigins": {
+          "products": {
+            "pattern": "/products/.*",
+            "priority": ["r2", "remote"],
+            "r2": {
+              "enabled": true,
+              "bindingName": "PRODUCTS_BUCKET"
+            },
+            "remoteUrl": "https://products.example.com/images",
+            "remoteAuth": {
+              "enabled": true,
+              "type": "aws-s3",
+              "region": "us-east-1",
+              "service": "s3",
+              "accessKeyVar": "PRODUCTS_AWS_ACCESS_KEY_ID",
+              "secretKeyVar": "PRODUCTS_AWS_SECRET_ACCESS_KEY"
+            },
+            "pathTransforms": {
+              "products": {
+                "prefix": "product-images",
+                "removePrefix": true
+              }
+            }
+          },
+          "profiles": {
+            "pattern": "/profiles/.*",
+            "priority": ["r2", "remote"],
+            "r2": {
+              "enabled": true,
+              "bindingName": "PROFILES_BUCKET"
+            },
+            "remoteUrl": "https://profiles.example.com/avatars",
+            "remoteAuth": {
+              "enabled": false
+            },
+            "pathTransforms": {
+              "profiles": {
+                "prefix": "avatars",
+                "removePrefix": true
+              }
+            }
+          },
+          "blog": {
+            "pattern": "/blog/.*",
+            "priority": ["remote", "r2"],
+            "remoteUrl": "https://blog-media.example.com",
+            "remoteAuth": {
+              "enabled": true,
+              "type": "header",
+              "headers": {
+                "X-API-Key": "${BLOG_API_KEY}"
+              }
+            },
+            "r2": {
+              "enabled": true,
+              "bindingName": "BLOG_BUCKET"
+            },
+            "pathTransforms": {
+              "blog": {
+                "prefix": "media",
+                "removePrefix": true
+              }
+            }
+          },
+          "static": {
+            "pattern": "/static/.*",
+            "priority": ["r2"],
+            "r2": {
+              "enabled": true,
+              "bindingName": "STATIC_BUCKET"
+            },
+            "pathTransforms": {
+              "static": {
+                "prefix": "",
+                "removePrefix": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "transform": {
+      "_meta": {
+        "name": "transform",
+        "version": "1.0.0",
+        "description": "Transformation configuration module"
+      },
+      "config": {
+        "responsive": {
+          "breakpoints": [320, 640, 768, 1024, 1440, 1920, 2048],
+          "deviceWidths": {
+            "mobile": 480,
+            "tablet": 768,
+            "desktop": 1440
+          },
+          "quality": 85,
+          "fit": "scale-down",
+          "format": "auto",
+          "metadata": "none",
+          "formatQuality": {
+            "webp": 85,
+            "avif": 80,
+            "jpeg": 85,
+            "png": 90
+          }
+        },
+        "derivatives": {
+          "thumbnail": {
+            "width": 200,
+            "height": 200,
+            "fit": "cover",
+            "quality": 80
+          },
+          "avatar": {
+            "width": 150,
+            "height": 150,
+            "fit": "cover",
+            "quality": 85
+          },
+          "product": {
+            "width": 800,
+            "height": 800,
+            "fit": "contain",
+            "background": "white",
+            "quality": 90
+          },
+          "header": {
+            "width": 1200,
+            "height": 400,
+            "fit": "cover",
+            "quality": 85
+          },
+          "blog": {
+            "width": 1200,
+            "height": 675,
+            "fit": "cover",
+            "quality": 85
+          }
+        }
+      }
+    },
+    "cache": {
+      "_meta": {
+        "name": "cache",
+        "version": "1.0.0",
+        "description": "Cache configuration module"
+      },
+      "config": {
+        "method": "cf",
+        "ttl": {
+          "ok": 604800,
+          "clientError": 60,
+          "serverError": 10
+        },
+        "cacheEverything": true,
+        "useTtlByStatus": true,
+        "cacheTtlByStatus": {
+          "200-299": 604800,
+          "301-302": 86400,
+          "404": 60,
+          "500-599": 10
+        },
+        "cacheability": true,
+        "bypassParams": ["nocache", "refresh"],
+        "pathBasedTtl": {
+          "/products/": 86400,
+          "/profiles/": 1209600,
+          "/blog/": 86400,
+          "/static/": 2592000
+        },
+        "cacheTags": {
+          "enabled": true,
+          "prefix": "img-",
+          "includeImageDimensions": true,
+          "includeFormat": true,
+          "includeQuality": true,
+          "includeDerivative": true,
+          "pathBasedTags": {
+            "/products/": ["product", "catalog"],
+            "/profiles/": ["profile", "avatar"],
+            "/blog/": ["blog", "content"],
+            "/static/": ["static", "assets"]
+          }
+        }
+      }
+    }
+  }
+}
