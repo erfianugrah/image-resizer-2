@@ -3,7 +3,7 @@
 A streamlined Cloudflare Worker for image resizing that focuses on simplicity while maintaining essential functionality.
 
 ```mermaid
-flowchart TD
+graph TD
     A[Client Browser] -->|Image Request| B[Cloudflare Worker]
     B -->|Parse Request| C[Path Analyzer]
     C -->|Extract Parameters| D[Transform Options Builder]
@@ -17,6 +17,28 @@ flowchart TD
     H -->|Fetch Image| I
     I -->|Apply Transformations| K[Cache]
     K -->|Return Image| A
+    
+    subgraph "Authentication Flow"
+    J -->|Origin Auth| JA[Cloudflare Origin-Auth]
+    J -->|Custom Auth| JB[Custom Authentication]
+    JB -->|Bearer Token| JB1[Token Generation]
+    JB -->|Basic Auth| JB2[Basic Auth Generation]
+    JB -->|Header Auth| JB3[Custom Headers]
+    JB -->|Query Auth| JB4[Signed URLs]
+    end
+
+    subgraph "Akamai Compatibility"
+    B -->|Akamai Format?| Z[Akamai Detector]
+    Z -->|Yes| Y[Parameter Translator]
+    Y -->|Convert| X[Cloudflare Parameters]
+    X --> C
+    end
+
+    subgraph "Interceptor Pattern"
+    B -->|Cloudflare Subrequest?| V[Subrequest Detector]
+    V -->|Yes| U[Direct Image Service]
+    U --> K
+    end
 ```
 
 This service enhances your Cloudflare Workers setup with advanced image handling capabilities, including on-the-fly resizing, format conversion, optimization, and secure access to authenticated image origins.
