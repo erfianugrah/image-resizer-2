@@ -1109,15 +1109,75 @@ export class DefaultImageTransformationService implements ImageTransformationSer
       return true;
     }
     
+    // Check if either width or height are explicitly set, in which case we may not need metadata
+    // for aspect ratio or focal point operations
+    const hasExplicitWidth = options.__explicitWidth === true && 
+                            options.width !== undefined && 
+                            (typeof options.width === 'number' || (typeof options.width === 'string' && options.width !== 'auto'));
+    const hasExplicitHeight = options.__explicitHeight === true && 
+                             options.height !== undefined && 
+                             (typeof options.height === 'number' || (typeof options.height === 'string' && options.height !== 'auto'));
+    
+    // Log the explicit dimension flags for debugging
+    this.logger.debug('Checking for explicit dimensions', {
+      hasExplicitWidth,
+      hasExplicitHeight,
+      width: options.width,
+      height: options.height,
+      __explicitWidth: options.__explicitWidth,
+      __explicitHeight: options.__explicitHeight
+    });
+    
     // Check for aspect ratio specification
     if (options.aspect) {
-      this.logger.debug('Metadata required: aspect ratio parameter detected', { aspect: options.aspect });
+      // For aspect ratio, we need metadata unless either width or height is set explicitly
+      if (hasExplicitWidth || hasExplicitHeight) {
+        this.logger.debug('Skipping metadata fetch: aspect ratio with explicit dimension', { 
+          aspect: options.aspect,
+          hasExplicitWidth,
+          hasExplicitHeight
+        });
+        return false;
+      }
+      
+      this.logger.debug('Metadata required: aspect ratio without explicit dimensions', { 
+        aspect: options.aspect
+      });
       return true;
     }
     
     // Check for focal point specification
     if (options.focal) {
-      this.logger.debug('Metadata required: focal point parameter detected', { focal: options.focal });
+      // For focal point with aspect ratio, either width or height is sufficient
+      if (options.aspect) {
+        if (hasExplicitWidth || hasExplicitHeight) {
+          this.logger.debug('Skipping metadata fetch: focal point with aspect ratio and one explicit dimension', { 
+            focal: options.focal,
+            aspect: options.aspect,
+            width: options.width,
+            height: options.height,
+            hasExplicitWidth,
+            hasExplicitHeight
+          });
+          return false;
+        }
+      } 
+      // For focal point without aspect ratio, we need both dimensions
+      else if (hasExplicitWidth && hasExplicitHeight) {
+        this.logger.debug('Skipping metadata fetch: focal point with both dimensions explicit', { 
+          focal: options.focal,
+          width: options.width,
+          height: options.height
+        });
+        return false;
+      }
+      
+      this.logger.debug('Metadata required: focal point without sufficient dimension information', { 
+        focal: options.focal,
+        hasAspect: !!options.aspect,
+        hasExplicitWidth,
+        hasExplicitHeight
+      });
       return true;
     }
     
@@ -1165,7 +1225,21 @@ export class DefaultImageTransformationService implements ImageTransformationSer
     }
     
     // Check if we need to fetch metadata for this transformation
-    if (this.requiresMetadata(options) && this.metadataService) {
+    const needsMetadata = this.requiresMetadata(options);
+    
+    this.logger.info('Metadata requirement decision', {
+      needsMetadata,
+      hasAspect: !!options.aspect,
+      hasFocal: !!options.focal,
+      hasExplicitWidth: options.__explicitWidth === true,
+      hasExplicitHeight: options.__explicitHeight === true,
+      width: options.width,
+      height: options.height,
+      f: options.f, // Size code if used
+      transformOptions: Object.keys(options).join(',')
+    });
+    
+    if (needsMetadata && this.metadataService) {
       const env = (request as unknown as { env: Env }).env;
       
       this.logger.debug('Fetching metadata for transformation', {
@@ -1893,12 +1967,62 @@ export class DefaultImageTransformationService implements ImageTransformationSer
       return options;
     }
     
+    // Enhanced logging of config for derivatives debugging
+    this.logger.debug('Configuration inspection in applyDerivativeTemplate', {
+      hasDerivativesSection: !!config.derivatives,
+      derivativesType: typeof config.derivatives,
+      configKeys: Object.keys(config).join(','),
+      requestedDerivative: derivative,
+      _derivativesLoaded: config._derivativesLoaded,
+      _derivativesCount: config._derivativesCount
+    });
+    
+    // Check if derivatives section exists
+    if (!config.derivatives) {
+      this.logger.error('Derivatives section missing in configuration', {
+        derivative,
+        configSections: Object.keys(config).join(','),
+        hasTransformConfig: config.hasOwnProperty('transform'),
+        _derivativesLoaded: config._derivativesLoaded,
+        _derivativesCount: config._derivativesCount
+      });
+      
+      // Load config directly from configuration service if available as fallback
+      if (this.configService) {
+        const directConfig = this.configService.getConfig();
+        if (directConfig && directConfig.derivatives && directConfig.derivatives[derivative]) {
+          this.logger.info('Found derivative in direct config access - using as fallback', {
+            derivative,
+            availableDerivatives: Object.keys(directConfig.derivatives).join(',')
+          });
+          
+          const template = directConfig.derivatives[derivative];
+          const result = { ...template };
+          
+          // Override with explicitly set options
+          Object.keys(options).forEach(key => {
+            if (options[key] !== undefined) {
+              result[key] = options[key];
+            }
+          });
+          
+          return result;
+        }
+      }
+      
+      return options;
+    }
+    
     // Check if the requested derivative exists
     if (!config.derivatives[derivative]) {
-      // Log missing derivative for debugging
-      this.logger.warn('Requested derivative template not found', {
+      // Log missing derivative for debugging with enhanced information
+      this.logger.error('Requested derivative template not found', {
         derivative,
-        availableDerivatives: Object.keys(config.derivatives).join(', ')
+        availableDerivatives: Object.keys(config.derivatives).join(','),
+        derivativesCount: Object.keys(config.derivatives).length,
+        _derivativesLoaded: config._derivativesLoaded,
+        _derivativesCount: config._derivativesCount,
+        configSource: this.configService ? 'Service container' : 'Direct parameter'
       });
       
       // Return the original options - this will still work but won't apply template
@@ -1907,6 +2031,11 @@ export class DefaultImageTransformationService implements ImageTransformationSer
     
     // Get the derivative template
     const template = config.derivatives[derivative];
+    
+    this.logger.debug('Found derivative template', {
+      derivative,
+      templateProperties: Object.keys(template).join(',')
+    });
     
     // Merge the template with the options, with options taking precedence
     const result: TransformOptions = { ...template };

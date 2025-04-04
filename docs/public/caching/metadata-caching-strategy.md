@@ -173,6 +173,32 @@ if (transformOptions.aspect || transformOptions.focal) {
 }
 ```
 
+#### Metadata Fetch Optimization with Size Codes
+
+When using aspect ratio and focal point with explicitly defined dimensions, the system is now smart enough to skip metadata fetching:
+
+```typescript
+// Check if either width or height are explicitly set
+const hasExplicitWidth = options.__explicitWidth === true && 
+                         options.width !== undefined && 
+                         (typeof options.width === 'number' || 
+                          (typeof options.width === 'string' && options.width !== 'auto'));
+
+// For aspect ratio, metadata is only needed if no dimensions are explicitly set
+if (options.aspect && hasExplicitWidth) {
+  logger.debug('Skipping metadata fetch: aspect ratio with explicit dimension');
+  return false;
+}
+```
+
+This optimization is particularly effective when using size codes like `f=m` along with aspect ratio and focal point parameters:
+
+```
+https://example.com/image.jpg?r=1:1&p=0.7,0.5&f=m
+```
+
+In this example, since `f=m` translates to `width=700` with the `__explicitWidth` flag set to true, no metadata fetch is required. The height will be calculated based on the aspect ratio and provided width.
+
 ### Comprehensive Cache Validation
 
 Binary data in KV cache now includes content type validation to ensure proper image formatting:
@@ -210,6 +236,7 @@ To ensure metadata cache validity:
 | Cold Request (First Visit) | 428ms | 20-30ms | 5-10ms | 97-99% |
 | Warm Request (Repeat Visit) | 68ms | 1-5ms | 0.5-1ms | 99%+ |
 | Aspect Crop Processing | 150-200ms | 150-200ms | 0-5ms | 97-100% |
+| Aspect Ratio with Size Code | 150-200ms | 150-200ms | 0ms | 100% |
 | Cache Miss | 428ms | 428ms | 428ms | 0% |
 
 ## Modular Cache Architecture

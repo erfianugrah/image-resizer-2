@@ -175,6 +175,10 @@ export interface ImageResizerConfig {
   environment: 'development' | 'staging' | 'production';
   version: string;
   
+  // Optional debug properties
+  _derivativesLoaded?: boolean;
+  _derivativesCount?: number;
+  
   // Feature flags
   features?: {
     enableAkamaiCompatibility?: boolean;

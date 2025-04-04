@@ -408,6 +408,52 @@ When `quality=auto` is used (or implied):
    - `Save-Data: on` header: Reduces quality by 15%
    - Both conditions: Reduces quality by 20%
 
+### Metadata Fetching Optimization
+
+When certain transformation parameters are used, the system needs to fetch image metadata to ensure proper processing:
+
+```mermaid
+flowchart TD
+    A[Image Request] --> B{Check Transform Options}
+    B --> C{Smart Cropping?<br/>smart=true}
+    C -->|Yes| F[Fetch Metadata]
+    C -->|No| D{Aspect Ratio?<br/>aspect=16:9}
+    D -->|Yes| G{Explicit Width/Height?}
+    G -->|No| F
+    G -->|Yes| H[Skip Metadata Fetch]
+    D -->|No| E{Focal Point?<br/>focal=0.5,0.6}
+    E -->|Yes| I{Both Width & Height?}
+    I -->|No| F
+    I -->|Yes| H
+    E -->|No| J{Derivative?<br/>banner, thumbnail, etc}
+    J -->|Yes| F
+    J -->|No| H
+    
+    style F fill:#ffcccc,stroke:#ff0000,stroke-width:2px
+    style H fill:#ccffcc,stroke:#00cc00,stroke-width:2px
+```
+
+The system optimizes metadata fetching by intelligently determining when it's necessary:
+
+1. **Skip metadata** when:
+   - Using aspect ratio (`r=16:9`) with explicit width or height (like `width=800` or `f=m`)
+   - Using focal point (`p=0.5,0.6`) with both explicit width and height
+   - Using regular resizing without special cropping needs
+
+2. **Fetch metadata** when:
+   - Using smart cropping (`smart=true`)
+   - Using aspect ratio without explicit dimensions
+   - Using focal point without both dimensions
+   - Using certain derivative templates that require original dimensions
+
+This optimization significantly improves performance, especially when using compact parameters with size codes:
+
+```
+https://example.com/images/photo.jpg?r=16:9&p=0.5,0.5&f=m
+```
+
+In this example, metadata fetching is skipped because the size code (`f=m`) provides an explicit width.
+
 ## Client Hints
 
 Image Resizer 2 uses the following client hints to optimize images:
@@ -530,9 +576,10 @@ https://example.com/images/banner/photo.jpg
 2. **Specify Dimensions**: Always specify width and height to optimize caching
 3. **Use Modern Formats**: Use `format=auto` to leverage WebP and AVIF when supported
 4. **Appropriate Quality**: Use `quality=auto` or set appropriate values (80-85 is usually sufficient)
-5. **Derivatives for Common Cases**: Create derivatives for recurring transformation needs
-6. **Path Templates**: Use path templates for directory-based transformations
-7. **Cache Control**: Optimize caching with appropriate TTL settings
+5. **Size Codes with Aspect Ratio**: When using aspect ratios (`r=16:9`) and focal points (`p=0.5,0.5`), add a size code (`f=m`) to skip metadata fetching
+6. **Derivatives for Common Cases**: Create derivatives for recurring transformation needs
+7. **Path Templates**: Use path templates for directory-based transformations
+8. **Cache Control**: Optimize caching with appropriate TTL settings
 
 ## Limits and Considerations
 

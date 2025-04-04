@@ -49,6 +49,39 @@ export async function getConfigWithFallback(
       // Get transform module config
       const transformConfig = await configApi.getModule('transform');
       
+      // Log the transform module config details if available
+      if (transformConfig) {
+        logger.debug('Transform module loaded from KV store', {
+          hasDerivatives: !!transformConfig.derivatives,
+          derivativesCount: transformConfig.derivatives ? Object.keys(transformConfig.derivatives).length : 0,
+          derivativeNames: transformConfig.derivatives ? Object.keys(transformConfig.derivatives).join(',') : 'none',
+          derivativesType: transformConfig.derivatives ? typeof transformConfig.derivatives : 'undefined',
+          transformConfigKeys: Object.keys(transformConfig).join(',')
+        });
+        
+        // Validate the derivatives structure if it exists
+        if (transformConfig.derivatives) {
+          try {
+            const sampleDerivative = Object.keys(transformConfig.derivatives)[0];
+            if (sampleDerivative) {
+              const template = transformConfig.derivatives[sampleDerivative];
+              logger.debug('Sample derivative structure validation', {
+                derivative: sampleDerivative,
+                isObject: typeof template === 'object' && template !== null,
+                properties: template ? Object.keys(template).join(',') : 'none',
+                valid: !!template && typeof template === 'object'
+              });
+            }
+          } catch (error) {
+            logger.error('Error validating derivatives structure', {
+              error: error instanceof Error ? error.message : String(error)
+            });
+          }
+        }
+      } else {
+        logger.warn('Transform module not found in KV store, using legacy config only');
+      }
+      
       // Get storage module config
       const storageConfig = await configApi.getModule('storage');
       
@@ -78,11 +111,24 @@ export async function getConfigWithFallback(
             { ...legacyConfig.responsive, ...transformConfig.responsive } : 
             legacyConfig.responsive,
           
-          // Override derivatives
+          // Ensure derivatives are always properly merged within the transform config
           derivatives: transformConfig.derivatives ? 
             { ...legacyConfig.derivatives, ...transformConfig.derivatives } : 
-            legacyConfig.derivatives,
+            (legacyConfig.derivatives || {})
         },
+        
+        // Ensure derivatives are always accessible at the top level as well
+        derivatives: transformConfig && transformConfig.derivatives ? 
+          { ...legacyConfig.derivatives, ...transformConfig.derivatives } : 
+          (legacyConfig.derivatives || {}),
+          
+        // Log derivatives count for debugging
+        ...(logger && {
+          _derivativesLoaded: true,
+          _derivativesCount: transformConfig && transformConfig.derivatives ?
+            Object.keys({ ...legacyConfig.derivatives, ...transformConfig.derivatives }).length :
+            Object.keys(legacyConfig.derivatives).length
+        }),
         
         // Override storage settings
         ...storageConfig && {

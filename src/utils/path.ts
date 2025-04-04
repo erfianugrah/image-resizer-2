@@ -147,16 +147,47 @@ export function extractDerivative(
   defaultLogger.breadcrumb('Extracting derivative from path', undefined, {
     pathname,
     availableDerivatives: derivatives?.length || 0,
+    derivativeList: Array.isArray(derivatives) ? derivatives.join(',') : 'invalid'
   });
 
-  // Default result
-  if (!pathname || !derivatives || derivatives.length === 0) {
-    defaultLogger.breadcrumb('No path or derivatives provided');
+  // More defensive check for derivatives
+  if (!pathname) {
+    defaultLogger.breadcrumb('No path provided');
+    return null;
+  }
+  
+  // Handle case where derivatives might be undefined or null
+  if (!derivatives) {
+    defaultLogger.breadcrumb('Derivatives array is undefined or null');
+    return null;
+  }
+  
+  // Verify derivatives is actually an array
+  if (!Array.isArray(derivatives)) {
+    defaultLogger.breadcrumb('Derivatives is not an array', undefined, {
+      derivativesType: typeof derivatives
+    });
+    return null;
+  }
+  
+  // Check if there are any derivatives to match against
+  if (derivatives.length === 0) {
+    defaultLogger.breadcrumb('Derivatives array is empty');
     return null;
   }
 
   // Split pathname into segments
   const segments = pathname.split('/').filter(Boolean);
+  
+  if (segments.length === 0) {
+    defaultLogger.breadcrumb('No path segments to check');
+    return null;
+  }
+
+  // Log all segments for debugging
+  defaultLogger.breadcrumb('Checking path segments', undefined, {
+    segments: segments.join(',')
+  });
 
   // Check each segment against the list of derivatives
   for (let i = 0; i < segments.length; i++) {
@@ -173,6 +204,7 @@ export function extractDerivative(
         derivative: segment,
         originalPath: pathname,
         modifiedPath,
+        segmentIndex: i
       });
 
       return {
@@ -182,7 +214,12 @@ export function extractDerivative(
     }
   }
 
-  defaultLogger.breadcrumb('No derivative found in path');
+  // List the first few segments that didn't match for debugging
+  defaultLogger.breadcrumb('No derivative found in path', undefined, {
+    pathSegments: segments.slice(0, 3).join(','),
+    totalSegments: segments.length
+  });
+  
   return null;
 }
 

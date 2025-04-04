@@ -8,6 +8,7 @@ The Image Resizer includes a comprehensive caching system to optimize performanc
 - [Cache Strategies](cache-strategies.md) - Different caching strategies and their use cases
 - [Cache Keys](cache-keys.md) - How cache keys are generated and customized
 - [Transform Cache](transform/index.md) - KV-based caching for transformed images
+- [Metadata Caching Strategy](metadata-caching-strategy.md) - Multi-layer caching system for image metadata
 
 ## Quick Navigation
 

@@ -87,13 +87,26 @@ export async function handleImageRequest(
     paramNames: Object.keys(optionsFromUrl).join(',')
   });
   
-  // Check for derivative in path segments
-  const derivativeNames = Object.keys(config.derivatives);
+  // Check for derivative in path segments and add enhanced logging
+  const derivativeNames = Object.keys(config.derivatives || {});
+  
+  // Additional deep inspection of config
+  logger.debug('Configuration inspection for derivatives', {
+    hasDerivativesObject: typeof config.derivatives === 'object' && config.derivatives !== null,
+    derivativesType: typeof config.derivatives,
+    derivativesIsArray: Array.isArray(config.derivatives),
+    derivativesIsNull: config.derivatives === null,
+    derivativesIsUndefined: config.derivatives === undefined,
+    transformConf: config.hasOwnProperty('transform') ? 'transform section exists' : 'no transform section'
+  });
   
   logger.debug('Available derivatives', {
     derivatives: derivativeNames.join(', '),
     count: derivativeNames.length,
-    pathname: url.pathname
+    derivativesLoaded: config._derivativesLoaded === true,
+    _derivativesCount: config._derivativesCount,
+    pathname: url.pathname,
+    configSections: Object.keys(config).join(',')
   });
   
   const derivativeResult = extractDerivative(url.pathname, derivativeNames);
@@ -131,16 +144,32 @@ export async function handleImageRequest(
   
   // Log derivative application status
   if (optionsFromUrl.derivative) {
-    if (config.derivatives[optionsFromUrl.derivative]) {
-      logger.debug('Using derivative for transformation', {
+    if (config.derivatives && config.derivatives[optionsFromUrl.derivative]) {
+      logger.info('Using derivative for transformation', {
         derivative: optionsFromUrl.derivative,
         imagePath,
-        templateProperties: Object.keys(config.derivatives[optionsFromUrl.derivative]).join(',')
+        templateProperties: Object.keys(config.derivatives[optionsFromUrl.derivative]).join(','),
+        derivativeSource: derivativeResult ? 'path' : (config.pathTemplates ? 'pathTemplate' : 'queryParam')
+      });
+      
+      // Log the specific derivative properties for debugging
+      const template = config.derivatives[optionsFromUrl.derivative];
+      logger.debug('Derivative template details', {
+        derivative: optionsFromUrl.derivative,
+        width: template.width,
+        height: template.height,
+        fit: template.fit,
+        format: template.format,
+        quality: template.quality,
+        allProperties: JSON.stringify(template)
       });
     } else {
       logger.warn('Derivative not found in configuration', {
         derivative: optionsFromUrl.derivative,
-        availableDerivatives: Object.keys(config.derivatives).join(',')
+        hasDerivativesSection: typeof config.derivatives === 'object' && config.derivatives !== null,
+        availableDerivatives: config.derivatives ? Object.keys(config.derivatives).join(',') : 'none',
+        _derivativesLoaded: config._derivativesLoaded,
+        _derivativesCount: config._derivativesCount
       });
     }
   }
