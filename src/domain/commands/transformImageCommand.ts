@@ -56,6 +56,29 @@ export class TransformImageCommand implements Command<Response> {
     const { logger, storageService, transformationService, cacheService, debugService, configurationService } = this.services;
     const config = configurationService.getConfig();
     
+    // Create an AbortController to handle request cancellation
+    const controller = new AbortController();
+    const { signal } = controller;
+    
+    // Listen for client disconnection if the request has an abort signal
+    if (this.request.signal && this.request.signal.aborted === false) {
+      // Check if already aborted
+      if (this.request.signal.aborted) {
+        logger.info('Request already aborted before processing started', {
+          url: this.url.toString()
+        });
+        return new Response('Client disconnected', { status: 499 }); // Nginx-style client closed status
+      }
+
+      // Listen for abort events
+      this.request.signal.addEventListener('abort', () => {
+        logger.info('Client disconnected, aborting transformation', {
+          url: this.url.toString()
+        });
+        controller.abort();
+      });
+    }
+    
     // Check for duplicated processing attempt
     const via = this.request.headers.get('via') || '';
     const cfWorker = this.request.headers.get('cf-worker') || '';
@@ -79,20 +102,44 @@ export class TransformImageCommand implements Command<Response> {
       via: via,
       cfWorker: cfWorker,
       alreadyProcessed: alreadyProcessed,
-      possibleDuplicate: possibleDuplicate
+      possibleDuplicate: possibleDuplicate,
+      hasSignal: !!signal,
+      signalAborted: signal ? signal.aborted : false
     });
 
     try {
+      // Check for cancellation before doing any work
+      if (signal.aborted) {
+        logger.info('Request aborted before starting fetch', {
+          url: this.url.toString()
+        });
+        return new Response('Client disconnected', { status: 499 });
+      }
+      
       // Fetch the image from storage
       this.metrics.storageStart = Date.now();
       logger.breadcrumb('Fetching image from storage', undefined, { imagePath: this.imagePath });
+      
+      // Create fetch options with abort signal
+      const fetchOptions = {
+        signal
+      };
       
       const storageResult = await storageService.fetchImage(
         this.imagePath, 
         config, 
         (this.request as unknown as { env: Env }).env, 
-        this.request
+        this.request,
+        { signal }
       );
+      
+      // Check for cancellation after fetch
+      if (signal.aborted) {
+        logger.info('Request aborted after storage fetch completed', {
+          url: this.url.toString()
+        });
+        return new Response('Client disconnected', { status: 499 });
+      }
       
       this.metrics.storageEnd = Date.now();
       const storageDuration = this.metrics.storageEnd - this.metrics.storageStart;
@@ -323,12 +370,28 @@ export class TransformImageCommand implements Command<Response> {
       
       return finalResponse;
     } catch (error) {
+      // Check if this is an abort error
+      if (
+        signal.aborted || 
+        (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError') || 
+        (error instanceof Error && error.message.includes('aborted'))
+      ) {
+        logger.info('Request aborted during transformation', {
+          url: this.url.toString(),
+          phase: this.metrics.transformEnd ? 'post-transform' : 
+                (this.metrics.transformStart ? 'during-transform' : 
+                (this.metrics.storageEnd ? 'post-storage' : 'pre-storage'))
+        });
+        return new Response('Client disconnected', { status: 499 }); // Nginx-style client closed status
+      }
+      
       // Log the error with detailed information
       logger.error('Error in transform image command', {
         url: this.request.url,
         error: error instanceof Error ? error.message : String(error),
         errorType: error instanceof Error ? error.constructor.name : 'Unknown',
-        stack: error instanceof Error ? error.stack : undefined
+        stack: error instanceof Error ? error.stack : undefined,
+        signalAborted: signal.aborted
       });
 
       // Re-throw the error to be handled by the main handler

@@ -487,7 +487,9 @@ export class DefaultStorageService implements StorageService {
     config: ImageResizerConfig,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     env: any, // Use 'any' to bypass type checking temporarily
-    request: Request
+    request: Request,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    options?: RequestInit
   ): Promise<StorageResult> {
     try {
       this.logger.debug('Fetching image from storage with resilience', { 

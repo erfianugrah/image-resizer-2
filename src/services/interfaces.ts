@@ -137,13 +137,15 @@ export interface StorageService {
    * @param config Application configuration
    * @param env Environment variables
    * @param request Original request
+   * @param options Optional fetch options including abort signal
    * @returns Storage result with the image data
    */
   fetchImage(
     imagePath: string, 
     config: ImageResizerConfig, 
     env: Env, 
-    request: Request
+    request: Request,
+    options?: RequestInit
   ): Promise<StorageResult>;
 }
 

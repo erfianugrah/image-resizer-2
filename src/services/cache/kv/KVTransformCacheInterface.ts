@@ -117,8 +117,11 @@ export interface KVTransformCacheInterface {
   
   /**
    * Generate a cache key for a request and transform options
+   * @param request The original request
+   * @param transformOptions Transform options being applied
+   * @param actualFormat Optional format override to use in the key
    */
-  generateCacheKey(request: Request, transformOptions: TransformOptions): string;
+  generateCacheKey(request: Request, transformOptions: TransformOptions, actualFormat?: string): string;
   
   /**
    * List cache entries (for debugging and management)
