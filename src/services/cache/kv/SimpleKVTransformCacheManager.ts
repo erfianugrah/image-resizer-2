@@ -615,78 +615,64 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     
     // Check if this exact operation was already performed in this request lifecycle
     if (this.operationCache.has(operationKey)) {
-      if (typeof console !== 'undefined' && console.debug) {
-        console.debug("KV transform cache: Skipping duplicate operation", {
-          url: request.url,
-          operationKey
-        });
-      }
+      this.logDebug("KV transform cache: Skipping duplicate operation", {
+        url: request.url,
+        operationKey
+      });
       return;
     }
     
     // Log the initiation of a KV transform cache operation
-    if (typeof console !== 'undefined' && console.debug) {
-      console.debug("SimpleKVTransformCacheManager.put called", {
-        url: request.url,
-        hasBuffer: !!storageResult.buffer,
-        bufferSize: storageResult.buffer ? storageResult.buffer.byteLength : 0,
-        status: response.status,
-        contentType: response.headers.get('content-type')
-      });
-    }
+    this.logDebug("SimpleKVTransformCacheManager.put called", {
+      url: request.url,
+      hasBuffer: !!storageResult.buffer,
+      bufferSize: storageResult.buffer ? storageResult.buffer.byteLength : 0,
+      status: response.status,
+      contentType: response.headers.get('content-type')
+    });
     
     // Skip caching for metadata requests (format=json)
     // These are already handled by the metadata service
     if (transformOptions.format === 'json' || request.url.includes('format=json')) {
-      if (typeof console !== 'undefined' && console.debug) {
-        console.debug("KV transform cache: Skipping storage for metadata request", {
-          url: request.url,
-          format: transformOptions.format
-        });
-      }
+      this.logDebug("KV transform cache: Skipping storage for metadata request", {
+        url: request.url,
+        format: transformOptions.format
+      });
       return;
     }
     
     // Check if we should cache this response
     if (!storageResult.buffer) {
-      if (typeof console !== 'undefined' && console.debug) {
-        console.debug("KV transform cache: Missing buffer, skipping storage", {
-          storageResultKeys: Object.keys(storageResult).join(','),
-          hasResponse: !!storageResult.response,
-          contentType: storageResult.contentType,
-          size: storageResult.size
-        });
-      }
+      this.logDebug("KV transform cache: Missing buffer, skipping storage", {
+        storageResultKeys: Object.keys(storageResult).join(','),
+        hasResponse: !!storageResult.response,
+        contentType: storageResult.contentType,
+        size: storageResult.size
+      });
       return;
     }
     
     if (response.status !== 200) {
-      if (typeof console !== 'undefined' && console.debug) {
-        console.debug("KV transform cache: Non-200 status, skipping storage", {
-          status: response.status
-        });
-      }
+      this.logDebug("KV transform cache: Non-200 status, skipping storage", {
+        status: response.status
+      });
       return;
     }
     
     const contentType = response.headers.get('content-type');
     if (!contentType?.startsWith('image/')) {
-      if (typeof console !== 'undefined' && console.debug) {
-        console.debug("KV transform cache: Non-image content type, skipping storage", {
-          contentType
-        });
-      }
+      this.logDebug("KV transform cache: Non-image content type, skipping storage", {
+        contentType
+      });
       return;
     }
     
     // Check file size limits
     if (storageResult.buffer.byteLength > this.config.maxSize) {
-      if (typeof console !== 'undefined' && console.debug) {
-        console.debug("KV transform cache: File size exceeds maximum, skipping storage", {
-          size: storageResult.buffer.byteLength,
-          maxSize: this.config.maxSize
-        });
-      }
+      this.logDebug("KV transform cache: File size exceeds maximum, skipping storage", {
+        size: storageResult.buffer.byteLength,
+        maxSize: this.config.maxSize
+      });
       return;
     }
     
@@ -694,12 +680,10 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     const url = new URL(request.url);
     const path = url.pathname;
     if (this.config.disallowedPaths.some(p => path.includes(p))) {
-      if (typeof console !== 'undefined' && console.debug) {
-        console.debug("KV transform cache: Path in disallowed list, skipping storage", {
-          path,
-          disallowedPaths: this.config.disallowedPaths
-        });
-      }
+      this.logDebug("KV transform cache: Path in disallowed list, skipping storage", {
+        path,
+        disallowedPaths: this.config.disallowedPaths
+      });
       return;
     }
     
@@ -707,11 +691,9 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     // This is managed at the DefaultCacheService level, but we log it here for clarity
     const cacheControl = request.headers.get('Cache-Control');
     if (cacheControl && (cacheControl.includes('no-cache') || cacheControl.includes('no-store'))) {
-      if (typeof console !== 'undefined' && console.debug) {
-        console.debug("KV transform cache: Ignoring Cache-Control header", {
-          cacheControl
-        });
-      }
+      this.logDebug("KV transform cache: Ignoring Cache-Control header", {
+        cacheControl
+      });
       // Continue with caching despite the Cache-Control header
     }
     
@@ -736,14 +718,21 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     
     // Create metadata
     const metadata: CacheMetadata = {
+      // Key identifies
       url: request.url,
       timestamp: now,
+      // Image properties (dimensions from transform options)
+      width: transformOptions.width ? parseInt(String(transformOptions.width), 10) : undefined,
+      height: transformOptions.height ? parseInt(String(transformOptions.height), 10) : undefined,
+      // Content information
       contentType,
       size: storageResult.buffer.byteLength,
-      transformOptions,
-      tags,
+      // Cache control properties
       ttl,
       expiration: now + (ttl * 1000),
+      // Additional metadata
+      transformOptions,
+      tags,
       storageType: storageResult.storageType,
       originalSize: storageResult.originalSize,
       compressionRatio: storageResult.originalSize ? 
@@ -788,16 +777,14 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     // Generate cache key using actual format from response
     const key = this.generateCacheKey(request, transformOptions, actualFormat);
     
-    if (typeof console !== 'undefined' && console.debug) {
-      console.debug("KV transform cache: Storing item", {
-        key,
-        ttl,
-        size: storageResult.buffer.byteLength,
-        tags,
-        useBackground: !!(ctx && this.config.backgroundIndexing),
-        actualFormat
-      });
-    }
+    this.logDebug("KV transform cache: Storing item", {
+      key,
+      ttl,
+      size: storageResult.buffer.byteLength,
+      tags,
+      useBackground: !!(ctx && this.config.backgroundIndexing),
+      actualFormat
+    });
     
     // Mark this operation as completed to prevent duplicates
     this.operationCache.set(operationKey, true);
@@ -810,16 +797,12 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
           expirationTtl: ttl,
           metadata
         }).then(() => {
-          if (typeof console !== 'undefined' && console.debug) {
-            console.debug("KV transform cache: Successfully stored item in background", { key });
-          }
+          this.logDebug("KV transform cache: Successfully stored item in background", { key });
         }).catch(error => {
-          if (typeof console !== 'undefined' && console.error) {
-            console.error("KV transform cache: Error storing item in background", { 
-              key, 
-              error: error instanceof Error ? error.message : String(error)
-            });
-          }
+          this.logError("KV transform cache: Error storing item in background", { 
+            key, 
+            error: error instanceof Error ? error.message : String(error)
+          });
         })
       );
     } else {
@@ -829,16 +812,12 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
           expirationTtl: ttl,
           metadata
         });
-        if (typeof console !== 'undefined' && console.debug) {
-          console.debug("KV transform cache: Successfully stored item", { key });
-        }
+        this.logDebug("KV transform cache: Successfully stored item", { key });
       } catch (error) {
-        if (typeof console !== 'undefined' && console.error) {
-          console.error("KV transform cache: Error storing item", { 
-            key, 
-            error: error instanceof Error ? error.message : String(error)
-          });
-        }
+        this.logError("KV transform cache: Error storing item", { 
+          key, 
+          error: error instanceof Error ? error.message : String(error)
+        });
         // We don't rethrow since this is a background operation and we don't want to fail the main request
       }
     }
@@ -1044,16 +1023,14 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     }
     
     // Log detailed transform options for debugging
-    if (typeof console !== 'undefined' && console.debug) {
-      console.debug('Generating cache key with transform options:', {
-        url: request.url,
-        transformOptions: JSON.stringify(transformOptions),
-        mainParams,
-        format,
-        actualFormat,
-        urlParams: url.search
-      });
-    }
+    this.logDebug('Generating cache key with transform options:', {
+      url: request.url,
+      transformOptions: JSON.stringify(transformOptions),
+      mainParams,
+      format,
+      actualFormat,
+      urlParams: url.search
+    });
     
     // Create a hash based on the pathname, search params, and stringified transform options
     // This provides uniqueness even when two sets of different parameters result in similar mainParams
@@ -1069,8 +1046,8 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     const hash = this.createShortHash(hashInput);
     
     // Log debug info about f parameter if present
-    if (transformOptions.f && typeof console !== 'undefined' && console.debug) {
-      console.debug('F parameter in cache key:', {
+    if (transformOptions.f) {
+      this.logDebug('F parameter in cache key:', {
         fValue: transformOptions.f,
         fType: typeof transformOptions.f,
         inParams: mainParams.some(p => p.startsWith('f')),
@@ -1083,22 +1060,20 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     const cacheKey = `${this.config.prefix}:${basename}:${params}:${format}:${hash}`;
     
     // Log the generated cache key for debugging
-    if (typeof console !== 'undefined' && console.debug) {
-      // Calculate truncated version of hash input for logging
-      const hashInputSummary = hashInput.length > 200 ? 
-        `${hashInput.substring(0, 100)}...${hashInput.substring(hashInput.length - 100)}` : 
-        hashInput;
-        
-      console.debug('Generated cache key:', {
-        cacheKey,
-        basename,
-        params,
-        format,
-        hash,
-        hashInputSummary,
-        rawTransformOptions: transformString
-      });
-    }
+    // Calculate truncated version of hash input for logging
+    const hashInputSummary = hashInput.length > 200 ? 
+      `${hashInput.substring(0, 100)}...${hashInput.substring(hashInput.length - 100)}` : 
+      hashInput;
+      
+    this.logDebug('Generated cache key:', {
+      cacheKey,
+      basename,
+      params,
+      format,
+      hash,
+      hashInputSummary,
+      rawTransformOptions: transformString
+    });
     
     return cacheKey;
   }
@@ -1241,13 +1216,13 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
    */
   private createShortHash(input: string): string {
     // Log hash inputs for debugging when needed
-    if (this.config.debug && typeof console !== 'undefined' && console.debug) {
+    if (this.config.debug) {
       // Truncate long inputs to prevent log flooding
       const truncatedInput = input.length > 100 
         ? `${input.substring(0, 50)}...${input.substring(input.length - 50)}`
         : input;
       
-      console.debug('Creating hash for input', {
+      this.logDebug('Creating hash for input', {
         inputLength: input.length,
         inputPrefix: truncatedInput
       });
@@ -1256,8 +1231,8 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     // Generate the hash using our improved FNV-1a implementation
     const hash = fnv1a(input);
     
-    if (this.config.debug && typeof console !== 'undefined' && console.debug) {
-      console.debug('Hash created', { hash });
+    if (this.config.debug) {
+      this.logDebug('Hash created', { hash });
     }
     
     return hash;

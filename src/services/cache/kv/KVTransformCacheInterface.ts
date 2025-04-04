@@ -45,17 +45,32 @@ export interface KVCacheConfig {
  * Extends Record<string, unknown> to satisfy the type system
  */
 export interface CacheMetadata extends Record<string, unknown> {
+  // Identifying information
   url: string;                 // Original URL
   timestamp: number;           // When the item was cached
+  
+  // Image dimensions - explicitly included for better readability
+  width?: number;              // Image width (if available)
+  height?: number;             // Image height (if available)
+  
+  // Content information
   contentType: string;         // Content type of the cached image
   size: number;                // Size in bytes
-  transformOptions: TransformOptions; // The transform options used
-  tags: string[];              // Cache tags
+  
+  // Cache control
   ttl: number;                 // TTL in seconds
   expiration: number;          // Expiration timestamp
+  
+  // Transform details
+  transformOptions: TransformOptions; // The transform options used
+  tags: string[];              // Cache tags
+  
+  // Additional metadata
   storageType?: string;        // The storage type used (r2, remote, fallback)
   originalSize?: number;       // Original image size before transformation
   compressionRatio?: number;   // Compression ratio achieved
+  
+  // Aspect crop information
   aspectCropInfo?: {           // Information about aspect crop processing
     aspect?: string;           // Aspect ratio used
     focal?: string;            // Focal point used

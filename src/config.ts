@@ -9,6 +9,7 @@
 import { PathTransforms } from './utils/path';
 import { Env } from './types';
 import { loadDetectorConfigFromEnv } from './utils/wrangler-config';
+import { defaultLogger } from './utils/logging';
 
 // Define interfaces for cache tag configuration
 interface CacheTagsPathNormalization {
@@ -1944,12 +1945,12 @@ export function getConfig(env: Env): ImageResizerConfig {
       
       if (typeof pathGroups === 'object' && pathGroups !== null) {
         config.cache.cacheTags.pathBasedTags = pathGroups;
-        console.log('Loaded path-based tag groups from environment', {
+        defaultLogger.info('Loaded path-based tag groups from environment', {
           pathPatterns: Object.keys(pathGroups)
         });
       }
     } catch (error) {
-      console.error('Error parsing CACHE_TAGS_PATH_GROUPS from environment', {
+      defaultLogger.error('Error parsing CACHE_TAGS_PATH_GROUPS from environment', {
         error: error instanceof Error ? error.message : String(error),
         value: typeof (env as any).CACHE_TAGS_PATH_GROUPS === 'string' 
           ? (env as any).CACHE_TAGS_PATH_GROUPS.substring(0, 100) + '...' 
@@ -2117,7 +2118,7 @@ export function getConfig(env: Env): ImageResizerConfig {
   
   // Handle legacy global AUTH_ENABLED environment variable
   if (env.AUTH_ENABLED) {
-    console.warn('AUTH_ENABLED is deprecated. Use origin-specific auth settings like REMOTE_AUTH_ENABLED instead.', {
+    defaultLogger.warn('AUTH_ENABLED is deprecated. Use origin-specific auth settings like REMOTE_AUTH_ENABLED instead.', {
       authEnabled: env.AUTH_ENABLED
     });
     
@@ -2133,13 +2134,13 @@ export function getConfig(env: Env): ImageResizerConfig {
     
     // If remote auth exists, set its enabled flag based on the global setting
     if (config.storage.remoteAuth) {
-      console.log('Setting remoteAuth.enabled based on deprecated AUTH_ENABLED setting');
+      defaultLogger.info('Setting remoteAuth.enabled based on deprecated AUTH_ENABLED setting');
       config.storage.remoteAuth.enabled = env.AUTH_ENABLED === 'true';
     }
     
     // If fallback auth exists, set its enabled flag based on the global setting
     if (config.storage.fallbackAuth) {
-      console.log('Setting fallbackAuth.enabled based on deprecated AUTH_ENABLED setting');
+      defaultLogger.info('Setting fallbackAuth.enabled based on deprecated AUTH_ENABLED setting');
       config.storage.fallbackAuth.enabled = env.AUTH_ENABLED === 'true';
     }
   }
@@ -2321,14 +2322,14 @@ export function getConfig(env: Env): ImageResizerConfig {
         // Set the derivatives to the custom derivatives
         config.derivatives = customDerivatives as Record<string, any>;
         
-        console.log('Loaded custom derivatives from environment', {
+        defaultLogger.info('Loaded custom derivatives from environment', {
           derivatives: Object.keys(customDerivatives as Record<string, unknown>),
           totalDerivatives: Object.keys(config.derivatives).length
         });
       }
     } catch (e) {
       const safeEnv = env as Record<string, unknown>;
-      console.error('Error processing DERIVATIVES from environment', {
+      defaultLogger.error('Error processing DERIVATIVES from environment', {
         error: e instanceof Error ? e.message : String(e),
         value: typeof safeEnv.DERIVATIVES === 'string' 
           ? safeEnv.DERIVATIVES.substring(0, 100) + '...' 
@@ -2364,11 +2365,11 @@ export function getConfig(env: Env): ImageResizerConfig {
         // Add to the derivatives object
         config.derivatives[derivativeName] = derivativeConfig;
         
-        console.log(`Added derivative from environment: ${derivativeName}`, {
+        defaultLogger.info(`Added derivative from environment: ${derivativeName}`, {
           options: Object.keys(derivativeConfig).join(', ')
         });
       } catch (e) {
-        console.error(`Error parsing derivative configuration: ${key}`, {
+        defaultLogger.error(`Error parsing derivative configuration: ${key}`, {
           error: e instanceof Error ? e.message : String(e),
           value: value
         });

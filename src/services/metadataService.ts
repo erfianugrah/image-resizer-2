@@ -524,12 +524,15 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
               // Create our metadata object from headers with detailed information
               const metadata: ImageMetadata = {
                 metadata: {
+                  // Keep width and height adjacent for better readability
                   width,
                   height,
+                  // Basic image properties
                   format: contentType.replace('image/', ''),
+                  // Quality assessment metadata
+                  confidence: 'high', // Headers typically contain accurate dimensions
                   estimationMethod: 'headers',
                   metadataSource: 'headers',
-                  confidence: 'high', // Headers typically contain accurate dimensions
                   // Store additional header information for reference
                   originalMetadata: {
                     headers: {
@@ -765,14 +768,17 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
             // Create a properly structured metadata object with worker metadata
             const metadata: ImageMetadata = {
               metadata: {
+                // Keep width and height adjacent for better readability
                 width: actualWidth,
                 height: actualHeight,
+                // Basic image properties
                 format: workerMetadata.format || baseMetadata.metadata.format,
-                // Store original metadata for reference
-                originalMetadata: workerMetadata,
-                metadataSource: 'format-json',
+                // Quality assessment metadata
                 confidence: confidence,
-                estimationMethod: estimationMethod
+                estimationMethod: estimationMethod,
+                metadataSource: 'format-json',
+                // Store original metadata for reference
+                originalMetadata: workerMetadata
               }
             };
             
@@ -1015,13 +1021,17 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
                   // Create a properly structured metadata object
                   const metadata: ImageMetadata = {
                     metadata: {
+                      // Keep width and height adjacent for better readability
                       width: actualWidth,
                       height: actualHeight,
+                      // Basic image properties
                       format: (altMetadata.metadata?.format) || altMetadata.format || baseMetadata.metadata.format,
-                      originalMetadata: altMetadata,
-                      metadataSource: 'metadata-json',
+                      // Quality assessment metadata
                       confidence: confidence,
-                      estimationMethod: estimationMethod
+                      estimationMethod: estimationMethod,
+                      metadataSource: 'metadata-json',
+                      // Store original metadata for reference
+                      originalMetadata: altMetadata
                     }
                   };
                   
@@ -1106,12 +1116,15 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
                       // Create metadata with complete information
                       const metadata: ImageMetadata = {
                         metadata: {
+                          // Keep width and height adjacent for better readability
                           width,
                           height,
+                          // Basic image properties
                           format: cfData['format'] || cfData['Format'] || (cfContentType && cfContentType.replace('image/', '')),
+                          // Quality assessment metadata
+                          confidence: 'high', // Cloudflare worker metadata is reliable
                           estimationMethod: 'direct',
                           metadataSource: 'cf-metadata',
-                          confidence: 'high', // Cloudflare worker metadata is reliable
                           // Store original metadata for reference
                           originalMetadata: cfData
                         },
@@ -1196,12 +1209,15 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
           // Create metadata with size-based estimates 
           const sizeBasedMetadata: ImageMetadata = {
             metadata: {
+              // Keep width and height adjacent for better readability
               width,
               height,
+              // Basic image properties
               format: storageResult.contentType?.replace('image/', '') || 'jpeg',
+              // Quality assessment metadata
+              confidence: 'medium', // Size estimation is reasonably accurate for typical photos
               estimationMethod: 'file-size',
               metadataSource: 'estimation',
-              confidence: 'medium', // Size estimation is reasonably accurate for typical photos
               // Store additional information about the estimation
               originalMetadata: {
                 fileSize: storageResult.size,
@@ -1245,12 +1261,15 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
       // These values are intentionally modest to avoid creating issues with too large dimensions
       const minimumMetadata: ImageMetadata = {
         metadata: {
+          // Keep width and height adjacent for better readability
           width: 1600,  // Reasonable width that works for most displays
           height: 900,  // 16:9 aspect ratio
+          // Basic image properties
           format: storageResult?.contentType?.replace('image/', '') || 'jpeg',
+          // Quality assessment metadata
+          confidence: 'low',
           estimationMethod: 'minimal-fallback',
-          metadataSource: 'estimation',
-          confidence: 'low'
+          metadataSource: 'estimation'
         },
         messages: ['Used fallback dimensions due to metadata extraction failure']
       };
@@ -1283,12 +1302,15 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
       
       const defaultMetadata: ImageMetadata = {
         metadata: {
+          // Keep width and height adjacent for better readability
           width: 1600,
           height: 900,
+          // Basic image properties
           format: 'jpeg',
+          // Quality assessment metadata
+          confidence: 'low',
           estimationMethod: 'error-fallback',
-          metadataSource: 'estimation',
-          confidence: 'low'
+          metadataSource: 'estimation'
         },
         errors: [errorMessage],
         messages: ['Emergency fallback dimensions used due to critical error in metadata extraction']

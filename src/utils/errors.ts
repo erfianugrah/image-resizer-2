@@ -4,6 +4,8 @@
  * This module provides standardized error classes and error response creation utilities.
  */
 
+import { defaultLogger } from './logging';
+
 /**
  * Type for error details with structured information
  */
@@ -84,18 +86,10 @@ export class AuthenticationError extends AppError {
  * @returns A Response object with appropriate status and JSON error details
  */
 export function createErrorResponse(error: AppError): Response {
-  // Use default console log until we can dynamically import the logger
+  // Use the defaultLogger from logging.ts
   // This avoids circular dependencies during initialization
-  const logger = {
-    breadcrumb: (step: string, duration?: number, data?: ErrorDetails) => {
-      console.log(`[INFO] 🔶 BREADCRUMB: ${step}`, data || '');
-    },
-    debug: (message: string, data?: ErrorDetails) => {
-      console.log(`[DEBUG] ${message}`, data || '');
-    }
-  };
-
-  logger.breadcrumb('Creating error response', undefined, {
+  
+  defaultLogger.breadcrumb('Creating error response', undefined, {
     errorType: error.constructor.name,
     errorCode: error.code,
     status: error.status
@@ -113,13 +107,13 @@ export function createErrorResponse(error: AppError): Response {
   // In development or with debug details, include error details
   if (error.details) {
     (errorBody.error as Record<string, unknown>).details = error.details;
-    logger.breadcrumb('Including error details', undefined, {
+    defaultLogger.breadcrumb('Including error details', undefined, {
       details: typeof error.details === 'object' ? Object.keys(error.details).join(',') : 'simple value'
     });
   }
   
   // Log error response creation
-  logger.debug('Created error response', {
+  defaultLogger.debug('Created error response', {
     status: error.status,
     code: error.code,
     hasDetails: !!error.details

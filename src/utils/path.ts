@@ -2,6 +2,8 @@
  * Path handling utilities
  */
 
+import { defaultLogger } from './logging';
+
 // Path transformation configuration type
 export interface PathTransform {
   prefix: string;
@@ -58,19 +60,9 @@ export function parseImagePath(pathname: string): {
   imagePath: string;
   options: Record<string, string>;
 } {
-  // Use default console log until we can dynamically import the logger
+  // Use defaultLogger from the logging module
   // This avoids circular dependencies during initialization
-  const logger = {
-    breadcrumb: (
-      step: string,
-      duration?: number,
-      data?: Record<string, unknown>,
-    ) => {
-      console.log(`[INFO] 🔶 BREADCRUMB: ${step}`, data || '');
-    },
-  };
-
-  logger.breadcrumb('Parsing image path', undefined, { pathname });
+  defaultLogger.breadcrumb('Parsing image path', undefined, { pathname });
 
   // Default result
   const result = {
@@ -80,7 +72,7 @@ export function parseImagePath(pathname: string): {
 
   // Check if pathname is empty
   if (!pathname || pathname === '/') {
-    logger.breadcrumb('Empty pathname, returning empty result');
+    defaultLogger.breadcrumb('Empty pathname, returning empty result');
     return result;
   }
 
@@ -89,7 +81,7 @@ export function parseImagePath(pathname: string): {
 
   // Check if there are any segments
   if (segments.length === 0) {
-    logger.breadcrumb('No path segments found');
+    defaultLogger.breadcrumb('No path segments found');
     return result;
   }
 
@@ -129,7 +121,7 @@ export function parseImagePath(pathname: string): {
   // Reconstruct the image path
   const imagePath = '/' + pathSegments.join('/');
 
-  logger.breadcrumb('Finished parsing image path', undefined, {
+  defaultLogger.breadcrumb('Finished parsing image path', undefined, {
     imagePath,
     optionsCount: Object.keys(options).length,
   });
@@ -151,26 +143,15 @@ export function extractDerivative(
   pathname: string,
   derivatives: string[],
 ): { derivative: string; modifiedPath: string } | null {
-  // Use default console log until we can dynamically import the logger
-  // This avoids circular dependencies during initialization
-  const logger = {
-    breadcrumb: (
-      step: string,
-      duration?: number,
-      data?: Record<string, unknown>,
-    ) => {
-      console.log(`[INFO] 🔶 BREADCRUMB: ${step}`, data || '');
-    },
-  };
-
-  logger.breadcrumb('Extracting derivative from path', undefined, {
+  // Use defaultLogger for breadcrumb
+  defaultLogger.breadcrumb('Extracting derivative from path', undefined, {
     pathname,
     availableDerivatives: derivatives?.length || 0,
   });
 
   // Default result
   if (!pathname || !derivatives || derivatives.length === 0) {
-    logger.breadcrumb('No path or derivatives provided');
+    defaultLogger.breadcrumb('No path or derivatives provided');
     return null;
   }
 
@@ -188,7 +169,7 @@ export function extractDerivative(
       pathSegments.splice(i, 1);
       const modifiedPath = '/' + pathSegments.join('/');
 
-      logger.breadcrumb('Found derivative in path', undefined, {
+      defaultLogger.breadcrumb('Found derivative in path', undefined, {
         derivative: segment,
         originalPath: pathname,
         modifiedPath,
@@ -201,7 +182,7 @@ export function extractDerivative(
     }
   }
 
-  logger.breadcrumb('No derivative found in path');
+  defaultLogger.breadcrumb('No derivative found in path');
   return null;
 }
 
@@ -220,17 +201,7 @@ export function parseQueryOptions(
 ): Record<string, unknown> {
   // Use default console log until we can dynamically import the logger
   // This avoids circular dependencies during initialization
-  const logger = {
-    breadcrumb: (
-      step: string,
-      duration?: number,
-      data?: Record<string, unknown>,
-    ) => {
-      console.log(`[INFO] 🔶 BREADCRUMB: ${step}`, data || '');
-    },
-  };
-
-  logger.breadcrumb('Parsing query options', undefined, {
+  defaultLogger.breadcrumb('Parsing query options', undefined, {
     paramCount: Array.from(searchParams.keys()).length,
   });
 
@@ -295,14 +266,14 @@ export function parseQueryOptions(
       if (paramValue.toLowerCase() === 'auto') {
         options[param] = 'auto';
         if (param === 'width') {
-          logger.breadcrumb(`Setting ${param} to auto`);
+          defaultLogger.breadcrumb(`Setting ${param} to auto`);
         }
       } else {
         const numValue = parseInt(paramValue, 10);
         if (!isNaN(numValue)) {
           options[param] = numValue;
           if (param === 'width') {
-            logger.breadcrumb(`Setting ${param}`, undefined, {
+            defaultLogger.breadcrumb(`Setting ${param}`, undefined, {
               [param]: numValue,
             });
           }
@@ -319,7 +290,7 @@ export function parseQueryOptions(
       if (!isNaN(numValue)) {
         options[param] = numValue;
         if (param === 'blur') {
-          logger.breadcrumb(`Setting ${param}`, undefined, {
+          defaultLogger.breadcrumb(`Setting ${param}`, undefined, {
             [param]: numValue,
           });
         }
@@ -384,7 +355,7 @@ export function parseQueryOptions(
         } else if (lowerValue) {
           // Default invalid values to 'h' (horizontal)
           options[param] = 'h';
-          logger.breadcrumb(
+          defaultLogger.breadcrumb(
             `Converted invalid ${param} value to h`,
             undefined,
             {
@@ -404,14 +375,14 @@ export function parseQueryOptions(
       const drawData = JSON.parse(drawValue);
       const drawArray = Array.isArray(drawData) ? drawData : [drawData];
       options.draw = drawArray;
-      logger.breadcrumb('Parsed draw parameter', undefined, {
+      defaultLogger.breadcrumb('Parsed draw parameter', undefined, {
         drawItems: drawArray.length,
       });
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (e) {
       // The error details are intentionally ignored
       // We intentionally ignore the error details
-      logger.breadcrumb('Failed to parse draw parameter as JSON');
+      defaultLogger.breadcrumb('Failed to parse draw parameter as JSON');
       // If not valid JSON, skip this parameter
     }
   }
@@ -441,9 +412,9 @@ export function parseQueryOptions(
 
     if (sizeMap[formatSize]) {
       options.width = sizeMap[formatSize];
-      logger.breadcrumb('Applied custom format size', undefined, {
+      defaultLogger.breadcrumb('Applied custom format size', undefined, {
         formatCode: formatSize,
-        width: options.width,
+        width: options.width as number,
       });
     }
 
@@ -457,9 +428,9 @@ export function parseQueryOptions(
     if (aspectRatio.includes(':') || aspectRatio.includes('-')) {
       // Convert to the standard aspect format
       options.aspect = aspectRatio;
-      logger.breadcrumb('Applied compact aspect ratio parameter', undefined, {
+      defaultLogger.breadcrumb('Applied compact aspect ratio parameter', undefined, {
         r: aspectRatio,
-        aspect: options.aspect,
+        aspect: options.aspect as string,
       });
     }
     // Clean up the short parameter as we've translated it
@@ -474,9 +445,9 @@ export function parseQueryOptions(
       const [x, y] = position.split(',').map((v) => parseFloat(v));
       if (!isNaN(x) && !isNaN(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1) {
         options.focal = position;
-        logger.breadcrumb('Applied compact positioning parameter', undefined, {
+        defaultLogger.breadcrumb('Applied compact positioning parameter', undefined, {
           p: position,
-          focal: options.focal,
+          focal: options.focal as string,
           x,
           y,
         });
@@ -486,7 +457,7 @@ export function parseQueryOptions(
     delete options.p;
   }
 
-  logger.breadcrumb('Completed parsing query options', undefined, {
+  defaultLogger.breadcrumb('Completed parsing query options', undefined, {
     optionCount: Object.keys(options).length,
     hasWidth: options.width !== undefined,
     hasHeight: options.height !== undefined,
@@ -511,19 +482,8 @@ export function applyPathTransforms(
   imagePath: string,
   pathTransforms: PathTransforms,
 ): string {
-  // Use default console log until we can dynamically import the logger
-  // This avoids circular dependencies during initialization
-  const logger = {
-    breadcrumb: (
-      step: string,
-      duration?: number,
-      data?: Record<string, unknown>,
-    ) => {
-      console.log(`[INFO] 🔶 BREADCRUMB: ${step}`, data || '');
-    },
-  };
-
-  logger.breadcrumb('Applying path transforms', undefined, {
+  // Use defaultLogger to avoid circular dependencies
+  defaultLogger.breadcrumb('Applying path transforms', undefined, {
     imagePath,
     transformCount: Object.keys(pathTransforms).length,
   });
@@ -532,7 +492,7 @@ export function applyPathTransforms(
   const segments = imagePath.split('/').filter(Boolean);
 
   if (segments.length === 0) {
-    logger.breadcrumb('No path segments to transform');
+    defaultLogger.breadcrumb('No path segments to transform');
     return imagePath;
   }
 
@@ -541,7 +501,7 @@ export function applyPathTransforms(
   const transform = pathTransforms[firstSegment];
 
   if (!transform) {
-    logger.breadcrumb('No matching transform found for segment', undefined, {
+    defaultLogger.breadcrumb('No matching transform found for segment', undefined, {
       segment: firstSegment,
     });
     return imagePath;
@@ -553,26 +513,26 @@ export function applyPathTransforms(
   if (transform.removePrefix) {
     // Remove the prefix segment
     newPath = '/' + segments.slice(1).join('/');
-    logger.breadcrumb('Removed prefix segment', undefined, {
+    defaultLogger.breadcrumb('Removed prefix segment', undefined, {
       prefix: firstSegment,
       originalPath: imagePath,
       transformedPath: newPath,
     });
   } else {
     newPath = imagePath;
-    logger.breadcrumb('Keeping original path', undefined, { path: imagePath });
+    defaultLogger.breadcrumb('Keeping original path', undefined, { path: imagePath });
   }
 
   // Add a new prefix if specified
   if (transform.prefix && transform.prefix.length > 0) {
     newPath = '/' + transform.prefix + newPath;
-    logger.breadcrumb('Added new prefix', undefined, {
+    defaultLogger.breadcrumb('Added new prefix', undefined, {
       prefix: transform.prefix,
       finalPath: newPath,
     });
   }
 
-  logger.breadcrumb('Path transformation complete', undefined, {
+  defaultLogger.breadcrumb('Path transformation complete', undefined, {
     originalPath: imagePath,
     transformedPath: newPath,
   });

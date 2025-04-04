@@ -173,10 +173,27 @@ export async function handleImageRequest(
           lookupDurationMs: kvCacheLookupDuration
         });
         
-        // Update response headers to reflect lookup time
-        const updatedResponse = new Response(cachedResponse.body, cachedResponse);
-        updatedResponse.headers.set('X-KV-Cache-Lookup-Time', kvCacheLookupDuration.toString());
-        updatedResponse.headers.set('X-KV-Cache', 'HIT');
+        // Update response with cache info
+        let updatedResponse = new Response(cachedResponse.body, cachedResponse);
+        
+        // Apply debug headers using the debugService
+        updatedResponse = services.debugService.addDebugHeaders(
+          updatedResponse,
+          request,
+          {
+            response: updatedResponse,
+            sourceType: 'r2', // Use 'r2' type as it's cached
+            contentType: updatedResponse.headers.get('Content-Type') || 'unknown',
+            size: null,
+            path: imagePath,
+            originalUrl: request.url // Add original URL for reference
+          },
+          // Pass empty transform options as we're using cached result
+          {},
+          config,
+          metrics,
+          url
+        );
         
         // We found the image in cache, return it directly without further transformation
         return updatedResponse;

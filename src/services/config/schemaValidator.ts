@@ -7,7 +7,7 @@
  */
 
 import { ConfigurationSystem, ConfigModule } from './interfaces';
-import { Logger } from '../../utils/logging';
+import { Logger, defaultLogger } from '../../utils/logging';
 
 /**
  * Validation error details
@@ -1148,8 +1148,8 @@ export class SchemaValidator {
   private logDebug(message: string, data?: Record<string, any>): void {
     if (this.logger) {
       this.logger.debug(message, data);
-    } else if (typeof console !== 'undefined') {
-      console.debug(message, data);
+    } else {
+      defaultLogger.debug(message, data);
     }
   }
   
@@ -1162,8 +1162,8 @@ export class SchemaValidator {
   private logInfo(message: string, data?: Record<string, any>): void {
     if (this.logger) {
       this.logger.info(message, data);
-    } else if (typeof console !== 'undefined') {
-      console.info(message, data);
+    } else {
+      defaultLogger.info(message, data);
     }
   }
   
@@ -1176,8 +1176,8 @@ export class SchemaValidator {
   private logWarn(message: string, data?: Record<string, any>): void {
     if (this.logger) {
       this.logger.warn(message, data);
-    } else if (typeof console !== 'undefined') {
-      console.warn(message, data);
+    } else {
+      defaultLogger.warn(message, data);
     }
   }
   
@@ -1190,8 +1190,8 @@ export class SchemaValidator {
   private logError(message: string, data?: Record<string, any>): void {
     if (this.logger) {
       this.logger.error(message, data);
-    } else if (typeof console !== 'undefined') {
-      console.error(message, data);
+    } else {
+      defaultLogger.error(message, data);
     }
   }
 }

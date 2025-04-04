@@ -190,11 +190,9 @@ export class CacheHeadersManager {
       }
     }
 
-    // Add a custom header to indicate we applied our caching strategy
-    if (config.debug?.enabled) {
-      newResponse.headers.set("X-Cache-Strategy", "enhanced");
-      newResponse.headers.set("X-Cache-TTL", ttl.toString());
-    }
+    // We'll store cache strategy info in a property that can be read by debugService
+    // The parent cacheService should handle debug headers via debugService
+    // This avoids setting debug headers in multiple places
 
     // Log the final cache headers
     this.logger.debug("Applied enhanced cache headers", {
