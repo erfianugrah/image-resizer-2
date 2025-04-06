@@ -333,6 +333,57 @@ KV_KEY=config
     console.log(chalk.yellow('Rename to .env and update with your values'));
   });
 
+// Command to activate a configuration version
+program
+  .command('activate')
+  .description('Activate a specific configuration version')
+  .argument('<version-id>', 'Version ID to activate (e.g. v6)')
+  .requiredOption('-e, --environment <env>', 'Environment (dev, staging, prod)')
+  .option('-k, --api-key <key>', 'API key to use')
+  .option('-u, --api-url <url>', 'Override the API URL for this command')
+  .action(async (versionId: string, options: {
+    environment: string;
+    apiKey?: string;
+    apiUrl?: string;
+  }) => {
+    try {
+      // Get API URL and API key
+      const apiUrl = options.apiUrl || getApiUrl(options.environment);
+      const apiKey = options.apiKey || getApiKey(options.environment);
+      
+      // Check for required API key
+      if (!apiKey) {
+        console.error(chalk.red('No API key provided'));
+        console.error(chalk.yellow(`Please provide an API key via --api-key flag or set CONFIG_API_KEY_${options.environment.toUpperCase()} or CONFIG_API_KEY in your environment or .env file`));
+        process.exit(1);
+      }
+      
+      console.log(chalk.blue(`Activating configuration version ${chalk.cyan(versionId)} on ${chalk.cyan(apiUrl)}...`));
+      
+      // Send the request
+      const response = await fetch(`${apiUrl}/activate/${versionId}`, {
+        method: 'PUT',
+        headers: {
+          'X-Config-API-Key': apiKey
+        }
+      });
+      
+      if (!response.ok) {
+        const responseText = await response.text();
+        console.error(chalk.red(`API request failed with status ${response.status}:`));
+        console.error(chalk.red(responseText));
+        process.exit(1);
+      }
+      
+      const result = await response.json();
+      console.log(chalk.green('Configuration activated successfully!'));
+      console.log(JSON.stringify(result, null, 2));
+    } catch (error) {
+      console.error(chalk.red(`Failed to activate configuration: ${error instanceof Error ? error.message : String(error)}`));
+      process.exit(1);
+    }
+  });
+
 // Parse command line arguments
 program.parse();
 

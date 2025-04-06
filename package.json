@@ -19,6 +19,7 @@
 		"config:post": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts post",
 		"config:get": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts get",
 		"config:load-kv": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts load-kv",
+		"config:activate": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts activate",
 		"config:init-env": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts init-env",
 		"config:load-initial": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts load-kv ./docs/public/configuration/examples/templates/initial-config.json --env dev",
 		"config:load-production": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts load-kv ./docs/public/configuration/examples/templates/production-config.json --env production"
