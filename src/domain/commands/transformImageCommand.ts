@@ -269,18 +269,26 @@ export class TransformImageCommand implements Command<Response> {
           const responseToCache = finalResponse.clone();
           const responseBuffer = await responseToCache.arrayBuffer();
           
-          // Add buffer to storage result
+          // Add buffer to storage result and ensure we track the original image size
           const enhancedStorageResult = {
             ...storageResult,
             buffer: responseBuffer,
             storageType: storageResult.sourceType || 'transform',
             contentType: responseToCache.headers.get('Content-Type') || storageResult.contentType,
-            size: responseBuffer.byteLength
+            originalSize: storageResult.size || 0, // Keep original size for transformation verification
+            size: responseBuffer.byteLength // Current size after transformation
           };
           
           logger.debug('Prepared response buffer for KV caching', {
             bufferSize: responseBuffer.byteLength,
+            originalSize: storageResult.size || 0,
+            sizeRatio: responseBuffer.byteLength / (storageResult.size || 1),
             contentType: enhancedStorageResult.contentType,
+            originalContentType: storageResult.contentType || 'unknown',
+            hasAspect: !!this.options.aspect,
+            aspectRatio: this.options.aspect,
+            fit: this.options.fit,
+            focal: this.options.focal,
             url: this.request.url
           });
           

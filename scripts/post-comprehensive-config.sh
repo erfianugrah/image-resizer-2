@@ -2,14 +2,14 @@
 
 # Script to post the comprehensive configuration
 API_URL="https://images.erfi.dev/api/config"
-API_KEY="sJP5kuTWBiX4tx5yuYHmzGZed"
+API_KEY="Udvc5PQn3V4aNAPvZab87fqK6"
 
 # Create a temporary file with the request wrapper
 cat <<EOF > /tmp/config-wrapper.json
 {
   "config": $(cat $(dirname "$0")/../docs/public/configuration/examples/comprehensive-config-runnable.json),
   "comment": "Comprehensive configuration setup",
-  "author": "developer"
+  "author": "Erfi Anugrah"
 }
 EOF
 

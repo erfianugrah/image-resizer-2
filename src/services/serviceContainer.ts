@@ -90,13 +90,19 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
   
   // Create path service
   const pathServiceLogger = loggingService.getLogger('PathService');
-  const { createPathService } = require('./pathService');
-  const pathService = createPathService(pathServiceLogger, config);
+  // Using dynamic import instead of require
+  import('./pathService').then(module => {
+    const pathService = module.createPathService(pathServiceLogger, config);
+    this.services.pathService = pathService;
+  }).catch(err => loggingService.error('Error loading path service', { error: err.message }));
   
   // Create detector service using factory
   const detectorServiceLogger = loggingService.getLogger('DetectorService');
-  const { createDetectorService } = require('./detectorServiceFactory');
-  const detectorService = createDetectorService(config, detectorServiceLogger);
+  // Using dynamic import instead of require
+  import('./detectorServiceFactory').then(module => {
+    const detectorService = module.createDetectorService(config, detectorServiceLogger);
+    this.services.detectorService = detectorService;
+  }).catch(err => loggingService.error('Error loading detector service', { error: err.message }));
   
   // Get the KV namespace from the environment
   const transformCacheBinding = config.cache.transformCache?.binding || 'IMAGE_TRANSFORMATIONS_CACHE';

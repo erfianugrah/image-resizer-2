@@ -599,6 +599,87 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
   }
   
   /**
+   * Determine if the response is actually a transformed image, not just the original image
+   */
+  private isActuallyTransformed(
+    response: Response, 
+    storageResult: TransformStorageResult, 
+    transformOptions: TransformOptions
+  ): boolean {
+    // Get response content type and original content type
+    const responseContentType = response.headers.get('content-type') || '';
+    const originalContentType = storageResult.contentType || '';
+    
+    // Get response size and original size
+    const responseSize = parseInt(response.headers.get('content-length') || '0', 10) || 
+                         storageResult.buffer.byteLength;
+    const originalSize = storageResult.originalSize || storageResult.size || 0;
+    
+    // Calculate size ratio (transformed should be smaller)
+    const sizeRatio = responseSize / (originalSize || 1);
+    
+    // Format transformation check
+    const responseFormat = responseContentType.split('/')[1]?.split(';')[0] || '';
+    const originalFormat = originalContentType.split('/')[1]?.split(';')[0] || '';
+    const formatChanged = responseFormat !== originalFormat && responseFormat !== '';
+    
+    // Dimension transformation check
+    const dimensionsChanged = !!(transformOptions.width || transformOptions.height);
+    
+    // Aspect ratio crop transformation check
+    const aspectCropApplied = !!(transformOptions.aspect && transformOptions.fit === 'crop');
+    
+    // Other image manipulations
+    const otherManipulations = !!(
+      transformOptions.blur || 
+      transformOptions.brightness || 
+      transformOptions.contrast || 
+      transformOptions.gamma || 
+      transformOptions.sharpen || 
+      transformOptions.rotate
+    );
+    
+    // Define transformation criteria
+    const transformationApplied = {
+      // Size reduction (allow for some margin, but should be significantly smaller)
+      // For some operations like metadata addition, the file might be slightly larger
+      sizeReduced: sizeRatio < 0.95,
+      // Format conversion
+      formatChanged,
+      // Explicit crop transformation
+      aspectCropApplied,
+      // Explicit dimensions changed
+      dimensionsChanged,
+      // Other image manipulations
+      otherManipulations
+    };
+    
+    // Log transformation validation details for debugging
+    this.logDebug('Validating transformation before caching', {
+      transformationApplied,
+      originalSize,
+      responseSize,
+      sizeRatio: sizeRatio.toFixed(2),
+      originalFormat,
+      responseFormat,
+      hasAspect: !!transformOptions.aspect,
+      aspectRatio: transformOptions.aspect,
+      fit: transformOptions.fit,
+      focal: transformOptions.focal,
+      width: transformOptions.width,
+      height: transformOptions.height
+    });
+    
+    // Must meet at least one transformation criterion to be considered transformed
+    // If it's very close to original size and no other transformations, it's likely untransformed
+    return transformationApplied.sizeReduced || 
+           transformationApplied.formatChanged || 
+           transformationApplied.aspectCropApplied ||
+           (transformationApplied.dimensionsChanged && sizeRatio < 0.99) ||
+           transformationApplied.otherManipulations;
+  }
+
+  /**
    * Put a transformed image into the cache
    */
   async put(
@@ -663,6 +744,19 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     if (!contentType?.startsWith('image/')) {
       this.logDebug("KV transform cache: Non-image content type, skipping storage", {
         contentType
+      });
+      return;
+    }
+    
+    // Verify this is actually a transformed image, not just the original
+    if (!this.isActuallyTransformed(response, storageResult, transformOptions)) {
+      this.logWarn("KV transform cache: Skipping cache for untransformed image", {
+        url: request.url,
+        contentType: response.headers.get('content-type'),
+        originalContentType: storageResult.contentType,
+        transformOptions: JSON.stringify(transformOptions),
+        size: storageResult.buffer.byteLength,
+        originalSize: storageResult.size
       });
       return;
     }

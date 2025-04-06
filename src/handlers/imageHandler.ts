@@ -97,7 +97,7 @@ export async function handleImageRequest(
     derivativesIsArray: Array.isArray(config.derivatives),
     derivativesIsNull: config.derivatives === null,
     derivativesIsUndefined: config.derivatives === undefined,
-    transformConf: config.hasOwnProperty('transform') ? 'transform section exists' : 'no transform section'
+    transformConf: Object.prototype.hasOwnProperty.call(config, 'transform') ? 'transform section exists' : 'no transform section'
   });
   
   logger.debug('Available derivatives', {

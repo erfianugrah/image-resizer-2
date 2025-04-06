@@ -1748,18 +1748,99 @@ export class DefaultImageTransformationService implements ImageTransformationSer
       }
     }
     
+    // Apply aspect ratio processing to ensure proper crop behavior
+    // This is needed for both paths (with and without metadata)
+    const processedResult = this.processAspectRatio(result);
+    
     // Let Cloudflare Image Resizing handle validation and provide warning headers
     this.trackedBreadcrumb('buildTransformOptions completed', undefined, {
-      finalOptionsCount: Object.keys(result).length,
-      hasWidth: !!result.width,
-      hasHeight: !!result.height,
-      width: result.width,
-      height: result.height,
-      format: result.format,
-      quality: result.quality,
-      fit: result.fit,
-      allParams: Object.keys(result).join(',')
+      finalOptionsCount: Object.keys(processedResult).length,
+      hasWidth: !!processedResult.width,
+      hasHeight: !!processedResult.height,
+      width: processedResult.width,
+      height: processedResult.height,
+      format: processedResult.format,
+      quality: processedResult.quality,
+      fit: processedResult.fit,
+      allParams: Object.keys(processedResult).join(',')
     });
+    
+    return processedResult;
+  }
+
+  /**
+   * Process aspect ratio transformations consistently
+   * Ensures proper crop settings are applied when aspect ratio is specified
+   * 
+   * @param options The transformation options containing aspect ratio settings
+   * @returns Updated options with consistent crop behavior
+   */
+  private processAspectRatio(options: TransformOptions): TransformOptions {
+    const result = { ...options };
+    
+    if (options.aspect) {
+      // ALWAYS set fit to crop for aspect ratio operations, overriding any other fit value
+      result.fit = 'crop';
+      this.logger.debug('Forcing fit=crop for aspect ratio operation', { 
+        aspect: options.aspect,
+        originalFit: options.fit
+      });
+      
+      // Process focal point if provided with aspect ratio
+      if (options.focal && !result.gravity) {
+        try {
+          const [x, y] = options.focal.split(',').map(parseFloat);
+          if (!isNaN(x) && !isNaN(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+            result.gravity = { x, y };
+            this.logger.debug('Setting gravity from focal point for aspect ratio', { 
+              focal: options.focal,
+              gravity: result.gravity
+            });
+          }
+        } catch (error) {
+          this.logger.warn('Invalid focal point format', { focal: options.focal });
+        }
+      }
+      
+      // Calculate missing dimension if needed
+      if (options.width && !options.height) {
+        try {
+          const [aspectWidth, aspectHeight] = options.aspect.toString().replace('-', ':').split(':').map(Number);
+          if (!isNaN(aspectWidth) && !isNaN(aspectHeight) && aspectWidth > 0 && aspectHeight > 0) {
+            const aspectRatio = aspectHeight / aspectWidth;
+            result.height = Math.round(options.width * aspectRatio);
+            this.logger.debug('Calculated height from width and aspect ratio', { 
+              width: options.width,
+              aspectRatio,
+              calculatedHeight: result.height
+            });
+          }
+        } catch (error) {
+          this.logger.warn('Error calculating height from aspect ratio', { 
+            aspect: options.aspect,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      } else if (!options.width && options.height) {
+        try {
+          const [aspectWidth, aspectHeight] = options.aspect.toString().replace('-', ':').split(':').map(Number);
+          if (!isNaN(aspectWidth) && !isNaN(aspectHeight) && aspectWidth > 0 && aspectHeight > 0) {
+            const aspectRatio = aspectWidth / aspectHeight;
+            result.width = Math.round(options.height * aspectRatio);
+            this.logger.debug('Calculated width from height and aspect ratio', { 
+              height: options.height,
+              aspectRatio,
+              calculatedWidth: result.width
+            });
+          }
+        } catch (error) {
+          this.logger.warn('Error calculating width from aspect ratio', { 
+            aspect: options.aspect,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      }
+    }
     
     return result;
   }
@@ -1982,7 +2063,7 @@ export class DefaultImageTransformationService implements ImageTransformationSer
       this.logger.error('Derivatives section missing in configuration', {
         derivative,
         configSections: Object.keys(config).join(','),
-        hasTransformConfig: config.hasOwnProperty('transform'),
+        hasTransformConfig: Object.prototype.hasOwnProperty.call(config, 'transform'),
         _derivativesLoaded: config._derivativesLoaded,
         _derivativesCount: config._derivativesCount
       });
