@@ -89,40 +89,80 @@ https://images.erfi.dev/Granna_1.JPG?width=500&draw=[{"url":"https://cdn.erfianu
 
 ## Using Akamai Compatibility Parameters
 
-### Simple Watermark (Bottom-Right Corner)
+### Akamai Style 1: Dot Notation (im.composite)
 
-![Akamai Bottom Right](https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:southeast,width:60,offset:10)
+#### Simple Watermark (Bottom-Right Corner)
 
-URL:
-```
-https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:southeast,width:60,offset:10
-```
-
-### Semi-Transparent Centered Watermark
-
-![Akamai Centered](https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,opacity:50,width:120)
+![Akamai Bottom Right](https://images.erfi.dev/Granna_1.JPG?width=500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:southeast,width:60,offset:10)
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,opacity:50,width:120
+https://images.erfi.dev/Granna_1.JPG?width=500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:southeast,width:60,offset:10
 ```
 
-### Tiled Background Watermark
+#### Semi-Transparent Centered Watermark
 
-![Akamai Tiled](https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,tile:true,opacity:20,width:40)
+![Akamai Centered](https://images.erfi.dev/Granna_1.JPG?width=500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,opacity:50,width:120)
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,tile:true,opacity:20,width:40
+https://images.erfi.dev/Granna_1.JPG?width=500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,opacity:50,width:120
 ```
 
-### Using im.watermark Alias
+#### Tiled Background Watermark
 
-![Watermark Alias](https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.watermark=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:northeast,opacity:70,width:40)
+![Akamai Tiled](https://images.erfi.dev/Granna_1.JPG?width=500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,tile:true,opacity:20,width:40)
 
 URL:
 ```
-https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.watermark=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:northeast,opacity:70,width:40
+https://images.erfi.dev/Granna_1.JPG?width=500&im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,tile:true,opacity:20,width:40
+```
+
+#### Using im.watermark Alias
+
+![Watermark Alias](https://images.erfi.dev/Granna_1.JPG?width=500&im.watermark=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:northeast,opacity:70,width:40)
+
+URL:
+```
+https://images.erfi.dev/Granna_1.JPG?width=500&im.watermark=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:northeast,opacity:70,width:40
+```
+
+### Akamai Style 2: Equals Notation (im=Composite)
+
+#### Simple Logo in Bottom-Right with Specific Size
+
+![Akamai Equals Notation](https://images.erfi.dev/Granna_1.JPG?width=500&im=Composite,image=(url=https://cdn.erfianugrah.com/ea_favicon.png),placement=southeast,x=20,y=20,width=80)
+
+URL:
+```
+https://images.erfi.dev/Granna_1.JPG?width=500&im=Composite,image=(url=https://cdn.erfianugrah.com/ea_favicon.png),placement=southeast,x=20,y=20,width=80
+```
+
+#### Top-Left Corner Watermark
+
+![Akamai Top Left](https://images.erfi.dev/Granna_1.JPG?width=500&im=Composite,image=(url=https://cdn.erfianugrah.com/ea_favicon.png),placement=northwest,x=20,y=20,width=80)
+
+URL:
+```
+https://images.erfi.dev/Granna_1.JPG?width=500&im=Composite,image=(url=https://cdn.erfianugrah.com/ea_favicon.png),placement=northwest,x=20,y=20,width=80
+```
+
+#### Semi-Transparent Center Watermark
+
+![Akamai Center Transparent](https://images.erfi.dev/Granna_1.JPG?width=500&im=Composite,image=(url=https://cdn.erfianugrah.com/ea_favicon.png),placement=center,opacity=0.5,width=150)
+
+URL:
+```
+https://images.erfi.dev/Granna_1.JPG?width=500&im=Composite,image=(url=https://cdn.erfianugrah.com/ea_favicon.png),placement=center,opacity=0.5,width=150
+```
+
+#### Using Watermark Alternative 
+
+![Akamai Watermark Alternative](https://images.erfi.dev/Granna_1.JPG?width=500&im=Watermark,image=(url=https://cdn.erfianugrah.com/ea_favicon.png),placement=northeast,x=15,y=15,width=60)
+
+URL:
+```
+https://images.erfi.dev/Granna_1.JPG?width=500&im=Watermark,image=(url=https://cdn.erfianugrah.com/ea_favicon.png),placement=northeast,x=15,y=15,width=60
 ```
 
 ## Usage Instructions
@@ -160,8 +200,16 @@ https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.watermark=url:https:
 
 ### Akamai Compatibility Syntax
 
+#### Dot Notation (im.composite)
+
 ```
 im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:southeast,width:60,opacity:80
+```
+
+#### Equals Notation (im=Composite)
+
+```
+im=Composite,image=(url=https://cdn.erfianugrah.com/ea_favicon.png),placement=southeast,x=20,y=20,width=80
 ```
 
 #### Placement Options:
@@ -175,11 +223,22 @@ im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:southeast,
 - `southwest` or `bottomleft`
 - `center` (default)
 
-#### Additional Options:
+#### Dot Notation Options:
+- `url`: URL of the watermark image
 - `opacity`: Value between 0-100 (e.g., 50 for 50% opacity)
 - `tile`: Set to `true` to tile the image
 - `offset`: Distance from the edge in pixels (default: 5)
 - `width`/`height`: Specify dimensions of the overlay
+- `fit`: How to resize the overlay
+- `background`: Background color
+- `rotate`: Rotation angle
+
+#### Equals Notation Options:
+- `image=(url=...)`: URL of the watermark image
+- `placement`: Position of the watermark (as listed above)
+- `x`/`y`: Distance from the specified edge in pixels
+- `width`/`height`: Dimensions of the watermark
+- `opacity`: Value between 0-1 (e.g., 0.5 for 50% opacity)
 - `fit`: How to resize the overlay
 - `background`: Background color
 - `rotate`: Rotation angle

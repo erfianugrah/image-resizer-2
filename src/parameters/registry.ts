@@ -98,10 +98,35 @@ export const parameterRegistry: Record<string, TransformParameterDefinition> = {
     type: 'string',
     allowedValues: [
       'center', 'face', 'auto', 'left', 'right', 'top', 'bottom',
-      'top-left', 'top-right', 'bottom-left', 'bottom-right'
+      'top-left', 'top-right', 'bottom-left', 'bottom-right',
+      // Also allow Akamai placement values for validation, they'll be formatted in formatter
+      'north', 'south', 'east', 'west', 'northeast', 'northwest', 'southeast', 'southwest',
+      'topright', 'topleft', 'bottomright', 'bottomleft'
     ],
     defaultValue: 'center',
     priority: 80,
+    formatter: (value) => {
+      if (typeof value !== 'string') return 'center';
+      
+      // Map from Akamai placement values to Cloudflare gravity values
+      // For corners, we map to simpler values since Cloudflare doesn't directly support corners like "bottom-right"
+      const placementToGravity: Record<string, string> = {
+        'north': 'top',
+        'south': 'bottom',
+        'east': 'right',
+        'west': 'left',
+        'northeast': 'right', // For overlay position, prefer right alignment
+        'northwest': 'left',  // For overlay position, prefer left alignment
+        'southeast': 'right', // For overlay position, prefer right alignment 
+        'southwest': 'left',  // For overlay position, prefer left alignment
+        'topright': 'right',  // For overlay position, prefer right alignment
+        'topleft': 'left',    // For overlay position, prefer left alignment
+        'bottomright': 'right', // For overlay position, prefer right alignment
+        'bottomleft': 'left'    // For overlay position, prefer left alignment
+      };
+      
+      return placementToGravity[value.toLowerCase()] || value;
+    }
   },
   blur: {
     name: 'blur',

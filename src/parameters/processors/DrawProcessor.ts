@@ -6,6 +6,7 @@
 
 import { TransformParameter } from '../../utils/path';
 import { Logger } from '../../utils/logging';
+import { parameterRegistry } from '../registry';
 
 /**
  * Overlay configuration for the 'draw' parameter
@@ -147,7 +148,21 @@ export class DrawProcessor {
           y: Number(overlay.gravity.y)
         };
       } else {
-        normalized.gravity = String(overlay.gravity);
+        // Get the gravity parameter definition from registry to use its formatter if available
+        const gravityDef = parameterRegistry['gravity'];
+        if (gravityDef && gravityDef.formatter && typeof overlay.gravity === 'string') {
+          // Apply the formatter to translate Akamai placement values
+          normalized.gravity = gravityDef.formatter(overlay.gravity);
+          
+          if (normalized.gravity !== overlay.gravity) {
+            this.logger.debug('Formatted gravity value via registry', { 
+              original: overlay.gravity, 
+              formatted: normalized.gravity 
+            });
+          }
+        } else {
+          normalized.gravity = String(overlay.gravity);
+        }
       }
     }
     

@@ -90,19 +90,33 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
   
   // Create path service
   const pathServiceLogger = loggingService.getLogger('PathService');
-  // Using dynamic import instead of require
-  import('./pathService').then(module => {
-    const pathService = module.createPathService(pathServiceLogger, config);
-    this.services.pathService = pathService;
-  }).catch(err => loggingService.error('Error loading path service', { error: err.message }));
+  let pathServiceImpl;
+  try {
+    // Using require to avoid dynamic import (which returns a promise)
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const pathServiceModule = require('./pathService');
+    pathServiceImpl = pathServiceModule.createPathService(pathServiceLogger, config);
+    mainLogger.debug('Path service initialized successfully');
+  } catch (err) {
+    mainLogger.warn('Error loading path service', {
+      error: err instanceof Error ? err.message : String(err)
+    });
+  }
   
   // Create detector service using factory
   const detectorServiceLogger = loggingService.getLogger('DetectorService');
-  // Using dynamic import instead of require
-  import('./detectorServiceFactory').then(module => {
-    const detectorService = module.createDetectorService(config, detectorServiceLogger);
-    this.services.detectorService = detectorService;
-  }).catch(err => loggingService.error('Error loading detector service', { error: err.message }));
+  let detectorServiceImpl;
+  try {
+    // Using require to avoid dynamic import (which returns a promise)
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const detectorServiceModule = require('./detectorServiceFactory');
+    detectorServiceImpl = detectorServiceModule.createDetectorService(config, detectorServiceLogger);
+    mainLogger.debug('Detector service initialized successfully');
+  } catch (err) {
+    mainLogger.warn('Error loading detector service', {
+      error: err instanceof Error ? err.message : String(err)
+    });
+  }
   
   // Get the KV namespace from the environment
   const transformCacheBinding = config.cache.transformCache?.binding || 'IMAGE_TRANSFORMATIONS_CACHE';
@@ -209,8 +223,8 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
     logger: mainLogger,
     configStore: kvConfigStore,
     configApiService,
-    pathService,
-    detectorService,
+    pathService: pathServiceImpl,
+    detectorService: detectorServiceImpl,
     
     // Add service resolution methods to satisfy interface
     resolve: <T>(serviceType: string): T => {

@@ -4,7 +4,12 @@ This document explains the implementation of the watermark/composite functionali
 
 ## Overview
 
-The Akamai Image Manager provides a feature called `im.composite` (or `im.watermark` as an alias) for adding image overlays to the main image. This feature has been mapped to Cloudflare's `draw` array functionality, which serves a similar purpose.
+The Akamai Image Manager provides watermarking features in two syntax formats:
+
+1. **Dot notation**: Using `im.composite` or `im.watermark` as parameter names
+2. **Equals notation**: Using `im=Composite` or `im=Watermark` with a comma-separated list of properties
+
+Both syntaxes are mapped to Cloudflare's `draw` array functionality, which serves a similar purpose.
 
 ## Parameter Mapping
 
@@ -41,7 +46,9 @@ Akamai uses named positions for placement, while Cloudflare uses edge distances.
 
 ## Example Transformations
 
-### Basic Watermark (Southeast Corner)
+### Dot Notation Examples
+
+#### Basic Watermark (Southeast Corner)
 
 ```
 # Akamai format:
@@ -55,7 +62,7 @@ draw=[{
 }]
 ```
 
-### Watermark with Opacity and Custom Offset
+#### Watermark with Opacity and Custom Offset
 
 ```
 # Akamai format:
@@ -70,7 +77,7 @@ draw=[{
 }]
 ```
 
-### Sized Watermark with Fit Mode
+#### Sized Watermark with Fit Mode
 
 ```
 # Akamai format:
@@ -85,7 +92,7 @@ draw=[{
 }]
 ```
 
-### Tiled/Repeated Watermark
+#### Tiled/Repeated Watermark
 
 ```
 # Akamai format:
@@ -95,6 +102,52 @@ im.composite=url:watermark.png,tile:true
 draw=[{
   "url": "watermark.png",
   "repeat": true
+}]
+```
+
+### Equals Notation Examples
+
+#### Bottom-Right Watermark with Size
+
+```
+# Akamai format:
+im=Composite,image=(url=watermark.png),placement=southeast,x=20,y=20,width=80
+
+# Cloudflare format:
+draw=[{
+  "url": "watermark.png",
+  "bottom": 20,
+  "right": 20,
+  "width": 80
+}]
+```
+
+#### Semi-Transparent Centered Watermark
+
+```
+# Akamai format:
+im=Composite,image=(url=watermark.png),placement=center,opacity=0.5,width=150
+
+# Cloudflare format:
+draw=[{
+  "url": "watermark.png",
+  "opacity": 0.5,
+  "width": 150
+}]
+```
+
+#### Top-Left Watermark 
+
+```
+# Akamai format:
+im=Watermark,image=(url=watermark.png),placement=northwest,x=15,y=15,width=60
+
+# Cloudflare format:
+draw=[{
+  "url": "watermark.png",
+  "top": 15,
+  "left": 15,
+  "width": 60
 }]
 ```
 

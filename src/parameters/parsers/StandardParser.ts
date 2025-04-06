@@ -175,10 +175,155 @@ export class StandardParser implements ParameterParser {
       }
     }
     
+    // Process watermark/overlay parameters as a group before returning
+    this.processOverlayParameters(parameters);
+    
     this.logger.breadcrumb('StandardParser completed parsing', undefined, {
       parameterCount: parameters.length
     });
     
     return parameters;
+  }
+  
+  /**
+   * Process overlay and related parameters to create a proper draw parameter
+   * for Cloudflare Image Resizing
+   */
+  private processOverlayParameters(parameters: TransformParameter[]): void {
+    // Check if we have an overlay parameter
+    const overlayParam = parameters.find(param => param.name === 'overlay');
+    if (!overlayParam) {
+      return; // No overlay to process
+    }
+    
+    this.logger.info('Processing overlay parameters for watermarking', {
+      overlayUrl: String(overlayParam.value)
+    });
+    
+    // Find related parameters
+    const gravityParam = parameters.find(param => param.name === 'gravity');
+    const dxParam = parameters.find(param => param.name === 'dx');
+    const dyParam = parameters.find(param => param.name === 'dy');
+    const widthParam = parameters.find(param => param.name === 'width' && !param.source.includes('imwidth'));
+    
+    // Create a draw object with overlay URL
+    const drawObj: Record<string, string | number | boolean> = {
+      url: String(overlayParam.value)
+    };
+    
+    // Add width if specified and is for the overlay
+    if (widthParam && widthParam.value !== undefined) {
+      const widthValue = typeof widthParam.value === 'string' ? 
+        parseInt(widthParam.value, 10) : Number(widthParam.value);
+        
+      if (!isNaN(widthValue)) {
+        drawObj.width = widthValue;
+        
+        // Remove the width parameter so it doesn't get used for the main image
+        const widthIndex = parameters.findIndex(p => p === widthParam);
+        if (widthIndex !== -1) {
+          parameters.splice(widthIndex, 1);
+        }
+      }
+    }
+    
+    // Handle positioning based on gravity
+    if (gravityParam && typeof gravityParam.value === 'string') {
+      const gravity = String(gravityParam.value).toLowerCase();
+      
+      // Map common gravity/placement values to Cloudflare's positioning properties
+      const gravityMap: Record<string, [string | null, string | null]> = {
+        'southeast': ['bottom', 'right'],
+        'southwest': ['bottom', 'left'],
+        'northeast': ['top', 'right'],
+        'northwest': ['top', 'left'],
+        'south': ['bottom', null],
+        'north': ['top', null],
+        'east': [null, 'right'],
+        'west': [null, 'left'],
+        'center': [null, null],
+        'bottomright': ['bottom', 'right'],
+        'bottomleft': ['bottom', 'left'],
+        'topright': ['top', 'right'],
+        'topleft': ['top', 'left']
+      };
+      
+      // Get vertical and horizontal positioning
+      const [verticalPos, horizontalPos] = gravityMap[gravity] || [null, null];
+      
+      // Get offsets from dx/dy parameters
+      const dxValue = dxParam && dxParam.value ? 
+        (typeof dxParam.value === 'string' ? parseInt(dxParam.value, 10) : Number(dxParam.value)) : 
+        20; // Default offset
+        
+      const dyValue = dyParam && dyParam.value ? 
+        (typeof dyParam.value === 'string' ? parseInt(dyParam.value, 10) : Number(dyParam.value)) : 
+        20; // Default offset
+      
+      // Apply positioning to draw object
+      if (verticalPos === 'bottom') {
+        drawObj.bottom = dyValue;
+      } else if (verticalPos === 'top') {
+        drawObj.top = dyValue;
+      }
+      
+      if (horizontalPos === 'right') {
+        drawObj.right = dxValue;
+      } else if (horizontalPos === 'left') {
+        drawObj.left = dxValue;
+      }
+      
+      this.logger.info('Mapped gravity to positioning', {
+        gravity,
+        verticalPos,
+        horizontalPos,
+        dxValue,
+        dyValue,
+        drawObj: JSON.stringify(drawObj)
+      });
+    } 
+    // Default to bottom-right if no gravity specified
+    else {
+      const dxValue = dxParam && dxParam.value ? 
+        (typeof dxParam.value === 'string' ? parseInt(dxParam.value, 10) : Number(dxParam.value)) : 
+        20; // Default offset
+        
+      const dyValue = dyParam && dyParam.value ? 
+        (typeof dyParam.value === 'string' ? parseInt(dyParam.value, 10) : Number(dyParam.value)) : 
+        20; // Default offset
+      
+      drawObj.bottom = dyValue;
+      drawObj.right = dxValue;
+      
+      this.logger.info('Using default bottom-right positioning', {
+        bottom: dyValue,
+        right: dxValue
+      });
+    }
+    
+    // Create the draw parameter with JSON array of one object
+    parameters.push({
+      name: 'draw',
+      value: JSON.stringify([drawObj]),
+      source: 'url',
+      priority: 95
+    });
+    
+    this.logger.info('Created draw parameter for overlay', {
+      drawParam: JSON.stringify([drawObj])
+    });
+    
+    // Remove parameters that we've handled
+    const paramsToRemove = ['overlay', 'gravity', 'dx', 'dy'];
+    for (const paramName of paramsToRemove) {
+      const indicesToRemove = parameters
+        .map((param, index) => param.name === paramName ? index : -1)
+        .filter(index => index !== -1)
+        .sort((a, b) => b - a); // Sort descending to remove from end to beginning
+      
+      indicesToRemove.forEach(index => {
+        parameters.splice(index, 1);
+      });
+    }
   }
 }

@@ -5,7 +5,6 @@
  */
 
 import { ServiceContainer, TransformOptions } from '../services/interfaces';
-import { extractDerivative, applyPathTransforms } from '../utils/path';
 import { ValidationError } from '../utils/errors';
 import { TransformImageCommand } from '../domain/commands';
 import { PerformanceMetrics } from '../services/interfaces';
@@ -65,8 +64,8 @@ export async function handleImageRequest(
   
   // Apply path transformations if configured
   let imagePath = originalPath;
-  if (config.pathTransforms) {
-    imagePath = applyPathTransforms(originalPath, config.pathTransforms);
+  if (config.pathTransforms && services.pathService) {
+    imagePath = services.pathService.applyTransformations(originalPath, config);
   }
   
   // Use the new parameter handler to process all parameters
@@ -109,7 +108,10 @@ export async function handleImageRequest(
     configSections: Object.keys(config).join(',')
   });
   
-  const derivativeResult = extractDerivative(url.pathname, derivativeNames);
+  let derivativeResult = null;
+  if (services.pathService) {
+    derivativeResult = services.pathService.extractDerivative(url.pathname, derivativeNames);
+  }
   
   // If a derivative was found in the path, use it and modify the image path
   if (derivativeResult && !optionsFromUrl.derivative) {
