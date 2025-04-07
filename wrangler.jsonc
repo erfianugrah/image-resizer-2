@@ -99,7 +99,8 @@
 	//    - wrangler secret put CONFIG_ADMIN_USER
 	//    - wrangler secret put CONFIG_ADMIN_PASSWORD
 	// 2. Initialize configuration with:
-	//    - wrangler dev src/services/config/load-initial-config.js
+	//    - npm run config:convert-default
+	//    - npm run config:load-kv -- ./config-kv.json --env dev
 	// 3. Deploy with environment:
 	//    - wrangler deploy --env production
 }

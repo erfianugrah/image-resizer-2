@@ -18,6 +18,7 @@ import {
   createRequestPerformanceMonitor,
   initializePerformanceBaseline,
 } from "./utils/performance-integrations";
+import { initializeConfig, getConfigAsync } from "./config";
 import {
   handleAkamaiCompatibility,
   addAkamaiCompatibilityHeader,
@@ -43,29 +44,54 @@ export default {
     const metrics: PerformanceMetrics = {
       start: Date.now(),
     };
+    
+    // Initialize KV configuration system before service creation
+    // This makes KV the single source of truth for configuration
+    try {
+      await initializeConfig(env);
+    } catch (error) {
+      console.error("Failed to initialize KV configuration:", error);
+      // We'll continue with fallback configuration
+    }
 
     // Create service container using the factory
     // This will automatically select the appropriate container type and add lifecycle manager
     const services = createContainer(env, {
       initializeServices: true,
       gracefulDegradation: true,
+      useKVConfig: true, // Signal to use KV configuration
     });
     const { logger, configurationService, loggingService, lifecycleManager } =
       services;
       
-    // Create pathService and detectorService if not already present
-    if (!services.pathService) {
-      // Import dynamically to avoid circular dependencies
-      const { createPathService } = await import('./services/pathService');
-      services.pathService = createPathService(loggingService.getLogger('PathService'), configurationService.getConfig());
-      logger.info('Created missing PathService');
-    }
-    
-    if (!services.detectorService) {
-      // Import dynamically to avoid circular dependencies
-      const { createDetectorService } = await import('./services/detectorServiceFactory');
-      services.detectorService = createDetectorService(configurationService.getConfig(), loggingService.getLogger('DetectorService'));
-      logger.info('Created missing DetectorService');
+    // Get configuration via the configuration service
+    // With KV configuration, this is now an async operation
+    let config;
+    try {
+      // Try to get config from the async API
+      config = await getConfigAsync(env);
+      
+      // Create pathService and detectorService if not already present - using async config
+      if (!services.pathService) {
+        // Import dynamically to avoid circular dependencies
+        const { createPathService } = await import('./services/pathService');
+        const pathService = createPathService(loggingService.getLogger('PathService'), config);
+        services.pathService = pathService;
+        logger.info('Created missing PathService');
+      }
+      
+      if (!services.detectorService) {
+        // Import dynamically to avoid circular dependencies
+        const { createDetectorService } = await import('./services/detectorServiceFactory');
+        services.detectorService = createDetectorService(config, loggingService.getLogger('DetectorService'));
+        logger.info('Created missing DetectorService');
+      }
+      
+    } catch (error) {
+      logger.error('Failed to create services with async config', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw new Error(`Failed to initialize services: ${error instanceof Error ? error.message : String(error)}`);
     }
 
     // Log lifecycle information if available
@@ -75,8 +101,7 @@ export default {
       );
     }
 
-    // Get configuration via the configuration service
-    const config = configurationService.getConfig();
+    // Note: We've already loaded the config above for service creation
 
     // Initialize performance monitoring
     const performanceBaseline = initializePerformanceBaseline(config, logger);
@@ -475,10 +500,18 @@ export default {
     // Map controller to event for compatibility with our code
     const event = controller as unknown as ScheduledEvent;
     
+    // Initialize KV configuration system before service creation
+    try {
+      await initializeConfig(env);
+    } catch (error) {
+      console.error("Failed to initialize KV configuration:", error);
+      // We'll continue with fallback configuration
+    }
     
     // Create service container with minimal initialization
     const services = createContainer(env, {
       initializeServices: false, // Don't initialize since we'll just shut down
+      useKVConfig: true, // Use KV configuration if available
     });
 
     const { logger, lifecycleManager } = services;

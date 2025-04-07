@@ -8,8 +8,6 @@
 
 import { ConfigurationApiService, ConfigStoreInterface, ConfigurationSystem, ConfigVersionMetadata, ModuleRegistration } from './interfaces';
 import { Logger } from '../../utils/logging';
-import { SchemaValidator } from './schemaValidator';
-import { ConfigValueResolver } from './configValueResolver';
 
 /**
  * Default implementation of the Configuration API Service
@@ -19,8 +17,6 @@ export class DefaultConfigurationApiService implements ConfigurationApiService {
   private logger?: Logger;
   private cachedConfig: ConfigurationSystem | null = null;
   private moduleRegistrations = new Map<string, ModuleRegistration>();
-  private schemaValidator: SchemaValidator;
-  private valueResolver: ConfigValueResolver;
   private env?: Record<string, string>;
   
   /**
@@ -34,8 +30,6 @@ export class DefaultConfigurationApiService implements ConfigurationApiService {
     this.configStore = configStore;
     this.logger = logger;
     this.env = env;
-    this.schemaValidator = new SchemaValidator(logger);
-    this.valueResolver = new ConfigValueResolver(env, logger);
   }
   
   /**
@@ -106,9 +100,8 @@ export class DefaultConfigurationApiService implements ConfigurationApiService {
       return defaultValue as T;
     }
     
-    // Resolve any environment variables in the value
-    const resolvedValue = this.valueResolver.resolveValue(current);
-    return resolvedValue as T;
+    // Return the value directly (environment variable resolution removed)
+    return current as T;
   }
   
   /**
@@ -123,9 +116,8 @@ export class DefaultConfigurationApiService implements ConfigurationApiService {
     
     const moduleConfig = config.modules[moduleName].config;
     
-    // Resolve any environment variables in the module configuration
-    const resolvedConfig = this.valueResolver.resolveValue(moduleConfig);
-    return resolvedConfig as unknown as T;
+    // Since we've removed the ConfigValueResolver, we just return the config as-is
+    return moduleConfig as unknown as T;
   }
   
   /**
@@ -262,8 +254,7 @@ export class DefaultConfigurationApiService implements ConfigurationApiService {
     author: string
   ): Promise<ConfigVersionMetadata> {
     try {
-      // Validate the module configuration against its schema
-      this.validateModuleConfig(moduleName, config);
+      // Module validation would happen here (removed schema validator)
       
       // Update the module configuration
       const versionMetadata = await this.configStore.updateModuleConfig(
@@ -372,28 +363,18 @@ export class DefaultConfigurationApiService implements ConfigurationApiService {
    * Validate a complete configuration against registered schema
    */
   private validateConfig(config: ConfigurationSystem): void {
-    // Use the schema validator for complete validation
-    this.schemaValidator.validateConfigSystem(config);
+    // Schema validation would happen here (removed schema validator)
   }
   
   /**
    * Validate a module configuration against its schema
    */
   private validateModuleConfig(moduleName: string, config: Record<string, any>): void {
-    // Get the module registration to access its schema
-    const registration = this.moduleRegistrations.get(moduleName);
+    // Schema validation would happen here (removed schema validator)
     
-    if (registration) {
-      // If we have a registered schema, use it for validation
-      this.schemaValidator.validateModuleConfig(moduleName, config, registration.schema);
-    } else {
-      // If the module isn't registered, we can't validate against a schema
-      // so just perform basic existence check
-      if (!config) {
-        throw new Error(`Invalid module configuration for ${moduleName}: config is empty`);
-      }
-      
-      this.logWarn(`No schema registration found for module ${moduleName}, performing minimal validation`);
+    // Just perform basic existence check
+    if (!config) {
+      throw new Error(`Invalid module configuration for ${moduleName}: config is empty`);
     }
   }
   

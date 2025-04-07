@@ -25,11 +25,9 @@ import {
   DeviceCapabilities,
   PerformanceBudget
 } from './client-hints';
-import { DetectorConfig, 
-  // ImageResizerConfig is imported here for type reference in other modules
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  ImageResizerConfig 
-} from '../config';
+import { z } from 'zod';
+import { detectorConfigSchema } from '../schemas/configSchema';
+type DetectorConfig = z.infer<typeof detectorConfigSchema>;
 
 // Use default logger until a configured one is provided
 let logger: Logger = defaultLogger;

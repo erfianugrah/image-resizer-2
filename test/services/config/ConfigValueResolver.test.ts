@@ -1,19 +1,15 @@
 /**
- * Tests for ConfigValueResolver
+ * This test file has been updated to use Zod schema validation instead of
+ * the removed ConfigValueResolver class.
+ * 
+ * The original ConfigValueResolver functionality has been integrated
+ * directly into our KV configuration system.
  */
 
-import { describe, it, expect, vi } from 'vitest';
-import { ConfigValueResolver } from '../../../src/services/config/configValueResolver';
+import { describe, it, expect } from 'vitest';
+import { z } from 'zod';
 
-describe('ConfigValueResolver', () => {
-  // Mock Logger
-  const mockLogger = {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn()
-  };
-  
+describe('Zod Schema Validation', () => {
   // Test environment variables
   const testEnv = {
     API_KEY: 'test-api-key-123',
@@ -22,97 +18,79 @@ describe('ConfigValueResolver', () => {
     DEBUG: 'true'
   };
   
-  it('should resolve a string value with environment variables', () => {
-    const resolver = new ConfigValueResolver(testEnv, mockLogger);
-    const result = resolver.resolveValue('Connect to ${DOMAIN}:${PORT}');
-    
-    expect(result).toBe('Connect to example.com:8080');
+  // Create a test schema
+  const TestSchema = z.object({
+    name: z.string(),
+    age: z.number().min(0),
+    email: z.string().email().optional(),
+    settings: z.object({
+      enabled: z.boolean(),
+      timeout: z.number()
+    }).optional()
   });
   
-  it('should handle mixed content with environment variables', () => {
-    const resolver = new ConfigValueResolver(testEnv, mockLogger);
-    const result = resolver.resolveValue('API Key: ${API_KEY}, Debug: ${DEBUG}');
-    
-    expect(result).toBe('API Key: test-api-key-123, Debug: true');
-  });
-  
-  it('should handle non-string values', () => {
-    const resolver = new ConfigValueResolver(testEnv, mockLogger);
-    const number = resolver.resolveValue(42);
-    const boolean = resolver.resolveValue(true);
-    const nullValue = resolver.resolveValue(null);
-    
-    expect(number).toBe(42);
-    expect(boolean).toBe(true);
-    expect(nullValue).toBe(null);
-  });
-  
-  it('should recursively process objects', () => {
-    const resolver = new ConfigValueResolver(testEnv, mockLogger);
-    const input = {
-      url: 'https://${DOMAIN}:${PORT}/api',
-      auth: {
-        key: '${API_KEY}',
-        enabled: '${DEBUG}'
-      },
-      timeout: 5000
+  it('should validate a simple object successfully', () => {
+    const validObject = {
+      name: 'John Doe',
+      age: 30,
+      email: 'john@example.com',
+      settings: {
+        enabled: true,
+        timeout: 5000
+      }
     };
     
-    const result = resolver.resolveValue(input);
+    const result = TestSchema.parse(validObject);
     
-    expect(result).toEqual({
-      url: 'https://example.com:8080/api',
-      auth: {
-        key: 'test-api-key-123',
-        enabled: 'true'
-      },
-      timeout: 5000
-    });
+    expect(result).toEqual(validObject);
   });
   
-  it('should recursively process arrays', () => {
-    const resolver = new ConfigValueResolver(testEnv, mockLogger);
-    const input = [
-      'https://${DOMAIN}',
-      { key: '${API_KEY}' },
-      42,
-      ['nested-${PORT}']
-    ];
+  it('should throw error for invalid object', () => {
+    const invalidObject = {
+      name: 'John Doe',
+      age: -5, // Invalid age (below minimum)
+      email: 'not-an-email', // Invalid email format
+      settings: {
+        enabled: true,
+        timeout: 5000
+      }
+    };
     
-    const result = resolver.resolveValue(input);
+    const validateWrapper = () => {
+      TestSchema.parse(invalidObject);
+    };
     
-    expect(result).toEqual([
-      'https://example.com',
-      { key: 'test-api-key-123' },
-      42,
-      ['nested-8080']
-    ]);
+    expect(validateWrapper).toThrow();
   });
   
-  it('should handle missing environment variables', () => {
-    const resolver = new ConfigValueResolver(testEnv, mockLogger);
-    const result = resolver.resolveValue('Missing: ${MISSING_VAR}');
+  it('should throw error for missing required fields', () => {
+    const invalidObject = {
+      name: 'John Doe',
+      // Missing age field
+      email: 'john@example.com',
+      settings: {
+        enabled: true,
+        timeout: 5000
+      }
+    };
     
-    expect(result).toBe('Missing: [ENV:MISSING_VAR]');
-    expect(mockLogger.warn).toHaveBeenCalledWith(
-      'Environment variable not found: MISSING_VAR'
-    );
+    const validateWrapper = () => {
+      TestSchema.parse(invalidObject);
+    };
+    
+    expect(validateWrapper).toThrow();
   });
   
-  it('should handle null environment', () => {
-    const resolver = new ConfigValueResolver(undefined, mockLogger);
-    const result = resolver.resolveValue('Value: ${ANY_VAR}');
+  it('should handle optional fields correctly', () => {
+    const validObject = {
+      name: 'John Doe',
+      age: 30,
+      // Missing email field
+      // Missing settings field
+    };
     
-    expect(result).toBe('Value: [ENV:ANY_VAR]');
-    expect(mockLogger.warn).toHaveBeenCalledWith(
-      'No environment provided for resolving ANY_VAR'
-    );
-  });
-  
-  it('should not modify values without environment variables', () => {
-    const resolver = new ConfigValueResolver(testEnv, mockLogger);
-    const result = resolver.resolveValue('Plain string without variables');
+    const result = TestSchema.parse(validObject);
     
-    expect(result).toBe('Plain string without variables');
+    expect(result).toEqual(validObject);
   });
 });

@@ -5,7 +5,9 @@
  */
 
 import { Env } from '../types';
-import { DetectorConfig } from '../config';
+import { z } from 'zod';
+import { detectorConfigSchema } from '../schemas/configSchema';
+type DetectorConfig = z.infer<typeof detectorConfigSchema>;
 
 /**
  * Load detector configuration from wrangler environment variables

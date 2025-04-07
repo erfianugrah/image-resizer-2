@@ -193,6 +193,41 @@ program
     }
   });
 
+// Helper function to get namespace ID from binding name
+async function getNamespaceIdFromBinding(bindingName: string, environment: string): Promise<string> {
+  try {
+    // Get the list of namespaces
+    const output = execSync('wrangler kv namespace list', { encoding: 'utf8' });
+    const namespaces = JSON.parse(output);
+    
+    // Find the namespace with the matching title (binding name)
+    // For dev/staging/prod environments, the binding might have a suffix
+    const normalizedEnv = normalizeEnvironment(environment);
+    let targetName = bindingName;
+    
+    // Adjust binding name based on environment, if not already included
+    if (normalizedEnv === 'DEV' && !bindingName.endsWith('_DEV')) {
+      targetName = `${bindingName}_DEV`;
+    } else if (normalizedEnv === 'STAGING' && !bindingName.endsWith('_STAGING')) {
+      targetName = `${bindingName}_STAGING`;
+    }
+    
+    // Find matching namespace
+    const matchingNamespace = namespaces.find((ns: any) => ns.title === targetName || ns.title === bindingName);
+    
+    if (matchingNamespace) {
+      console.log(chalk.blue(`Found namespace ID ${chalk.cyan(matchingNamespace.id)} for binding ${chalk.cyan(targetName)}`));
+      return matchingNamespace.id;
+    } else {
+      console.error(chalk.red(`Could not find namespace ID for binding ${targetName}`));
+      throw new Error(`Namespace with binding name ${targetName} not found`);
+    }
+  } catch (error) {
+    console.error(chalk.red(`Error getting namespace ID: ${error instanceof Error ? error.message : String(error)}`));
+    throw error;
+  }
+}
+
 // Command to load config to KV
 program
   .command('load-kv')
@@ -203,10 +238,14 @@ program
   .option('-k, --key <name>', 'Key to store the configuration under', 
     process.env.KV_KEY || 'config')
   .requiredOption('-e, --env <environment>', 'Environment to use (dev, staging, prod)')
-  .action((configFile: string, options: {
+  .option('--use-binding', 'Use binding name instead of namespace ID', false)
+  .option('--initialize', 'Initialize KV storage with necessary metadata for a new config', false)
+  .action(async (configFile: string, options: {
     namespace: string;
     key: string;
     env: string;
+    useBinding?: boolean;
+    initialize?: boolean;
   }) => {
     try {
       console.log(chalk.blue('Reading configuration file...'));
@@ -222,13 +261,75 @@ program
       fs.writeFileSync(tempFilePath, JSON.stringify(config, null, 2));
       console.log(chalk.blue(`Wrote configuration to temporary file: ${chalk.cyan(tempFilePath)}`));
       
-      // Create KV put command
-      const command = `wrangler kv:key put --binding=${options.namespace} ${options.key} --path=${tempFilePath} --env=${options.env}`;
-      console.log(chalk.blue(`Executing command: ${chalk.cyan(command)}`));
+      // Determine if input is already a namespace ID (starts with hex characters)
+      const looksLikeNamespaceId = /^[0-9a-f]{32}$/.test(options.namespace);
+      const namespaceId = looksLikeNamespaceId ? options.namespace : await getNamespaceIdFromBinding(options.namespace, options.env);
       
-      // Execute command
-      const output = execSync(command, { encoding: 'utf8' });
-      console.log(output);
+      // Extra setup for configuration system
+      if (options.initialize) {
+        console.log(chalk.blue('Initializing KV configuration system...'));
+        
+        // Create version ID
+        const versionId = 'v1';
+        
+        // Create config version file
+        const versionFilePath = path.join(
+          process.env.TMPDIR || process.env.TMP || '/tmp', 
+          `config_v1-${Date.now()}.json`
+        );
+        fs.writeFileSync(versionFilePath, JSON.stringify(config, null, 2));
+        
+        // Create history file
+        const historyFilePath = path.join(
+          process.env.TMPDIR || process.env.TMP || '/tmp', 
+          `history-${Date.now()}.json`
+        );
+        fs.writeFileSync(historyFilePath, JSON.stringify([{
+          id: versionId,
+          timestamp: new Date().toISOString(),
+          hash: 'initial',
+          modules: Object.keys(config.modules || {}),
+          changes: [],
+          author: process.env.USER || 'config-loader',
+          comment: 'Initial configuration loaded via CLI'
+        }]));
+        
+        // We'll set the current version directly rather than using a file
+        
+        // Execute commands to set up the KV store
+        const versionCommand = `wrangler kv key put config_v1 --path=${versionFilePath} --namespace-id=${namespaceId} --remote`;
+        const historyCommand = `wrangler kv key put config_history --path=${historyFilePath} --namespace-id=${namespaceId} --remote`;
+        const currentCommand = `wrangler kv key put current ${versionId} --namespace-id=${namespaceId} --remote`;
+        
+        console.log(chalk.blue(`Executing version command: ${chalk.cyan(versionCommand)}`));
+        execSync(versionCommand, { encoding: 'utf8' });
+        
+        console.log(chalk.blue(`Executing history command: ${chalk.cyan(historyCommand)}`));
+        execSync(historyCommand, { encoding: 'utf8' });
+        
+        console.log(chalk.blue(`Executing current version command: ${chalk.cyan(currentCommand)}`));
+        execSync(currentCommand, { encoding: 'utf8' });
+        
+        fs.unlinkSync(versionFilePath);
+        fs.unlinkSync(historyFilePath);
+        
+        console.log(chalk.green('KV configuration system initialized successfully'));
+      } else {
+        // Standard KV key put
+        let command: string;
+        if (looksLikeNamespaceId || options.useBinding === false) {
+          command = `wrangler kv key put ${options.key} --path=${tempFilePath} --namespace-id=${namespaceId} --remote`;
+          if (options.env) {
+            command += ` --env=${options.env}`;
+          }
+        } else {
+          command = `wrangler kv key put ${options.key} --path=${tempFilePath} --binding=${options.namespace} --env=${options.env} --remote`;
+        }
+        
+        console.log(chalk.blue(`Executing command: ${chalk.cyan(command)}`));
+        const output = execSync(command, { encoding: 'utf8' });
+        console.log(output);
+      }
       
       console.log(chalk.green(
         `Configuration successfully loaded into KV namespace '${chalk.cyan(options.namespace)}' with key '${chalk.cyan(options.key)}' for environment '${chalk.cyan(options.env)}'`
@@ -300,6 +401,83 @@ program
       console.log(JSON.stringify(config, null, 2));
     } catch (error) {
       console.error(chalk.red(`Failed to fetch configuration: ${error instanceof Error ? error.message : String(error)}`));
+      process.exit(1);
+    }
+  });
+
+// Command to load the default comprehensive configuration
+program
+  .command('load-default')
+  .description('Load the default comprehensive configuration into KV')
+  .requiredOption('-e, --env <environment>', 'Environment to use (dev, staging, prod)')
+  .option('-n, --namespace <n>', 'KV namespace ID or binding name', 
+    process.env.KV_NAMESPACE || 'IMAGE_CONFIGURATION_STORE')
+  .option('-k, --key <n>', 'Key to store the configuration under', 'current')
+  .option('--use-binding', 'Use binding name instead of namespace ID', false)
+  .action(async (options: {
+    namespace: string;
+    key: string;
+    env: string;
+    useBinding?: boolean;
+  }) => {
+    try {
+      const defaultConfigPath = path.resolve(
+        process.cwd(), 
+        'docs/public/configuration/examples/comprehensive-config-runnable.json'
+      );
+      
+      console.log(chalk.blue(`Loading default configuration from ${chalk.cyan(defaultConfigPath)}...`));
+      
+      if (!fs.existsSync(defaultConfigPath)) {
+        console.error(chalk.red(`Default configuration file not found at ${defaultConfigPath}`));
+        process.exit(1);
+      }
+      
+      // Read and parse the default config
+      const config = readConfigFile(defaultConfigPath);
+      
+      // Create temporary file for the value
+      const tempFilePath = path.join(
+        process.env.TMPDIR || process.env.TMP || '/tmp', 
+        `config-${Date.now()}.json`
+      );
+      
+      // Write config to temporary file
+      fs.writeFileSync(tempFilePath, JSON.stringify(config, null, 2));
+      console.log(chalk.blue(`Wrote configuration to temporary file: ${chalk.cyan(tempFilePath)}`));
+      
+      let command: string;
+      
+      // Determine if input is already a namespace ID (starts with hex characters)
+      const looksLikeNamespaceId = /^[0-9a-f]{32}$/.test(options.namespace);
+      
+      if (looksLikeNamespaceId || options.useBinding === false) {
+        // Use the namespace directly if it looks like an ID already
+        const namespaceId = looksLikeNamespaceId ? options.namespace : await getNamespaceIdFromBinding(options.namespace, options.env);
+        command = `wrangler kv key put ${options.key} --path=${tempFilePath} --namespace-id=${namespaceId} --remote`;
+        if (options.env) {
+          command += ` --env=${options.env}`;
+        }
+      } else {
+        // Use binding
+        command = `wrangler kv key put ${options.key} --path=${tempFilePath} --binding=${options.namespace} --env=${options.env} --remote`;
+      }
+      
+      console.log(chalk.blue(`Executing command: ${chalk.cyan(command)}`));
+      
+      // Execute command
+      const output = execSync(command, { encoding: 'utf8' });
+      console.log(output);
+      
+      console.log(chalk.green(
+        `Default configuration successfully loaded into KV namespace '${chalk.cyan(options.namespace)}' with key '${chalk.cyan(options.key)}' for environment '${chalk.cyan(options.env)}'`
+      ));
+      
+      // Clean up temporary file
+      fs.unlinkSync(tempFilePath);
+      console.log(chalk.blue(`Removed temporary file: ${chalk.cyan(tempFilePath)}`));
+    } catch (error) {
+      console.error(chalk.red(`Error loading default configuration to KV: ${error instanceof Error ? error.message : String(error)}`));
       process.exit(1);
     }
   });

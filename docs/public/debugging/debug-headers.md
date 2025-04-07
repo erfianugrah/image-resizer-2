@@ -1,5 +1,7 @@
 # Debug Headers
 
+> **NEW**: Debug headers are now available in production environments with the latest configuration update.
+
 The Image Resizer includes comprehensive debug headers to help diagnose issues and understand how images are being processed. These headers provide valuable insights into transformation decisions, performance metrics, and system behavior.
 
 ## Quick Navigation
@@ -187,20 +189,37 @@ The HTML report includes all the debug information plus:
 
 ## Security Considerations
 
-Debug headers are restricted by default to certain environments for security reasons:
+Debug headers can be controlled across different environments:
 
-1. In production, debug mode is disabled by default
-2. The `allowedEnvironments` setting controls where debug is allowed
-3. Debug can be forcefully enabled with `forceDebugHeaders` for testing
-4. The `?debug=true` parameter can be disabled in sensitive environments
+1. The `allowedEnvironments` setting controls where debug is allowed ("development", "staging", "production")
+2. Debug can be forcefully enabled with `forceDebugHeaders` for testing or production diagnostics
+3. The `?debug=true` parameter can be disabled in sensitive environments
+4. Consider restricting which debug header categories are enabled in production
 
 ## Best Practices
 
 1. **Development**: Enable all debug headers for maximum visibility
 2. **Staging**: Enable selective debug headers for testing
-3. **Production**: Disable debug headers by default, enable only when troubleshooting
+3. **Production**: Enable only necessary debug headers or use `forceDebugHeaders: true` with restricted categories
 4. **Security**: Be cautious with sensitive information in debug headers
 5. **Performance**: Be aware that generating debug headers adds processing overhead
+
+## Production Configuration
+
+To enable debug headers in production, update your configuration:
+
+```json
+"debug": {
+  "enabled": true,
+  "headers": ["cache", "mode", "ir"],  // Limit categories in production
+  "allowedEnvironments": ["development", "staging", "production"], // Include production
+  "verbose": false,  // Keep verbosity low for performance
+  "includePerformance": true,
+  "forceDebugHeaders": true  // Override any environment restrictions
+}
+```
+
+This configuration balances diagnostic capabilities with performance considerations for production use cases.
 
 ## Troubleshooting
 
@@ -235,4 +254,4 @@ If debug headers show incorrect or missing information:
 
 ---
 
-*Last Updated: March 22, 2025*
+*Last Updated: April 7, 2025*

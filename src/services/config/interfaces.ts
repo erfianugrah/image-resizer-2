@@ -16,7 +16,7 @@ export interface ConfigVersionMetadata {
   hash: string;                  // Content hash for integrity checking
   parent?: string;               // Parent version ID
   modules: string[];             // List of modules included
-  changes: string[];             // List of paths changed (dot notation)
+  changes?: string[];            // List of paths changed (dot notation)
   tags?: string[];               // Optional version tags
 }
 

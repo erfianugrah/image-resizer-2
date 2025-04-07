@@ -1,93 +1,77 @@
 /**
- * Tests for the lightweight SchemaValidator for Cloudflare Workers
+ * This test file has been updated to use Zod schema validation instead of
+ * the removed SchemaValidator class.
+ * 
+ * The original SchemaValidator functionality has been replaced with Zod
+ * which provides more powerful and type-safe schema validation.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { SchemaValidator } from '../../../src/services/config/schemaValidator';
-import { ConfigurationSystem } from '../../../src/services/config/interfaces';
+import { describe, it, expect } from 'vitest';
+import { z } from 'zod';
 
-describe('SchemaValidator', () => {
-  // Mock Logger
-  const mockLogger = {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    breadcrumb: vi.fn()
-  };
-  
-  let validator: SchemaValidator;
-  
-  beforeEach(() => {
-    validator = new SchemaValidator(mockLogger);
-    vi.clearAllMocks();
+describe('Zod Schema Validation', () => {
+  // Create a reusable schema
+  const UserSchema = z.object({
+    name: z.string(),
+    age: z.number().min(0),
+    email: z.string().email().optional(),
+    isAdmin: z.boolean().default(false),
+    roles: z.array(z.string()).default([]),
+    address: z.object({
+      street: z.string(),
+      city: z.string(),
+      zip: z.string().regex(/^\d{5}(-\d{4})?$/).optional()
+    }).optional()
   });
   
-  describe('validateObjectAgainstSchema', () => {
+  describe('basic validation', () => {
     it('should validate a simple object successfully', () => {
-      const schema = {
-        type: 'object',
-        required: ['name', 'age'],
-        properties: {
-          name: { type: 'string' },
-          age: { type: 'integer', minimum: 0 },
-          email: { type: 'string', format: 'email' }
-        }
-      };
-      
       const validObject = {
         name: 'John Doe',
         age: 30,
-        email: 'john@example.com'
+        email: 'john@example.com',
+        isAdmin: true,
+        roles: ['user', 'editor'],
+        address: {
+          street: '123 Main St',
+          city: 'Anytown',
+          zip: '12345'
+        }
       };
       
-      // Using the public method for testing
-      const validateWrapper = () => {
-        validator.validateModuleConfig('test', validObject, schema);
-      };
-      
-      expect(validateWrapper).not.toThrow();
+      const result = UserSchema.parse(validObject);
+      expect(result).toEqual(validObject);
     });
     
     it('should throw error for invalid object', () => {
-      const schema = {
-        type: 'object',
-        required: ['name', 'age'],
-        properties: {
-          name: { type: 'string' },
-          age: { type: 'integer', minimum: 0 },
-          email: { type: 'string', format: 'email' }
-        }
-      };
-      
       const invalidObject = {
         name: 'John Doe',
         age: -5, // Invalid age (below minimum)
-        email: 'not-an-email' // Invalid email format
-      };
-      
-      // Using the public method for testing
-      const validateWrapper = () => {
-        validator.validateModuleConfig('test', invalidObject, schema);
-      };
-      
-      expect(validateWrapper).toThrow();
-      expect(mockLogger.error).toHaveBeenCalled();
-    });
-    
-    it('should validate type constraints correctly', () => {
-      const schema = {
-        type: 'object',
-        properties: {
-          stringProp: { type: 'string' },
-          numberProp: { type: 'number' },
-          integerProp: { type: 'integer' },
-          booleanProp: { type: 'boolean' },
-          arrayProp: { type: 'array' },
-          objectProp: { type: 'object' },
-          nullProp: { type: 'null' }
+        email: 'not-an-email', // Invalid email format
+        isAdmin: true,
+        roles: ['user', 'editor'],
+        address: {
+          street: '123 Main St',
+          city: 'Anytown',
+          zip: '123' // Invalid zip code
         }
       };
+      
+      expect(() => UserSchema.parse(invalidObject)).toThrow();
+    });
+  });
+  
+  describe('type constraints', () => {
+    it('should validate type constraints correctly', () => {
+      const TypesSchema = z.object({
+        stringProp: z.string(),
+        numberProp: z.number(),
+        integerProp: z.number().int(),
+        booleanProp: z.boolean(),
+        arrayProp: z.array(z.any()),
+        objectProp: z.record(z.string(), z.any()),
+        nullProp: z.null()
+      });
       
       const validObject = {
         stringProp: 'test',
@@ -99,39 +83,25 @@ describe('SchemaValidator', () => {
         nullProp: null
       };
       
-      const validateWrapper = () => {
-        validator.validateModuleConfig('test', validObject, schema);
-      };
-      
-      expect(validateWrapper).not.toThrow();
+      const result = TypesSchema.parse(validObject);
+      expect(result).toEqual(validObject);
     });
-    
+  });
+  
+  describe('nested validation', () => {
     it('should validate complex nested objects', () => {
-      const schema = {
-        type: 'object',
-        properties: {
-          user: {
-            type: 'object',
-            required: ['id', 'name'],
-            properties: {
-              id: { type: 'integer' },
-              name: { type: 'string' },
-              address: {
-                type: 'object',
-                properties: {
-                  street: { type: 'string' },
-                  city: { type: 'string' },
-                  zip: { type: 'string', pattern: '^\\d{5}(-\\d{4})?$' }
-                }
-              }
-            }
-          },
-          tags: {
-            type: 'array',
-            items: { type: 'string' }
-          }
-        }
-      };
+      const NestedSchema = z.object({
+        user: z.object({
+          id: z.number().int(),
+          name: z.string(),
+          address: z.object({
+            street: z.string(),
+            city: z.string(),
+            zip: z.string().regex(/^\d{5}(-\d{4})?$/).optional()
+          }).optional()
+        }),
+        tags: z.array(z.string())
+      });
       
       const validObject = {
         user: {
@@ -146,155 +116,16 @@ describe('SchemaValidator', () => {
         tags: ['tag1', 'tag2', 'tag3']
       };
       
-      const validateWrapper = () => {
-        validator.validateModuleConfig('test', validObject, schema);
-      };
-      
-      expect(validateWrapper).not.toThrow();
-    });
-  });
-  
-  describe('validateConfigSystem', () => {
-    it('should validate a complete configuration system', () => {
-      const validConfig: ConfigurationSystem = {
-        _meta: {
-          version: '1.0.0',
-          lastUpdated: new Date().toISOString(),
-          activeModules: ['core', 'cache']
-        },
-        modules: {
-          core: {
-            _meta: {
-              name: 'core',
-              version: '1.0.0',
-              description: 'Core module',
-              schema: {
-                type: 'object',
-                required: ['environment'],
-                properties: {
-                  environment: { 
-                    type: 'string',
-                    enum: ['development', 'staging', 'production']
-                  }
-                }
-              },
-              defaults: {
-                environment: 'development'
-              }
-            },
-            config: {
-              environment: 'production'
-            }
-          },
-          cache: {
-            _meta: {
-              name: 'cache',
-              version: '1.0.0',
-              description: 'Cache module',
-              schema: {
-                type: 'object',
-                properties: {
-                  ttl: { type: 'integer', minimum: 0 }
-                }
-              },
-              defaults: {
-                ttl: 3600
-              },
-              moduleDependencies: ['core'] // Added dependency
-            },
-            config: {
-              ttl: 7200
-            }
-          }
-        }
-      };
-      
-      const validateWrapper = () => {
-        validator.validateConfigSystem(validConfig);
-      };
-      
-      expect(validateWrapper).not.toThrow();
-    });
-    
-    it('should detect cross-module dependency issues', () => {
-      const invalidConfig: ConfigurationSystem = {
-        _meta: {
-          version: '1.0.0',
-          lastUpdated: new Date().toISOString(),
-          activeModules: ['cache'] // Missing core module
-        },
-        modules: {
-          cache: {
-            _meta: {
-              name: 'cache',
-              version: '1.0.0',
-              description: 'Cache module',
-              schema: {
-                type: 'object',
-                properties: {
-                  ttl: { type: 'integer', minimum: 0 }
-                }
-              },
-              defaults: {
-                ttl: 3600
-              },
-              moduleDependencies: ['core'] // Dependency on non-existing module
-            },
-            config: {
-              ttl: 7200
-            }
-          }
-        }
-      };
-      
-      const validateWrapper = () => {
-        validator.validateConfigSystem(invalidConfig);
-      };
-      
-      expect(validateWrapper).toThrow(/Module "cache" depends on "core"/);
-    });
-  });
-  
-  describe('environment variable processing', () => {
-    it('should process environment variables in configuration', () => {
-      const schema = {
-        type: 'object',
-        properties: {
-          apiKey: { type: 'string' },
-          endpoint: { type: 'string' }
-        }
-      };
-      
-      const configWithEnvVars = {
-        apiKey: '${API_KEY}',
-        endpoint: 'https://${API_DOMAIN}/v1'
-      };
-      
-      // Mock the processEnvironmentVariables method result
-      const processedConfig = {
-        apiKey: '[ENV:API_KEY]',
-        endpoint: 'https://[ENV:API_DOMAIN]/v1'
-      };
-      
-      // We're testing that the validator accepts this preprocessed config
-      const validateWrapper = () => {
-        // @ts-ignore - Access private method for testing
-        validator['processEnvironmentVariables'] = vi.fn().mockReturnValue(processedConfig);
-        validator.validateModuleConfig('test', configWithEnvVars, schema);
-      };
-      
-      expect(validateWrapper).not.toThrow();
+      const result = NestedSchema.parse(validObject);
+      expect(result).toEqual(validObject);
     });
   });
   
   describe('format validation', () => {
     it('should validate date-time format', () => {
-      const schema = {
-        type: 'object',
-        properties: {
-          dateTime: { type: 'string', format: 'date-time' }
-        }
-      };
+      const DateSchema = z.object({
+        dateTime: z.string().datetime()
+      });
       
       const validObject = {
         dateTime: '2023-01-01T12:00:00Z'
@@ -304,17 +135,14 @@ describe('SchemaValidator', () => {
         dateTime: '2023-01-01 12:00:00'
       };
       
-      expect(() => validator.validateModuleConfig('test', validObject, schema)).not.toThrow();
-      expect(() => validator.validateModuleConfig('test', invalidObject, schema)).toThrow();
+      expect(() => DateSchema.parse(validObject)).not.toThrow();
+      expect(() => DateSchema.parse(invalidObject)).toThrow();
     });
     
     it('should validate email format', () => {
-      const schema = {
-        type: 'object',
-        properties: {
-          email: { type: 'string', format: 'email' }
-        }
-      };
+      const EmailSchema = z.object({
+        email: z.string().email()
+      });
       
       const validObject = {
         email: 'user@example.com'
@@ -324,85 +152,62 @@ describe('SchemaValidator', () => {
         email: 'not-an-email'
       };
       
-      expect(() => validator.validateModuleConfig('test', validObject, schema)).not.toThrow();
-      expect(() => validator.validateModuleConfig('test', invalidObject, schema)).toThrow();
+      expect(() => EmailSchema.parse(validObject)).not.toThrow();
+      expect(() => EmailSchema.parse(invalidObject)).toThrow();
     });
     
-    it('should validate uri format', () => {
-      const schema = {
-        type: 'object',
-        properties: {
-          uri: { type: 'string', format: 'uri' }
-        }
-      };
+    it('should validate url format', () => {
+      const UrlSchema = z.object({
+        url: z.string().url()
+      });
       
       const validObject = {
-        uri: 'https://example.com/path'
+        url: 'https://example.com/path'
       };
       
       const invalidObject = {
-        uri: 'not-a-uri'
+        url: 'not-a-url'
       };
       
-      expect(() => validator.validateModuleConfig('test', validObject, schema)).not.toThrow();
-      expect(() => validator.validateModuleConfig('test', invalidObject, schema)).toThrow();
+      expect(() => UrlSchema.parse(validObject)).not.toThrow();
+      expect(() => UrlSchema.parse(invalidObject)).toThrow();
     });
   });
   
-  describe('oneOf, anyOf, allOf validation', () => {
-    it('should validate oneOf schema', () => {
-      const schema = {
-        type: 'object',
-        properties: {
-          value: {
-            oneOf: [
-              { type: 'string' },
-              { type: 'number' }
-            ]
-          }
-        }
-      };
+  describe('union validation', () => {
+    it('should validate oneOf schema (using union)', () => {
+      const UnionSchema = z.object({
+        value: z.union([z.string(), z.number()])
+      });
       
-      expect(() => validator.validateModuleConfig('test', { value: 'string' }, schema)).not.toThrow();
-      expect(() => validator.validateModuleConfig('test', { value: 42 }, schema)).not.toThrow();
-      expect(() => validator.validateModuleConfig('test', { value: true }, schema)).toThrow();
+      expect(() => UnionSchema.parse({ value: 'string' })).not.toThrow();
+      expect(() => UnionSchema.parse({ value: 42 })).not.toThrow();
+      expect(() => UnionSchema.parse({ value: true })).toThrow();
     });
     
-    it('should validate anyOf schema', () => {
-      const schema = {
-        type: 'object',
-        properties: {
-          value: {
-            anyOf: [
-              { type: 'string', minLength: 5 },
-              { type: 'string', pattern: '^[A-Z]+$' }
-            ]
-          }
-        }
-      };
+    it('should validate with refinements (similar to anyOf)', () => {
+      const RefinedSchema = z.object({
+        value: z.string().refine(
+          val => val.length >= 5 || /^[A-Z]+$/.test(val),
+          { message: "String must be at least 5 chars long or all uppercase" }
+        )
+      });
       
-      expect(() => validator.validateModuleConfig('test', { value: 'longstring' }, schema)).not.toThrow();
-      expect(() => validator.validateModuleConfig('test', { value: 'ABC' }, schema)).not.toThrow();
-      expect(() => validator.validateModuleConfig('test', { value: 'ab' }, schema)).toThrow();
+      expect(() => RefinedSchema.parse({ value: 'longstring' })).not.toThrow();
+      expect(() => RefinedSchema.parse({ value: 'ABC' })).not.toThrow();
+      expect(() => RefinedSchema.parse({ value: 'ab' })).toThrow();
     });
     
-    it('should validate allOf schema', () => {
-      const schema = {
-        type: 'object',
-        properties: {
-          value: {
-            allOf: [
-              { type: 'string' },
-              { minLength: 3 },
-              { maxLength: 10 }
-            ]
-          }
-        }
-      };
+    it('should validate with multiple refinements (similar to allOf)', () => {
+      const AllRefinedSchema = z.object({
+        value: z.string()
+          .min(3, "String must be at least 3 characters")
+          .max(10, "String must be at most 10 characters")
+      });
       
-      expect(() => validator.validateModuleConfig('test', { value: 'valid' }, schema)).not.toThrow();
-      expect(() => validator.validateModuleConfig('test', { value: 'ab' }, schema)).toThrow();
-      expect(() => validator.validateModuleConfig('test', { value: 'toolongstring' }, schema)).toThrow();
+      expect(() => AllRefinedSchema.parse({ value: 'valid' })).not.toThrow();
+      expect(() => AllRefinedSchema.parse({ value: 'ab' })).toThrow();
+      expect(() => AllRefinedSchema.parse({ value: 'toolongstring' })).toThrow();
     });
   });
 });

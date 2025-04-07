@@ -13,7 +13,7 @@ import { Logger } from '../../utils/logging';
  * Key constants for KV storage
  */
 const KV_KEYS = {
-  CURRENT: 'config_current',
+  CURRENT: 'current', // Changed from 'config_current' to match CLI conventions
   VERSION_PREFIX: 'config_v',
   HISTORY: 'config_history',
   SCHEMA: 'config_schema',
@@ -122,10 +122,46 @@ export class KVConfigStore implements ConfigStoreInterface {
       }
       
       // Fetch the configuration for this version
-      const config = await this.kvNamespace.get(`${KV_KEYS.VERSION_PREFIX}${currentVersionId}`, { type: 'json' }) as ConfigurationSystem;
+      let config: ConfigurationSystem | null = null;
+      
+      // Clean up version ID - if it starts with 'v' and VERSION_PREFIX ends with 'v', remove the duplicate
+      let cleanVersionId = currentVersionId;
+      if (KV_KEYS.VERSION_PREFIX.endsWith('v') && currentVersionId.startsWith('v')) {
+        cleanVersionId = currentVersionId.substring(1); // Remove the 'v' prefix from the version ID
+      }
+      
+      const configKey = `${KV_KEYS.VERSION_PREFIX}${cleanVersionId}`;
+      
+      try {
+        // First try as JSON
+        config = await this.kvNamespace.get(configKey, { type: 'json' }) as ConfigurationSystem;
+      } catch (jsonError) {
+        this.logError(`Error parsing JSON for ${configKey}`, {
+          error: jsonError instanceof Error ? jsonError.message : String(jsonError)
+        });
+        
+        try {
+          // If JSON parsing fails, try to get as text and parse manually
+          const rawText = await this.kvNamespace.get(configKey, { type: 'text' });
+          if (rawText) {
+            try {
+              config = JSON.parse(rawText) as ConfigurationSystem;
+            } catch (parseError) {
+              this.logError(`Failed to manually parse config JSON for ${configKey}`, {
+                error: parseError instanceof Error ? parseError.message : String(parseError),
+                rawTextLength: rawText.length
+              });
+            }
+          }
+        } catch (textError) {
+          this.logError(`Error getting text for ${configKey}`, {
+            error: textError instanceof Error ? textError.message : String(textError)
+          });
+        }
+      }
       
       if (!config) {
-        this.logError(`Current config version ${currentVersionId} not found in KV`);
+        this.logError(`Current config version ${currentVersionId} not found in KV (key: ${configKey})`);
         return null;
       }
       
@@ -147,13 +183,50 @@ export class KVConfigStore implements ConfigStoreInterface {
    */
   async getConfigVersion(versionId: string): Promise<ConfigurationSystem | null> {
     try {
-      const config = await this.kvNamespace.get(`${KV_KEYS.VERSION_PREFIX}${versionId}`, { type: 'json' }) as ConfigurationSystem;
+      // Clean up version ID - if it starts with 'v' and VERSION_PREFIX ends with 'v', remove the duplicate
+      let cleanVersionId = versionId;
+      if (KV_KEYS.VERSION_PREFIX.endsWith('v') && versionId.startsWith('v')) {
+        cleanVersionId = versionId.substring(1); // Remove the 'v' prefix from the version ID
+      }
+      
+      const configKey = `${KV_KEYS.VERSION_PREFIX}${cleanVersionId}`;
+      this.logInfo(`Fetching configuration version: ${configKey}`);
+      
+      // Try first with JSON parsing
+      let config: ConfigurationSystem | null = null;
+      
+      try {
+        config = await this.kvNamespace.get(configKey, { type: 'json' }) as ConfigurationSystem;
+      } catch (jsonError) {
+        this.logError(`Error parsing JSON for config version ${versionId}`, {
+          error: jsonError instanceof Error ? jsonError.message : String(jsonError)
+        });
+        
+        // If JSON parsing fails, try as text and parse manually
+        try {
+          const rawText = await this.kvNamespace.get(configKey, { type: 'text' });
+          if (rawText) {
+            try {
+              config = JSON.parse(rawText) as ConfigurationSystem;
+            } catch (parseError) {
+              this.logError(`Failed to manually parse JSON for config version ${versionId}`, {
+                error: parseError instanceof Error ? parseError.message : String(parseError)
+              });
+            }
+          }
+        } catch (textError) {
+          this.logError(`Error getting text for config version ${versionId}`, {
+            error: textError instanceof Error ? textError.message : String(textError)
+          });
+        }
+      }
       
       if (!config) {
-        this.logWarn(`Config version ${versionId} not found`);
+        this.logWarn(`Config version ${versionId} not found at key ${configKey}`);
         return null;
       }
       
+      this.logInfo(`Successfully retrieved configuration version ${versionId}`);
       return config;
     } catch (error) {
       this.logError(`Error getting config version ${versionId}`, {
@@ -249,10 +322,21 @@ export class KVConfigStore implements ConfigStoreInterface {
         }
       };
       
+      // Clean up version ID - if it starts with 'v' and VERSION_PREFIX ends with 'v', remove the duplicate
+      let cleanVersionId = versionId;
+      if (KV_KEYS.VERSION_PREFIX.endsWith('v') && versionId.startsWith('v')) {
+        cleanVersionId = versionId.substring(1); // Remove the 'v' prefix from the version ID
+      }
+      
       // Store the new configuration version
-      await this.kvNamespace.put(`${KV_KEYS.VERSION_PREFIX}${versionId}`, JSON.stringify(updatedConfig));
+      await this.kvNamespace.put(`${KV_KEYS.VERSION_PREFIX}${cleanVersionId}`, JSON.stringify(updatedConfig));
       
       // Update the history
+      // Ensure changes property is defined
+      if (!newVersionMetadata.changes) {
+        newVersionMetadata.changes = [];
+      }
+      
       history.push(newVersionMetadata);
       await this.kvNamespace.put(KV_KEYS.HISTORY, JSON.stringify(history));
       

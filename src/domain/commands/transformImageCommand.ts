@@ -8,6 +8,7 @@ import { ServiceContainer, ClientInfo, TransformOptions, PerformanceMetrics } fr
 import { Env } from '../../types';
 import type { ExecutionContext } from '@cloudflare/workers-types';
 import { Command } from './command';
+import { getConfigAsync } from '../../config';
 
 /**
  * Command to transform an image based on the provided options
@@ -53,8 +54,13 @@ export class TransformImageCommand implements Command<Response> {
    * @returns Response with the transformed image
    */
   async execute(): Promise<Response> {
-    const { logger, storageService, transformationService, cacheService, debugService, configurationService } = this.services;
-    const config = configurationService.getConfig();
+    const { logger, storageService, transformationService, cacheService, debugService } = this.services;
+    
+    // Get environment from request
+    const env = (this.request as unknown as { env: Env }).env;
+    
+    // Use async configuration access instead of synchronous
+    const config = await getConfigAsync(env);
     
     // Create an AbortController to handle request cancellation
     const controller = new AbortController();

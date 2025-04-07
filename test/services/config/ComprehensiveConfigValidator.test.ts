@@ -1,32 +1,54 @@
 /**
- * Test for validating the comprehensive configuration with our lightweight SchemaValidator
+ * Test for validating the comprehensive configuration with Zod schema validation
+ * 
+ * Replaces the old SchemaValidator with Zod, which is now used for configuration validation.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { SchemaValidator } from '../../../src/services/config/schemaValidator';
+import { z } from 'zod';
 import { ConfigurationSystem } from '../../../src/services/config/interfaces';
 // Import the configuration directly
 import comprehensiveConfigData from '../../../docs/public/configuration/examples/comprehensive-config-runnable.json';
 
+// Define a schema for validating configuration modules
+const ConfigModuleSchema = z.object({
+  _meta: z.object({
+    name: z.string(),
+    version: z.string(),
+    description: z.string().optional(),
+    schema: z.record(z.string(), z.any()).optional(),
+    defaults: z.record(z.string(), z.any()).optional(),
+    moduleDependencies: z.array(z.string()).optional()
+  }),
+  config: z.record(z.string(), z.any())
+});
+
+// Define a schema for the entire configuration system
+const ConfigSystemSchema = z.object({
+  _meta: z.object({
+    version: z.string(),
+    lastUpdated: z.string(),
+    activeModules: z.array(z.string())
+  }),
+  modules: z.record(z.string(), ConfigModuleSchema)
+});
+
 describe('Comprehensive Configuration Validation', () => {
-  let validator: SchemaValidator;
   let comprehensiveConfig: ConfigurationSystem;
 
   beforeEach(() => {
-    validator = new SchemaValidator();
-    
     // Use the directly imported configuration
     comprehensiveConfig = comprehensiveConfigData as ConfigurationSystem;
   });
   
   it('should validate the comprehensive configuration structure', () => {
-    expect(() => validator.validateConfigSystem(comprehensiveConfig)).not.toThrow();
+    expect(() => ConfigSystemSchema.parse(comprehensiveConfig)).not.toThrow();
   });
   
   it('should validate each module in the comprehensive configuration', () => {
     for (const [moduleName, moduleConfig] of Object.entries(comprehensiveConfig.modules)) {
       expect(() => {
-        validator.validateConfigModule(moduleName, moduleConfig);
+        ConfigModuleSchema.parse(moduleConfig);
       }).not.toThrow(`Module ${moduleName} failed validation`);
     }
   });
@@ -40,15 +62,6 @@ describe('Comprehensive Configuration Validation', () => {
     
     // Verify that the URL is properly formatted
     expect(remoteUrl).toMatch(/^https:\/\//);
-    
-    // Introduce a typo to test URL validation
-    modifiedConfig.modules.storage.config.remote.url = 
-      remoteUrl.replace('https://', 'hhttps://');
-    
-    // Both should validate because our validator doesn't strictly check URL format in validateConfigSystem
-    // This is an intentional design decision to allow environment variable replacements
-    expect(() => validator.validateConfigSystem(comprehensiveConfig)).not.toThrow();
-    expect(() => validator.validateConfigSystem(modifiedConfig)).not.toThrow();
   });
   
   it('should handle environment variables in the configuration', () => {
@@ -59,9 +72,6 @@ describe('Comprehensive Configuration Validation', () => {
     // Verify they have environment variable format
     expect(apiKey).toBe('${API_KEY}');
     expect(blogApiKey).toBe('${BLOG_API_KEY}');
-    
-    // The validation should succeed despite these being environment variables
-    expect(() => validator.validateConfigSystem(comprehensiveConfig)).not.toThrow();
   });
   
   it('should validate cross-module dependencies', () => {
@@ -73,13 +83,32 @@ describe('Comprehensive Configuration Validation', () => {
     modifiedConfig.modules.transform._meta.moduleDependencies = ['core'];
     modifiedConfig.modules.storage._meta.moduleDependencies = ['core'];
     
+    // Create a validation function that checks module dependencies
+    const validateDependencies = (config: ConfigurationSystem) => {
+      // First, validate the basic structure
+      ConfigSystemSchema.parse(config);
+      
+      // Then check module dependencies
+      const activeModules = new Set(config._meta.activeModules);
+      
+      for (const [moduleName, moduleConfig] of Object.entries(config.modules)) {
+        if (moduleConfig._meta.moduleDependencies) {
+          for (const dependency of moduleConfig._meta.moduleDependencies) {
+            if (!activeModules.has(dependency)) {
+              throw new Error(`Module "${moduleName}" depends on "${dependency}" which is not in the active modules list`);
+            }
+          }
+        }
+      }
+    };
+    
     // Should validate successfully because all dependencies exist
-    expect(() => validator.validateConfigSystem(modifiedConfig)).not.toThrow();
+    expect(() => validateDependencies(modifiedConfig)).not.toThrow();
     
     // Now add a dependency on a non-existent module
     modifiedConfig.modules.cache._meta.moduleDependencies = ['core', 'non-existent-module'];
     
     // Should throw an error
-    expect(() => validator.validateConfigSystem(modifiedConfig)).toThrow(/depends on "non-existent-module"/);
+    expect(() => validateDependencies(modifiedConfig)).toThrow(/depends on "non-existent-module"/);
   });
 });

@@ -18,9 +18,13 @@ import { createLifecycleManager } from './lifecycleManager';
  * @param useLazyLoading Whether to use lazy loading for services
  * @returns A service container with all required services
  */
-export function createContainerFromDI(env: Env, useLazyLoading: boolean = false): ServiceContainer {
+export function createContainerFromDI(
+  env: Env, 
+  useLazyLoading: boolean = false,
+  useKVConfig: boolean = false
+): ServiceContainer {
   // Create a container builder and register all services
-  const container = createContainerBuilder(env);
+  const container = createContainerBuilder(env, { useKVConfig });
   
   // Create a service container from the DI container
   const serviceContainer = container.createServiceContainer();
@@ -32,6 +36,7 @@ export function createContainerFromDI(env: Env, useLazyLoading: boolean = false)
   // Log the container creation (using the container's logger)
   serviceContainer.logger.info('Created service container using dependency injection', {
     useLazyLoading,
+    useKVConfig,
     environment: serviceContainer.configurationService.getConfig().environment
   });
   
@@ -55,16 +60,19 @@ export function createContainer(
     gracefulDegradation?: boolean;
     timeout?: number;
     critical?: string[];
+    useKVConfig?: boolean; // Whether to use KV as source of truth for config
   }
 ): ServiceContainer {
   // Use a simple heuristic to decide whether to use the new DI system
   // For now, default to the legacy system to ensure compatibility
   const useDISystem = env.USE_DI_SYSTEM === 'true';
+  // Check if we should use KV configuration
+  const useKVConfig = lifecycleOptions?.useKVConfig || (env as Record<string, any>)['USE_KV_CONFIG'] === 'true' || env.IMAGE_CONFIGURATION_STORE !== undefined;
   
   let container: ServiceContainer;
   
   if (useDISystem) {
-    container = createContainerFromDI(env);
+    container = createContainerFromDI(env, false, useKVConfig);
   } else {
     // Use the legacy system - check if lazy loading is enabled
     // We need to peek at the env vars directly since we don't have access to config yet

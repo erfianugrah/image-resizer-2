@@ -2,24 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DefaultConfigurationApiService } from '../../../src/services/config/ConfigurationApiService';
 import { ConfigurationSystem, ConfigVersionMetadata, ModuleRegistration } from '../../../src/services/config/interfaces';
 
-// Mock constructor classes
-vi.mock('../../../src/services/config/schemaValidator', () => {
-  return {
-    SchemaValidator: vi.fn().mockImplementation(() => ({
-      validateConfigSystem: vi.fn(),
-      validateConfigModule: vi.fn(),
-      validateModuleConfig: vi.fn(),
-    })),
-  };
-});
-
-vi.mock('../../../src/services/config/configValueResolver', () => {
-  return {
-    ConfigValueResolver: vi.fn().mockImplementation(() => ({
-      resolveValue: vi.fn(val => val),
-    })),
-  };
-});
+// No need to mock the removed classes
+// We now use Zod directly for validation
 
 // Mock the logging module
 vi.mock('../../../src/utils/logging', () => {

@@ -4,9 +4,13 @@
  * This service provides centralized access to all configuration settings,
  * environment-specific overrides, and configuration utilities. It is the
  * single source of truth for application configuration.
+ * 
+ * Note: This implementation has been updated to support both async and sync configuration access
+ * with proper fallbacks to maintain compatibility during the transition to KV-based config.
  */
 
-import { ImageResizerConfig, defaultConfig, getConfig } from '../config';
+import type { ImageResizerConfig } from '../schemas/configSchema';
+import { getConfigAsync, getConfigFromEnvironment } from '../config';
 import { ConfigurationService } from './interfaces';
 import { Logger } from '../utils/logging';
 import { Env } from '../types';
@@ -31,7 +35,26 @@ export class DefaultConfigurationService implements ConfigurationService {
   constructor(logger: Logger, env: Env) {
     this.logger = logger;
     this.env = env;
-    this.config = this.loadConfigFromEnvironment(env);
+    
+    // Use direct getConfigFromEnvironment to avoid deprecated getConfig
+    try {
+      this.config = getConfigFromEnvironment(env);
+    } catch (error) {
+      logger.error('Failed to load configuration from environment', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      // Initialize with empty config to prevent crashes
+      this.config = {
+        environment: 'development',
+        version: '1.0.0',
+        features: {},
+        debug: { enabled: true, headers: [] },
+        cache: { method: 'none', ttl: { ok: 0, clientError: 0, serverError: 0 } },
+        responsive: { breakpoints: [], deviceWidths: { mobile: 0, tablet: 0, desktop: 0 }, quality: 80 },
+        storage: { priority: [] },
+        derivatives: {}
+      };
+    }
     
     // Initialize environment-specific configurations
     this.environmentConfigs = {
@@ -222,7 +245,8 @@ export class DefaultConfigurationService implements ConfigurationService {
    * @returns Default configuration
    */
   getDefaultConfig(): ImageResizerConfig {
-    return this.deepClone(defaultConfig);
+    // Return a clone of the current config as the default
+    return this.deepClone(this.config);
   }
   
   /**
@@ -232,7 +256,8 @@ export class DefaultConfigurationService implements ConfigurationService {
    * @returns Configuration object
    */
   private loadConfigFromEnvironment(env: Env): ImageResizerConfig {
-    return getConfig(env);
+    // Use direct getConfigFromEnvironment to avoid deprecated getConfig
+    return getConfigFromEnvironment(env);
   }
   
   /**
@@ -579,13 +604,33 @@ export class DefaultConfigurationService implements ConfigurationService {
   /**
    * Initialize the service
    * 
+   * This method will try to load configuration from KV if available
+   * 
    * @returns Promise that resolves when initialization is complete
    */
   async initialize(): Promise<void> {
-    // Current implementation doesn't require async initialization
-    // but the method is included for future use and to implement
-    // the service lifecycle pattern
-    return Promise.resolve();
+    try {
+      // Try to get config from KV (async)
+      const kvConfig = await getConfigAsync(this.env);
+      
+      // Merge KV config with our current config
+      this.config = this.deepMerge(this.config, kvConfig);
+      
+      this.logger.info('Configuration loaded from KV during service initialization', {
+        environment: this.config.environment,
+        configSections: Object.keys(this.config)
+      });
+      
+      return Promise.resolve();
+    } catch (error) {
+      this.logger.warn('Failed to load configuration from KV during initialization', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      this.logger.warn('Using fallback configuration from environment variables');
+      
+      // We already loaded from environment in constructor, so just continue
+      return Promise.resolve();
+    }
   }
   
   /**

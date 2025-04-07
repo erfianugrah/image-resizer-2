@@ -1,22 +1,16 @@
 /**
- * Mock for optimized-logging.ts
+ * Mock optimized logging module for testing
  */
+
 import { vi } from 'vitest';
-import { LogLevel, Logger, LogData } from './logging';
+import { LogLevel, LogData, OptimizedLogger } from './logging';
 
-// OptimizedLogger interface
-export interface OptimizedLogger extends Logger {
-  isLevelEnabled(level: keyof typeof LogLevel): boolean;
-  getMinLevel(): LogLevel;
-  trackedBreadcrumb(step: string, startTime?: number, data?: LogData): number;
-}
-
-// Mock the factory function
+// Create a mock optimized logger
 export const createOptimizedLogger = vi.fn((): OptimizedLogger => {
   return {
     debug: vi.fn(),
     info: vi.fn(),
-    warn: vi.fn(), 
+    warn: vi.fn(),
     error: vi.fn(),
     breadcrumb: vi.fn(),
     isLevelEnabled: vi.fn().mockReturnValue(true),
@@ -25,10 +19,27 @@ export const createOptimizedLogger = vi.fn((): OptimizedLogger => {
   };
 });
 
-// Export the mocked LOG_LEVEL_MAP
-export const LOG_LEVEL_MAP: Record<string, LogLevel> = {
-  'DEBUG': LogLevel.DEBUG,
-  'INFO': LogLevel.INFO,
-  'WARN': LogLevel.WARN,
-  'ERROR': LogLevel.ERROR
+// Default logger instance for import
+export const defaultLogger: OptimizedLogger = {
+  debug: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  breadcrumb: vi.fn(),
+  isLevelEnabled: vi.fn().mockReturnValue(true),
+  getMinLevel: vi.fn().mockReturnValue(LogLevel.DEBUG),
+  trackedBreadcrumb: vi.fn().mockImplementation(() => Date.now())
 };
+
+// Add utility functions that might be used
+export const getLogLevelFromString = vi.fn().mockImplementation(
+  (level: string): LogLevel => {
+    switch (level?.toUpperCase()) {
+      case 'DEBUG': return LogLevel.DEBUG;
+      case 'INFO': return LogLevel.INFO;
+      case 'WARN': return LogLevel.WARN;
+      case 'ERROR': return LogLevel.ERROR;
+      default: return LogLevel.INFO;
+    }
+  }
+);

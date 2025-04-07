@@ -1,12 +1,11 @@
 /**
  * Configuration Module
  * 
- * This package provides a comprehensive configuration system with:
+ * This package provides a KV-based configuration system with:
  * - KV-based storage with versioning for dynamic updates
  * - Configuration API for runtime management
- * - Module-based configuration with JSON schema validation
- * - Environment-specific configuration
- * - Legacy config.ts bridge for compatibility
+ * - Zod schema validation for runtime type checking
+ * - Seamless fallback to environment variables
  */
 
 // Export interfaces
@@ -14,17 +13,5 @@ export * from './interfaces';
 
 // Export implementations
 export { KVConfigStore } from './KVConfigStore';
+export { KVConfigurationService } from './KVConfigurationService';
 export { DefaultConfigurationApiService } from './ConfigurationApiService';
-export { SchemaValidator } from './schemaValidator';
-
-// Export registration
-export { registerConfigurationServices } from './register';
-
-// Export bridge
-export { getConfigWithFallback } from './configBridge';
-
-// Export modules
-export { coreModule, coreModuleRegistration } from './modules/core';
-export { cacheModule, cacheModuleRegistration } from './modules/cache';
-export { transformModule, transformModuleRegistration } from './modules/transform';
-export { storageModule, storageModuleRegistration } from './modules/storage';

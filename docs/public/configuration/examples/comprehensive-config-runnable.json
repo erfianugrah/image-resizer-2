@@ -6,10 +6,114 @@
 			"core",
 			"storage",
 			"transform",
-			"cache"
+			"cache",
+			"image-resizer"
 		]
 	},
 	"modules": {
+		"image-resizer": {
+			"_meta": {
+				"name": "image-resizer", 
+				"version": "1.0.0",
+				"description": "Image Resizer Configuration"
+			},
+			"config": {
+				"environment": "production",
+				"version": "1.0.0",
+				"features": {
+					"enableAkamaiCompatibility": true,
+					"enableAkamaiAdvancedFeatures": true,
+					"forcePinoLogging": true,
+					"forceTransformCache": true,
+					"useKvMetadata": true
+				},
+				"responsive": {
+					"breakpoints": [320, 640, 768, 1024, 1440, 1920, 2048],
+					"deviceWidths": {
+						"mobile": 480,
+						"tablet": 768,
+						"desktop": 1440
+					},
+					"quality": 85,
+					"fit": "scale-down",
+					"format": "auto",
+					"metadata": "none",
+					"supportedFormats": ["jpg", "jpeg", "png", "gif", "webp", "svg", "avif"]
+				},
+				"debug": {
+					"enabled": true,
+					"headers": ["cache", "mode", "ir", "client-hints", "ua", "device", "strategy"],
+					"allowedEnvironments": ["development", "staging", "production"],
+					"verbose": true,
+					"includePerformance": true,
+					"forceDebugHeaders": true
+				},
+				"cache": {
+					"method": "cf",
+					"ttl": {
+						"ok": 86400,
+						"clientError": 60,
+						"serverError": 10
+					},
+					"cacheability": true
+				},
+				"storage": {
+					"priority": ["r2", "remote", "fallback"],
+					"r2": {
+						"enabled": true,
+						"bindingName": "IMAGES_BUCKET"
+					}
+				},
+				"derivatives": {
+					"thumbnail": {
+						"width": 320,
+						"height": 150,
+						"fit": "cover",
+						"gravity": "auto"
+					},
+					"avatar": {
+						"width": 180,
+						"height": 180,
+						"fit": "cover",
+						"gravity": "face"
+					},
+					"banner": {
+						"width": 1600,
+						"height": 400,
+						"fit": "cover",
+						"gravity": "auto"
+					},
+					"product": {
+						"width": 800,
+						"height": 800,
+						"fit": "contain",
+						"background": "white"
+					},
+					"og": {
+						"width": 1200,
+						"height": 630,
+						"fit": "cover",
+						"gravity": "auto"
+					},
+					"twitter": {
+						"width": 1200,
+						"height": 600,
+						"fit": "cover",
+						"gravity": "auto"
+					},
+					"mobile": {
+						"width": 480,
+						"format": "auto",
+						"quality": 80
+					},
+					"desktop": {
+						"width": 1440,
+						"format": "auto",
+						"quality": 85
+					}
+				}
+			}
+		},
 		"core": {
 			"_meta": {
 				"name": "core",
@@ -32,9 +136,11 @@
 					],
 					"allowedEnvironments": [
 						"development",
-						"staging"
+						"staging",
+						"production"
 					],
-					"includePerformance": true
+					"includePerformance": true,
+					"forceDebugHeaders": true
 				},
 				"features": {
 					"enableAkamaiCompatibility": true,
@@ -43,7 +149,10 @@
 					"lazyServiceInitialization": true,
 					"optimizedClientDetection": true,
 					"optimizedCaching": true,
-					"optimizedMetadataFetching": true
+					"optimizedMetadataFetching": true,
+					"forcePinoLogging": true,
+					"forceTransformCache": true,
+					"useKvMetadata": true
 				},
 				"logging": {
 					"level": "DEBUG",
@@ -52,7 +161,8 @@
 					"enableBreadcrumbs": true,
 					"usePino": true,
 					"prettyPrint": true,
-					"colorize": true
+					"colorize": true,
+					"forceUsage": true
 				}
 			}
 		},
@@ -321,6 +431,12 @@
 					"g": 2000,
 					"xg": 3000,
 					"xxg": 4000
+				},
+				"metadata": {
+					"useKV": true,
+					"cacheSize": 1000,
+					"ttl": 86400,
+					"binding": "IMAGE_METADATA_CACHE"
 				}
 			}
 		},
@@ -420,6 +536,8 @@
 					"maxSize": 26214400,
 					"defaultTtl": 86400,
 					"backgroundIndexing": true,
+					"forceEnable": true,
+					"allowedEnvironments": ["development", "staging", "production"],
 					"disallowedPaths": [
 						"/admin/",
 						"/preview/",

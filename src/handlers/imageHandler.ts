@@ -9,6 +9,8 @@ import { ValidationError } from '../utils/errors';
 import { TransformImageCommand } from '../domain/commands';
 import { PerformanceMetrics } from '../services/interfaces';
 import { ParameterHandler } from '../parameters';
+import { getConfigAsync } from '../config';
+import { Env } from '../types';
 
 /**
  * Process an image transformation request
@@ -25,8 +27,13 @@ export async function handleImageRequest(
   services: ServiceContainer,
   metrics: PerformanceMetrics
 ): Promise<Response> {
-  const { logger, configurationService } = services;
-  const config = configurationService.getConfig();
+  const { logger } = services;
+  
+  // Get environment from request
+  const env = (request as unknown as { env: Env }).env;
+  
+  // Use async configuration access instead of synchronous
+  const config = await getConfigAsync(env);
   
   // Validate request method
   if (request.method !== 'GET' && request.method !== 'HEAD') {
