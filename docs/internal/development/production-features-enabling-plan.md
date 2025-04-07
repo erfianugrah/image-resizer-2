@@ -9,8 +9,8 @@ This document outlines the plan to enable advanced features in the production en
 ## Related Documents
 
 - [KV Configuration for Production Features](./production-features-kv-config-plan.md) - Detailed plan for KV configuration integration
-- [KV Configuration System](../../KV_CONFIGURATION.md) - Details on the KV configuration system
-- [Configuration Refactoring](../../CONFIGURATION_REFACTORING.md) - Information on the KV configuration refactoring
+- [KV Configuration System](../../public/configuration/kv-configuration.md) - Details on the KV configuration system
+- [Configuration Refactoring](./configuration-refactoring.md) - Information on the KV configuration refactoring
 
 ## Features to Enable
 

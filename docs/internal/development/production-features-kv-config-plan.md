@@ -4,7 +4,7 @@
 
 ## Overview
 
-This document outlines the plan to enable advanced features in the production environment by utilizing the new KV configuration system. It builds on the recently completed [KV Configuration Refactoring](../../CONFIGURATION_REFACTORING.md) to enable features that are currently limited to development and staging environments.
+This document outlines the plan to enable advanced features in the production environment by utilizing the new KV configuration system. It builds on the recently completed [Configuration Refactoring](./configuration-refactoring.md) to enable features that are currently limited to development and staging environments.
 
 ## Integration with KV Configuration System
 
@@ -12,7 +12,7 @@ The KV configuration system has been successfully refactored to serve as the sin
 
 ### Relationship to Configuration Refactoring
 
-The [Configuration Refactoring](../../CONFIGURATION_REFACTORING.md) implemented the following key components:
+The [Configuration Refactoring](./configuration-refactoring.md) implemented the following key components:
 
 1. Schema-based configuration validation with Zod
 2. KV storage as the single source of truth
@@ -174,7 +174,7 @@ npm run config:load-kv -- production-config.json --env production --remote
 
 ## Integration With Existing KV Features
 
-The [KV Configuration](../../KV_CONFIGURATION.md) document already outlines many of the features we're enabling. We'll leverage these existing implementations and simply enable them in production through configuration changes.
+The [KV Configuration](../../public/configuration/kv-configuration.md) document already outlines many of the features we're enabling. We'll leverage these existing implementations and simply enable them in production through configuration changes.
 
 ### Fix for KV Key Format Issue
 
@@ -199,8 +199,8 @@ const configKey = `${KV_KEYS.VERSION_PREFIX}${cleanVersionId}`;
 
 ## Related Documentation
 
-- [KV Configuration System](../../KV_CONFIGURATION.md) - Details on the KV configuration system
-- [Configuration Refactoring](../../CONFIGURATION_REFACTORING.md) - Information on the KV configuration refactoring
+- [KV Configuration System](../../public/configuration/kv-configuration.md) - Details on the KV configuration system
+- [Configuration Refactoring](./configuration-refactoring.md) - Information on the KV configuration refactoring
 - [Debug Headers](../../public/debugging/debug-headers.md) - Documentation for debug headers
 - [KV Transform Cache](../../public/caching/kv-transform-cache.md) - Documentation for the transform cache
 - [Metadata Caching](../../public/caching/metadata-caching-strategy.md) - Documentation for metadata caching
