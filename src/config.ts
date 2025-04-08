@@ -9,7 +9,8 @@
 import { PathTransforms } from './utils/path';
 import { Env } from './types';
 import { loadDetectorConfigFromEnv } from './utils/wrangler-config';
-import { defaultLogger } from './utils/logging';
+// Import from pino-compat to ensure we're using Pino logging
+import { createCompatiblePinoLogger } from './utils/pino-compat';
 import { KVConfigStore } from './services/config/KVConfigStore';
 import { KVConfigurationService } from './services/config/KVConfigurationService';
 import { imageResizerConfigSchema } from './schemas/configSchema';
@@ -28,6 +29,49 @@ export class ConfigNotInitializedError extends Error {
 
 // Singleton instance of the KV configuration service
 let configurationService: KVConfigurationService | null = null;
+
+// Create a minimal configuration for Pino
+const minimalConfig = {
+  logging: {
+    level: 'INFO' as const,
+    includeTimestamp: true,
+    enableStructuredLogs: true,
+    usePino: true
+  },
+  environment: 'development' as const,
+  version: '1.0.0',
+  cache: {
+    method: 'none' as const,
+    ttl: { ok: 0, clientError: 0, serverError: 0 },
+    cacheability: false
+  },
+  debug: {
+    enabled: true,
+    headers: ['debug'],
+    allowedEnvironments: ['development'],
+    verbose: true,
+    includePerformance: true
+  },
+  responsive: {
+    breakpoints: [320, 640, 768, 1024, 1440, 1920],
+    deviceWidths: { mobile: 0, tablet: 0, desktop: 0 },
+    quality: 80,
+    format: 'auto',
+    fit: 'scale-down' as const,
+    metadata: 'none' as const
+  },
+  storage: {
+    priority: ['remote'] as ('r2' | 'remote' | 'fallback')[],
+    r2: {
+      enabled: false,
+      bindingName: 'IMAGES_BUCKET'
+    }
+  },
+  derivatives: {}
+};
+
+// Create a Pino logger for configuration operations
+const defaultLogger = createCompatiblePinoLogger(minimalConfig, 'Config')
 
 /**
  * Initialize the configuration system with KV store

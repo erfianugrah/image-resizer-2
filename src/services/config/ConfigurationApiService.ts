@@ -382,32 +382,24 @@ export class DefaultConfigurationApiService implements ConfigurationApiService {
   private logDebug(message: string, data?: Record<string, any>): void {
     if (this.logger) {
       this.logger.debug(message, data);
-    } else if (typeof console !== 'undefined') {
-      console.debug(message, data);
     }
   }
   
   private logInfo(message: string, data?: Record<string, any>): void {
     if (this.logger) {
       this.logger.info(message, data);
-    } else if (typeof console !== 'undefined') {
-      console.info(message, data);
     }
   }
   
   private logWarn(message: string, data?: Record<string, any>): void {
     if (this.logger) {
       this.logger.warn(message, data);
-    } else if (typeof console !== 'undefined') {
-      console.warn(message, data);
     }
   }
   
   private logError(message: string, data?: Record<string, any>): void {
     if (this.logger) {
       this.logger.error(message, data);
-    } else if (typeof console !== 'undefined') {
-      console.error(message, data);
     }
   }
 }

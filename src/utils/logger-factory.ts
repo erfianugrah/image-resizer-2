@@ -23,16 +23,29 @@ export function createLogger(
   context?: string,
   useOptimized: boolean = false
 ): Logger | OptimizedLogger {
-  // Check if Pino is enabled in config
-  const usePino = config.logging?.usePino === true;
+  // Always use Pino unless explicitly disabled with usePino=false
+  const usePino = config.logging?.usePino !== false;
   
+  // Ensure config.logging exists
+  if (!config.logging) {
+    config.logging = {
+      level: 'INFO',
+      includeTimestamp: true,
+      enableStructuredLogs: true
+    };
+  }
+  
+  // Force usePino to true if not explicitly disabled
+  config.logging.usePino = usePino;
+  
+  // Use appropriate logger implementation
   if (usePino) {
     // Use Pino implementations
     return useOptimized
       ? createOptimizedPinoLogger(config, context)
       : createCompatiblePinoLogger(config, context);
   } else {
-    // Use original implementations
+    // Legacy implementations - only used if explicitly requested
     return useOptimized
       ? createLegacyOptimizedLogger(config, context)
       : createLegacyLogger(config, context);

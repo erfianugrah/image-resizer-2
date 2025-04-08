@@ -50,7 +50,51 @@ export default {
     try {
       await initializeConfig(env);
     } catch (error) {
-      console.error("Failed to initialize KV configuration:", error);
+      // Import pino-compatible logger for initialization errors
+      const { createCompatiblePinoLogger } = await import('./utils/pino-compat');
+      const initLogger = createCompatiblePinoLogger({
+        logging: { 
+          level: 'INFO' as const, 
+          usePino: true,
+          includeTimestamp: true,
+          enableStructuredLogs: true 
+        },
+        environment: 'development' as const,
+        version: '1.0.0',
+        cache: {
+          method: 'none' as const,
+          ttl: { ok: 0, clientError: 0, serverError: 0 },
+          cacheability: false
+        },
+        debug: {
+          enabled: true,
+          headers: ['debug'],
+          allowedEnvironments: ['development'],
+          verbose: true,
+          includePerformance: true
+        },
+        responsive: {
+          breakpoints: [320],
+          deviceWidths: { mobile: 0, tablet: 0, desktop: 0 },
+          quality: 80,
+          format: 'auto',
+          fit: 'scale-down' as const,
+          metadata: 'none' as const
+        },
+        storage: {
+          priority: ['remote'] as ('r2' | 'remote' | 'fallback')[],
+          r2: {
+            enabled: false,
+            bindingName: 'IMAGES_BUCKET'
+          }
+        },
+        derivatives: {}
+      }, 'Init');
+      
+      initLogger.error("Failed to initialize KV configuration", {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
       // We'll continue with fallback configuration
     }
 
@@ -504,7 +548,51 @@ export default {
     try {
       await initializeConfig(env);
     } catch (error) {
-      console.error("Failed to initialize KV configuration:", error);
+      // Import pino-compatible logger for initialization errors
+      const { createCompatiblePinoLogger } = await import('./utils/pino-compat');
+      const initLogger = createCompatiblePinoLogger({
+        logging: { 
+          level: 'INFO' as const, 
+          usePino: true,
+          includeTimestamp: true,
+          enableStructuredLogs: true 
+        },
+        environment: 'development' as const,
+        version: '1.0.0',
+        cache: {
+          method: 'none' as const,
+          ttl: { ok: 0, clientError: 0, serverError: 0 },
+          cacheability: false
+        },
+        debug: {
+          enabled: true,
+          headers: ['debug'],
+          allowedEnvironments: ['development'],
+          verbose: true,
+          includePerformance: true
+        },
+        responsive: {
+          breakpoints: [320],
+          deviceWidths: { mobile: 0, tablet: 0, desktop: 0 },
+          quality: 80,
+          format: 'auto',
+          fit: 'scale-down' as const,
+          metadata: 'none' as const
+        },
+        storage: {
+          priority: ['remote'] as ('r2' | 'remote' | 'fallback')[],
+          r2: {
+            enabled: false,
+            bindingName: 'IMAGES_BUCKET'
+          }
+        },
+        derivatives: {}
+      }, 'Init');
+      
+      initLogger.error("Failed to initialize KV configuration", {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
       // We'll continue with fallback configuration
     }
     

@@ -48,10 +48,33 @@ export class DefaultConfigurationService implements ConfigurationService {
         environment: 'development',
         version: '1.0.0',
         features: {},
-        debug: { enabled: true, headers: [] },
-        cache: { method: 'none', ttl: { ok: 0, clientError: 0, serverError: 0 } },
-        responsive: { breakpoints: [], deviceWidths: { mobile: 0, tablet: 0, desktop: 0 }, quality: 80 },
-        storage: { priority: [] },
+        debug: { 
+          enabled: true, 
+          headers: ['debug'],
+          allowedEnvironments: ['development'],
+          verbose: true,
+          includePerformance: true
+        },
+        cache: { 
+          method: 'none', 
+          ttl: { ok: 0, clientError: 0, serverError: 0 },
+          cacheability: false
+        },
+        responsive: { 
+          breakpoints: [320, 640, 768, 1024, 1440, 1920], 
+          deviceWidths: { mobile: 0, tablet: 0, desktop: 0 }, 
+          quality: 80,
+          format: 'auto',
+          fit: 'scale-down',
+          metadata: 'none'
+        },
+        storage: { 
+          priority: ['remote'],
+          r2: {
+            enabled: false,
+            bindingName: 'IMAGES_BUCKET'
+          }
+        },
         derivatives: {}
       };
     }

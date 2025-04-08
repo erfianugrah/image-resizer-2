@@ -176,46 +176,38 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
   }
   
   /**
-   * Helper for debug logging with console fallback
+   * Helper for debug logging
    */
   private logDebug(message: string, data?: LogData): void {
     if (this.logger) {
       this.logger.debug(message, data);
-    } else if (typeof console !== 'undefined' && console.debug) {
-      console.debug(message, data);
     }
   }
   
   /**
-   * Helper for info logging with console fallback
+   * Helper for info logging
    */
   private logInfo(message: string, data?: LogData): void {
     if (this.logger) {
       this.logger.info(message, data);
-    } else if (typeof console !== 'undefined' && console.info) {
-      console.info(message, data);
     }
   }
   
   /**
-   * Helper for warning logging with console fallback
+   * Helper for warning logging
    */
   private logWarn(message: string, data?: LogData): void {
     if (this.logger) {
       this.logger.warn(message, data);
-    } else if (typeof console !== 'undefined' && console.warn) {
-      console.warn(message, data);
     }
   }
   
   /**
-   * Helper for error logging with console fallback
+   * Helper for error logging
    */
   private logError(message: string, data?: LogData): void {
     if (this.logger) {
       this.logger.error(message, data);
-    } else if (typeof console !== 'undefined' && console.error) {
-      console.error(message, data);
     }
   }
 
@@ -844,12 +836,10 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
         processedWithKV: true
       };
       
-      if (typeof console !== 'undefined' && console.debug) {
-        console.debug("KV transform cache: Storing aspect crop info in metadata", {
-          aspect: transformOptions.aspect,
-          focal: transformOptions.focal
-        });
-      }
+      this.logDebug("KV transform cache: Storing aspect crop info in metadata", {
+        aspect: transformOptions.aspect,
+        focal: transformOptions.focal
+      });
     }
     
     // Extract format from content-type to use in cache key
@@ -858,13 +848,11 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       const formatMatch = contentType.match(/image\/(\w+)/);
       if (formatMatch && formatMatch[1]) {
         actualFormat = formatMatch[1];
-        if (typeof console !== 'undefined' && console.debug) {
-          console.debug("KV transform cache: Extracted format from content-type", {
-            contentType,
-            format: actualFormat,
-            requestedFormat: transformOptions.format || 'auto'
-          });
-        }
+        this.logDebug("KV transform cache: Extracted format from content-type", {
+          contentType,
+          format: actualFormat,
+          requestedFormat: transformOptions.format || 'auto'
+        });
       }
     }
     
