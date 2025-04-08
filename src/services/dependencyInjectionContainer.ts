@@ -34,6 +34,7 @@ import { createParameterHandler } from '../parameters/serviceFactory';
 import { ConfigStoreInterface, ConfigurationApiService } from './config/interfaces';
 import { KVConfigStore } from './config/KVConfigStore';
 import { KVConfigurationService } from './config/KVConfigurationService';
+import { CachedKVConfigurationService } from './config/CachedKVConfigurationService';
 import { DefaultConfigurationApiService } from './config/ConfigurationApiService';
 
 interface ServiceRegistration<T> {
@@ -497,29 +498,69 @@ export function createContainerBuilder(
   // Temporary logger for bootstrapping
   const tempLogger = createLogger(bootstrapConfig, 'Bootstrap', true);
   
+  // Register KV Config API service first (needed by the CachedKVConfigurationService)
+  container.registerFactory(ServiceTypes.CONFIG_API_SERVICE, () => {
+    // Check if KV config is available
+    if (env.IMAGE_CONFIGURATION_STORE || env.IMAGE_CONFIGURATION_STORE_DEV) {
+      const kvNamespace = env.IMAGE_CONFIGURATION_STORE || env.IMAGE_CONFIGURATION_STORE_DEV;
+      if (!kvNamespace) {
+        throw new Error('No KV namespace available for configuration');
+      }
+      
+      const kvStore = new KVConfigStore(
+        kvNamespace,
+        tempLogger
+      );
+      
+      return new DefaultConfigurationApiService(kvStore, env as unknown as Record<string, string>, tempLogger);
+    } else {
+      throw new Error('KV Config store not available');
+    }
+  });
+  
   // Register configuration service
   container.registerFactory(ServiceTypes.CONFIGURATION_SERVICE, () => {
     // Check if we should use KV-based config
     const useKVConfig = options?.useKVConfig || (env as Record<string, any>)['USE_KV_CONFIG'] === 'true' || env.IMAGE_CONFIGURATION_STORE !== undefined;
     
     if (useKVConfig) {
-      tempLogger.info('Using KV-based configuration service');
+      tempLogger.info('Using KV-based configuration service with caching');
       try {
-        // Try to create config store
-        if (env.IMAGE_CONFIGURATION_STORE || env.IMAGE_CONFIGURATION_STORE_DEV) {
-          // Ensure KV namespace is defined
-          const kvNamespace = env.IMAGE_CONFIGURATION_STORE || env.IMAGE_CONFIGURATION_STORE_DEV;
-          if (!kvNamespace) {
-            throw new Error('No KV namespace available for configuration');
+        // Check if we can get the Config API service
+        if (container.isRegistered(ServiceTypes.CONFIG_API_SERVICE)) {
+          try {
+            // Get the Config API service
+            const configApiService = container.resolve<ConfigurationApiService>(ServiceTypes.CONFIG_API_SERVICE);
+            
+            // Create the cached KV configuration service
+            return new CachedKVConfigurationService(
+              configApiService,
+              tempLogger,
+              env,
+              { refreshIntervalMs: 30000 } // Check for updates every 30 seconds
+            );
+          } catch (error) {
+            tempLogger.error('Failed to create CachedKVConfigurationService', {
+              error: error instanceof Error ? error.message : String(error)
+            });
           }
-          
-          const kvStore = new KVConfigStore(
-            kvNamespace,
-            tempLogger
-          );
-          return new KVConfigurationService(kvStore, tempLogger, env);
         } else {
-          tempLogger.warn('KV config store not found, falling back to default configuration service');
+          tempLogger.warn('Config API service not registered, falling back to direct KV access');
+          
+          // Try to create config store directly
+          if (env.IMAGE_CONFIGURATION_STORE || env.IMAGE_CONFIGURATION_STORE_DEV) {
+            // Ensure KV namespace is defined
+            const kvNamespace = env.IMAGE_CONFIGURATION_STORE || env.IMAGE_CONFIGURATION_STORE_DEV;
+            if (!kvNamespace) {
+              throw new Error('No KV namespace available for configuration');
+            }
+            
+            const kvStore = new KVConfigStore(
+              kvNamespace,
+              tempLogger
+            );
+            return new KVConfigurationService(kvStore, tempLogger, env);
+          }
         }
       } catch (error) {
         tempLogger.error('Failed to create KV configuration service, using default', {

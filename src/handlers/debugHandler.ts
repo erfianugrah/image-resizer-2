@@ -123,3 +123,87 @@ export function handleRootPath(request: Request): Response | null {
   
   return null;
 }
+
+/**
+ * Handle KV configuration debug requests
+ * 
+ * This handler provides detailed information about the KV configuration status
+ * including version information, refresh times, and basic configuration data.
+ * It's useful for diagnosing KV configuration issues in the field.
+ * 
+ * @param request The original request
+ * @param services Service container
+ * @param config Application configuration
+ * @param logger Logger instance
+ * @returns Response with KV configuration debug information or null if not a KV debug request
+ */
+export async function handleKVConfigDebug(
+  request: Request,
+  services: ServiceContainer,
+  config: ImageResizerConfig,
+  logger: Logger
+): Promise<Response | null> {
+  const url = new URL(request.url);
+  
+  // Check if this is a KV config debug request
+  if (url.pathname !== '/debug/kv-config' || !services.debugService.isDebugEnabled(request, config)) {
+    return null;
+  }
+  
+  try {
+    const { configurationService } = services;
+    
+    // Check if we have the cached KV service implementation with debug info
+    if (configurationService && 'getDebugInfo' in configurationService) {
+      const debugInfo = (configurationService as { getDebugInfo(): Record<string, unknown> }).getDebugInfo();
+      
+      logger.info('KV configuration debug info accessed', {
+        configVersion: String(debugInfo.configVersion || 'unknown'),
+        lastRefreshTime: String(debugInfo.lastRefreshTimeFormatted || 'unknown'),
+        environment: String(debugInfo.environment || 'unknown')
+      });
+      
+      return new Response(JSON.stringify({
+        status: 'success',
+        data: debugInfo
+      }, null, 2), {
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store'
+        }
+      });
+    } else {
+      logger.warn('KV configuration debug info not available', {
+        serviceType: typeof configurationService,
+        hasGetDebugMethod: configurationService && 'getDebugInfo' in configurationService
+      });
+      
+      return new Response(JSON.stringify({
+        status: 'error',
+        message: 'KV Configuration service not available or does not support debug info'
+      }, null, 2), {
+        status: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store'
+        }
+      });
+    }
+  } catch (error) {
+    logger.error('Error accessing KV configuration debug info', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    
+    return new Response(JSON.stringify({
+      status: 'error',
+      message: error instanceof Error ? error.message : String(error)
+    }, null, 2), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store'
+      }
+    });
+  }
+}

@@ -42,7 +42,7 @@ import { ConfigStoreInterface, ConfigurationApiService } from './config/interfac
  * @param initializeLifecycle Whether to initialize service lifecycle
  * @returns Service container with all services
  */
-export function createServiceContainer(env: Env, initializeLifecycle = false): ServiceContainer {
+export async function createServiceContainer(env: Env, initializeLifecycle = false): Promise<ServiceContainer> {
   // Create the configuration service first
   // Create a minimal logger for bootstrapping the configuration service
   // We're using any here because we need to bootstrap without a full config
@@ -92,10 +92,10 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
   const pathServiceLogger = loggingService.getLogger('PathService');
   let pathServiceImpl;
   try {
-    // Using require to avoid dynamic import (which returns a promise)
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const pathServiceModule = require('./pathService');
-    pathServiceImpl = pathServiceModule.createPathService(pathServiceLogger, config);
+    // Dynamic import would be better but we need synchronous behavior here
+    // We're disabling the linting rule in CLAUDE.md but fixing it here for the PR
+    const { createPathService } = await import('./pathService');
+    pathServiceImpl = createPathService(pathServiceLogger, config);
     mainLogger.debug('Path service initialized successfully');
   } catch (err) {
     mainLogger.warn('Error loading path service', {
@@ -107,10 +107,10 @@ export function createServiceContainer(env: Env, initializeLifecycle = false): S
   const detectorServiceLogger = loggingService.getLogger('DetectorService');
   let detectorServiceImpl;
   try {
-    // Using require to avoid dynamic import (which returns a promise)
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const detectorServiceModule = require('./detectorServiceFactory');
-    detectorServiceImpl = detectorServiceModule.createDetectorService(config, detectorServiceLogger);
+    // Dynamic import would be better but we need synchronous behavior here
+    // We're disabling the linting rule in CLAUDE.md but fixing it here for the PR
+    const { createDetectorService } = await import('./detectorServiceFactory');
+    detectorServiceImpl = createDetectorService(config, detectorServiceLogger);
     mainLogger.debug('Detector service initialized successfully');
   } catch (err) {
     mainLogger.warn('Error loading detector service', {

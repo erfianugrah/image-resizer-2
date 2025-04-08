@@ -5,7 +5,8 @@
  * with a service-oriented architecture inspired by video-resizer.
  */
 
-import { PerformanceMetrics } from "./services/interfaces";
+import { PerformanceMetrics, ServiceContainer } from "./services/interfaces";
+import { Logger } from "./utils/logging";
 import { AppError, createErrorResponse, TransformError } from "./utils/errors";
 import { isAkamaiFormat } from "./utils/akamai-compatibility-refactored";
 import { setLogger as setAkamaiLogger } from "./utils/akamai-compatibility-refactored";
@@ -27,7 +28,63 @@ import {
   handlePerformanceReport,
   handlePerformanceReset,
   handleRootPath,
+  handleKVConfigDebug,
 } from "./handlers";
+
+// Helper functions to adapt handler functions to work with our async container
+// We use type-specific functions to ensure proper typing
+
+async function withTransformCacheDebugHandler(request: Request, services: ServiceContainer, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const { transformCacheDebugHandler } = await import("./handlers/transformCacheDebugHandler");
+  return await transformCacheDebugHandler(request, services, env, ctx);
+}
+
+async function withPerformanceReport(request: Request, services: ServiceContainer): Promise<Response | null> {
+  const { handlePerformanceReport } = await import("./handlers");
+  return await handlePerformanceReport(request, services);
+}
+
+async function withPerformanceReset(request: Request, services: ServiceContainer): Promise<Response | null> {
+  const { handlePerformanceReset } = await import("./handlers");
+  return await handlePerformanceReset(request, services);
+}
+
+async function withDebugReport(
+  request: Request, 
+  services: ServiceContainer, 
+  metrics: PerformanceMetrics, 
+  config: any, 
+  logger: Logger
+): Promise<Response | null> {
+  const { handleDebugReport } = await import("./handlers");
+  return await handleDebugReport(request, services, metrics, config, logger);
+}
+
+async function withMetadataTransformation(request: Request, env: Env, services: ServiceContainer): Promise<Response> {
+  const { handleMetadataTransformation } = await import("./handlers/metadataHandler");
+  return await handleMetadataTransformation(request, env, services);
+}
+
+async function withConfigApiRequest(request: Request, url: URL, services: ServiceContainer, env: Env): Promise<Response> {
+  const { handleConfigApiRequest } = await import("./handlers/configApiHandler");
+  return await handleConfigApiRequest(request, url, services, env);
+}
+
+async function withAkamaiCompatibility(request: Request, url: URL, services: ServiceContainer): Promise<URL> {
+  // We need to use dynamic import to avoid circular references
+  const handlers = await import("./handlers");
+  return handlers.handleAkamaiCompatibility(request, url, services);
+}
+
+async function withImageRequest(request: Request, url: URL, services: ServiceContainer, metrics: PerformanceMetrics): Promise<Response> {
+  const handlers = await import("./handlers");
+  return await handlers.handleImageRequest(request, url, services, metrics);
+}
+
+async function withAkamaiCompatibilityHeader(response: Response, isAkamai: boolean, services: ServiceContainer): Promise<Response> {
+  const handlers = await import("./handlers");
+  return handlers.addAkamaiCompatibilityHeader(response, isAkamai, services);
+}
 
 export default {
   async fetch(
@@ -100,7 +157,7 @@ export default {
 
     // Create service container using the factory
     // This will automatically select the appropriate container type and add lifecycle manager
-    const services = createContainer(env, {
+    const services = await createContainer(env, {
       initializeServices: true,
       gracefulDegradation: true,
       useKVConfig: true, // Signal to use KV configuration
@@ -143,6 +200,12 @@ export default {
       logger.debug(
         "Lifecycle manager available for coordinated service management",
       );
+      
+      // Check if we can set up background refresh for KV configuration
+      if (configurationService && 'setupBackgroundRefresh' in configurationService) {
+        logger.info('Setting up background refresh for KV configuration');
+        (configurationService as any).setupBackgroundRefresh(ctx);
+      }
     }
 
     // Note: We've already loaded the config above for service creation
@@ -225,8 +288,8 @@ export default {
             path: url.pathname
           });
           
-          const transformCacheResponse = await transformCacheDebugHandler(
-            request,
+          const transformCacheResponse = await withTransformCacheDebugHandler(
+            request, 
             services,
             env,
             ctx
@@ -257,11 +320,72 @@ export default {
           );
         }
       }
+      
+      // Check for KV configuration debug request
+      if (url.pathname === '/debug/kv-config') {
+        performanceMonitor.startOperation("kv_config_debug");
+        logger.debug("Handling KV configuration debug request");
+        
+        try {
+          // Use the KV config debug handler
+          const kvConfigResponse = await handleKVConfigDebug(
+            request,
+            services,
+            config,
+            logger
+          );
+          
+          if (kvConfigResponse) {
+            performanceMonitor.endOperation("kv_config_debug", {
+              status: kvConfigResponse.status
+            });
+            
+            performanceMonitor.endOperation("total", {
+              type: "kv_config_debug"
+            });
+            performanceMonitor.endRequest({
+              status: kvConfigResponse.status,
+              type: "kv_config_debug"
+            });
+            
+            return kvConfigResponse;
+          }
+        } catch (error) {
+          logger.error("Error in KV configuration debug handler", {
+            error: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined
+          });
+          
+          // Return an error response rather than falling through
+          const errorResponse = new Response(JSON.stringify({
+            status: 'error',
+            message: `KV configuration debug handler error: ${error instanceof Error ? error.message : String(error)}`
+          }, null, 2), {
+            status: 500,
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-store'
+            }
+          });
+          
+          performanceMonitor.endOperation("kv_config_debug", {
+            status: 500,
+            error: true
+          });
+          
+          performanceMonitor.endOperation("total", {
+            type: "kv_config_debug",
+            error: true
+          });
+          
+          return errorResponse;
+        }
+      }
 
       // Check for performance report request
-      const performanceResponse = await handlePerformanceReport(
+      const performanceResponse = await withPerformanceReport(
         request,
-        services,
+        services
       );
       if (performanceResponse) {
         performanceMonitor.endOperation("total", {
@@ -275,7 +399,10 @@ export default {
       }
 
       // Check for performance reset request
-      const resetResponse = await handlePerformanceReset(request, services);
+      const resetResponse = await withPerformanceReset(
+        request,
+        services
+      );
       if (resetResponse) {
         performanceMonitor.endOperation("total", { type: "performance_reset" });
         performanceMonitor.endRequest({
@@ -286,12 +413,12 @@ export default {
       }
 
       // Check for debug report request
-      const debugResponse = await handleDebugReport(
+      const debugResponse = await withDebugReport(
         request,
         services,
         metrics,
         config,
-        logger,
+        logger
       );
       if (debugResponse) {
         performanceMonitor.endOperation("total", { type: "debug_report" });
@@ -315,10 +442,10 @@ export default {
             path: url.pathname,
           });
 
-          const metadataResponse = await handleMetadataTransformation(
+          const metadataResponse = await withMetadataTransformation(
             request,
             env,
-            services,
+            services
           );
 
           performanceMonitor.endOperation("metadata_transform", {
@@ -363,8 +490,8 @@ export default {
             method: request.method
           });
           
-          const configApiResponse = await handleConfigApiRequest(
-            request,
+          const configApiResponse = await withConfigApiRequest(
+            request, 
             url,
             services,
             env
@@ -411,16 +538,16 @@ export default {
       // Handle Akamai compatibility if applicable
       performanceMonitor.startOperation("akamai_compat");
       const isAkamai = isAkamaiFormat(url);
-      url = handleAkamaiCompatibility(request, url, services);
+      url = await withAkamaiCompatibility(request, url, services);
       performanceMonitor.endOperation("akamai_compat", { used: isAkamai });
 
       // Process the image transformation request
       performanceMonitor.startOperation("image_request");
-      let finalResponse = await handleImageRequest(
+      let finalResponse = await withImageRequest(
         request,
         url,
         services,
-        metrics,
+        metrics
       );
       performanceMonitor.endOperation("image_request", {
         status: finalResponse.status,
@@ -430,10 +557,10 @@ export default {
       // Add Akamai compatibility header if enabled and used
       if (isAkamai) {
         performanceMonitor.startOperation("add_akamai_header");
-        finalResponse = addAkamaiCompatibilityHeader(
+        finalResponse = await withAkamaiCompatibilityHeader(
           finalResponse,
           isAkamai,
-          services,
+          services
         );
         performanceMonitor.endOperation("add_akamai_header");
       }
@@ -597,7 +724,7 @@ export default {
     }
     
     // Create service container with minimal initialization
-    const services = createContainer(env, {
+    const services = await createContainer(env, {
       initializeServices: false, // Don't initialize since we'll just shut down
       useKVConfig: true, // Use KV configuration if available
     });
@@ -636,7 +763,13 @@ export default {
       // Use regular shutdown if lifecycle manager is not available
       try {
         logger.info("Starting legacy service shutdown");
-        await services.shutdown();
+        for (const key of Object.keys(services)) {
+          const service = services[key as keyof typeof services];
+          if (service && typeof (service as any).shutdown === 'function') {
+            logger.debug(`Shutting down service: ${key}`);
+            await (service as any).shutdown();
+          }
+        }
         logger.info("Legacy service shutdown completed");
       } catch (error) {
         logger.error("Error during legacy service shutdown", {

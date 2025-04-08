@@ -53,7 +53,7 @@ export function createContainerFromDI(
  * @param lifecycleOptions Optional initialization options for services
  * @returns A service container with all required services
  */
-export function createContainer(
+export async function createContainer(
   env: Env, 
   lifecycleOptions?: {
     initializeServices?: boolean;
@@ -62,7 +62,7 @@ export function createContainer(
     critical?: string[];
     useKVConfig?: boolean; // Whether to use KV as source of truth for config
   }
-): ServiceContainer {
+): Promise<ServiceContainer> {
   // Use a simple heuristic to decide whether to use the new DI system
   // For now, default to the legacy system to ensure compatibility
   const useDISystem = env.USE_DI_SYSTEM === 'true';
@@ -81,7 +81,7 @@ export function createContainer(
     // Create the appropriate container
     container = useLazyLoading
       ? createLazyServiceContainer(env)
-      : createServiceContainer(env, false); // Pass false to prevent auto-initialization
+      : await createServiceContainer(env, false); // Pass false to prevent auto-initialization
   }
   
   // Add lifecycle manager if it doesn't exist yet
