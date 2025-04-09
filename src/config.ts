@@ -1823,32 +1823,67 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
  * @returns A new object with properties from both target and source
  */
 export function deepMerge<T>(target: T, source: Partial<T>): T {
+  // If source is null or undefined, return target
+  if (source === null || source === undefined) {
+    return target;
+  }
+  
+  // Create a copy of the target
   const result = { ...target };
   
-  if (source && typeof source === 'object' && !Array.isArray(source)) {
-    Object.keys(source).forEach(key => {
-      const sourceValue = source[key as keyof typeof source];
-      const targetValue = target[key as keyof typeof target];
-      
-      if (
-        sourceValue && 
-        typeof sourceValue === 'object' && 
-        !Array.isArray(sourceValue) &&
-        targetValue && 
-        typeof targetValue === 'object' && 
-        !Array.isArray(targetValue)
-      ) {
-        // If both values are objects, recursively merge them
-        result[key as keyof typeof result] = deepMerge(
-          targetValue, 
-          sourceValue as any
-        ) as any;
-      } else {
-        // Otherwise just override the target value
-        result[key as keyof typeof result] = sourceValue as any;
-      }
-    });
+  // If both are not objects, return source
+  if (typeof target !== 'object' || typeof source !== 'object' ||
+      target === null || Array.isArray(target) !== Array.isArray(source)) {
+    return source as T;
   }
+  
+  // Handle arrays specially
+  if (Array.isArray(target) && Array.isArray(source)) {
+    // For arrays, we'll take all unique items from both arrays
+    const combined = [...target, ...source].filter((item, index, self) => {
+      // For primitive items, remove duplicates
+      if (typeof item !== 'object' || item === null) {
+        return self.findIndex(i => i === item) === index;
+      }
+      // For object items, we'll keep them all as we can't easily detect duplicates
+      return true;
+    });
+    return combined as unknown as T;
+  }
+  
+  // Process all keys from source object
+  Object.keys(source).forEach(key => {
+    const sourceValue = source[key as keyof typeof source];
+    
+    // Skip undefined values to avoid overriding with undefined
+    if (sourceValue === undefined) {
+      return;
+    }
+    
+    // Get the target value if it exists
+    const targetValue = target ? target[key as keyof typeof target] : undefined;
+    
+    // Process based on value types
+    if (sourceValue === null) {
+      // Null explicitly overrides any existing value
+      result[key as keyof typeof result] = null as any;
+    } else if (
+      typeof sourceValue === 'object' && 
+      typeof targetValue === 'object' &&
+      targetValue !== null &&
+      sourceValue !== null &&
+      !Array.isArray(sourceValue) === !Array.isArray(targetValue)
+    ) {
+      // If both are objects of the same type (array or non-array), merge recursively
+      result[key as keyof typeof result] = deepMerge(
+        targetValue,
+        sourceValue as any
+      ) as any;
+    } else {
+      // Otherwise override the target value
+      result[key as keyof typeof result] = sourceValue as any;
+    }
+  });
   
   return result;
 }
