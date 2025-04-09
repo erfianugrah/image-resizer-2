@@ -50,7 +50,7 @@
 					"includeTimestamp": true,
 					"enableStructuredLogs": true,
 					"enableBreadcrumbs": true,
-					"usePino": true,
+					"useLegacy": false,
 					"prettyPrint": true,
 					"colorize": true
 				}

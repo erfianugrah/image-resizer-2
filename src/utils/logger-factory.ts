@@ -11,7 +11,7 @@ import { OptimizedLogger, createOptimizedLogger as createLegacyOptimizedLogger }
 import { createCompatiblePinoLogger, createOptimizedPinoLogger } from './pino-index';
 
 /**
- * Create a logger instance using either legacy or Pino implementation
+ * Create a logger instance using Pino implementation by default
  * 
  * @param config The image resizer configuration
  * @param context Optional context name for the logger
@@ -23,18 +23,18 @@ export function createLogger(
   context?: string,
   useOptimized: boolean = false
 ): Logger | OptimizedLogger {
-  // Check if Pino is enabled in config
-  const usePino = config.logging?.usePino === true;
+  // Use Pino by default, unless explicitly disabled
+  const useLegacy = config.logging?.useLegacy === true;
   
-  if (usePino) {
-    // Use Pino implementations
-    return useOptimized
-      ? createOptimizedPinoLogger(config, context)
-      : createCompatiblePinoLogger(config, context);
-  } else {
-    // Use original implementations
+  if (useLegacy) {
+    // Use original implementations if explicitly requested
     return useOptimized
       ? createLegacyOptimizedLogger(config, context)
       : createLegacyLogger(config, context);
+  } else {
+    // Use Pino implementations by default
+    return useOptimized
+      ? createOptimizedPinoLogger(config, context)
+      : createCompatiblePinoLogger(config, context);
   }
 }

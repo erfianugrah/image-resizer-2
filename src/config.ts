@@ -221,7 +221,8 @@ export interface ImageResizerConfig {
     enableStructuredLogs: boolean;
     enableBreadcrumbs?: boolean; // Enable breadcrumbs for e2e tracing
     enableCacheMetrics?: boolean; // Enable cache hit/miss metrics
-    usePino?: boolean; // Use Pino logger instead of custom logger
+    usePino?: boolean; // DEPRECATED: Maintained for backwards compatibility
+    useLegacy?: boolean; // Use legacy logger instead of Pino
     prettyPrint?: boolean; // Use pretty printing for Pino logs (development)
     colorize?: boolean; // Colorize Pino logs
   };
@@ -740,7 +741,10 @@ export const defaultConfig: ImageResizerConfig = {
     level: 'DEBUG',
     includeTimestamp: true,
     enableStructuredLogs: true,
-    enableBreadcrumbs: true
+    enableBreadcrumbs: true,
+    useLegacy: false, // Use Pino by default, rather than legacy console.log
+    prettyPrint: false, // Pretty print is off by default in production
+    colorize: false // Colorized output is off by default in production
   },
   
   cache: {
@@ -1168,7 +1172,10 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
       level: 'DEBUG',
       includeTimestamp: true,
       enableStructuredLogs: true,
-      enableBreadcrumbs: true
+      enableBreadcrumbs: true,
+      useLegacy: false,
+      prettyPrint: true, // Enable pretty printing in development
+      colorize: true // Enable colorized output in development
     },
     cache: {
       method: 'cf',
@@ -2317,8 +2324,16 @@ export function getConfig(env: Env): ImageResizerConfig {
     config.logging.enableBreadcrumbs = env.LOGGING_BREADCRUMBS_ENABLED === 'true';
   }
   
+  if (env.LOGGING_USE_LEGACY) {
+    config.logging.useLegacy = env.LOGGING_USE_LEGACY === 'true';
+  }
+  
+  // For backward compatibility
   if (env.LOGGING_USE_PINO) {
-    config.logging.usePino = env.LOGGING_USE_PINO === 'true';
+    // If LOGGING_USE_PINO=false and LOGGING_USE_LEGACY isn't set, use legacy
+    if (env.LOGGING_USE_PINO === 'false' && !env.LOGGING_USE_LEGACY) {
+      config.logging.useLegacy = true;
+    }
   }
   
   if (env.LOGGING_PRETTY_PRINT) {
