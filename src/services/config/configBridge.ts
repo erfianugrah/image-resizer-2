@@ -6,7 +6,7 @@
  */
 
 import { ConfigurationApiService } from './interfaces';
-import { getConfig as getLegacyConfig, ImageResizerConfig } from '../../config';
+import { getConfig as getLegacyConfig, ImageResizerConfig, deepMerge } from '../../config';
 import { Env } from '../../types';
 import { Logger } from '../../utils/logging';
 
@@ -85,62 +85,91 @@ export async function getConfigWithFallback(
       // Get storage module config
       const storageConfig = await configApi.getModule('storage');
       
-      // Merge configurations
-      const mergedConfig: ImageResizerConfig = {
-        ...legacyConfig,
-        
-        // Override environment from core config
-        environment: coreConfig.environment || legacyConfig.environment,
-        
-        // Override debug settings from core config
-        debug: coreConfig.debug ? { ...legacyConfig.debug, ...coreConfig.debug } : legacyConfig.debug,
-        
-        // Override feature flags from core config
-        features: coreConfig.features ? { ...legacyConfig.features, ...coreConfig.features } : legacyConfig.features,
-        
-        // Override logging from core config
-        logging: coreConfig.logging ? { ...legacyConfig.logging, ...coreConfig.logging } : legacyConfig.logging,
-        
-        // Override cache settings from cache config
-        cache: cacheConfig ? { ...legacyConfig.cache, ...cacheConfig } : legacyConfig.cache,
-        
-        // Override transform settings
-        ...transformConfig && {
-          // Override responsive settings
-          responsive: transformConfig.responsive ? 
-            { ...legacyConfig.responsive, ...transformConfig.responsive } : 
-            legacyConfig.responsive,
-          
-          // Ensure derivatives are always properly merged within the transform config
-          derivatives: transformConfig.derivatives ? 
-            { ...legacyConfig.derivatives, ...transformConfig.derivatives } : 
-            (legacyConfig.derivatives || {})
-        },
-        
-        // Ensure derivatives are always accessible at the top level as well
-        derivatives: transformConfig && transformConfig.derivatives ? 
-          { ...legacyConfig.derivatives, ...transformConfig.derivatives } : 
-          (legacyConfig.derivatives || {}),
-          
-        // Log derivatives count for debugging
-        ...(logger && {
-          _derivativesLoaded: true,
-          _derivativesCount: transformConfig && transformConfig.derivatives ?
-            Object.keys({ ...legacyConfig.derivatives, ...transformConfig.derivatives }).length :
-            Object.keys(legacyConfig.derivatives).length
-        }),
-        
-        // Override storage settings
-        ...storageConfig && {
-          storage: storageConfig ? { ...legacyConfig.storage, ...storageConfig } : legacyConfig.storage,
-          pathTemplates: storageConfig.pathTemplates ? 
-            { ...legacyConfig.pathTemplates, ...storageConfig.pathTemplates } : 
-            legacyConfig.pathTemplates,
-          pathTransforms: storageConfig.pathTransforms ? 
-            { ...legacyConfig.pathTransforms, ...storageConfig.pathTransforms } : 
-            legacyConfig.pathTransforms,
+      // Merge configurations using deepMerge for proper nested object merging
+      // Start with the legacy config as the base
+      let mergedConfig: ImageResizerConfig = { ...legacyConfig };
+      
+      // Apply environment from core config
+      if (coreConfig.environment) {
+        mergedConfig.environment = coreConfig.environment;
+      }
+      
+      // Properly merge debug settings using deepMerge
+      if (coreConfig.debug) {
+        mergedConfig.debug = deepMerge(legacyConfig.debug, coreConfig.debug);
+      }
+      
+      // Properly merge feature flags using deepMerge
+      if (coreConfig.features) {
+        if (legacyConfig.features) {
+          mergedConfig.features = deepMerge(legacyConfig.features, coreConfig.features);
+        } else {
+          mergedConfig.features = coreConfig.features;
         }
-      };
+      }
+      
+      // Properly merge logging settings using deepMerge
+      if (coreConfig.logging) {
+        if (legacyConfig.logging) {
+          mergedConfig.logging = deepMerge(legacyConfig.logging, coreConfig.logging);
+        } else {
+          mergedConfig.logging = coreConfig.logging;
+        }
+      }
+      
+      // Properly merge cache settings using deepMerge
+      if (cacheConfig) {
+        mergedConfig.cache = deepMerge(legacyConfig.cache, cacheConfig);
+      }
+      
+      // Properly merge transform settings
+      if (transformConfig) {
+        // Merge responsive settings
+        if (transformConfig.responsive) {
+          mergedConfig.responsive = deepMerge(legacyConfig.responsive, transformConfig.responsive);
+        }
+        
+        // Merge derivatives properly
+        if (transformConfig.derivatives) {
+          if (legacyConfig.derivatives) {
+            mergedConfig.derivatives = deepMerge(legacyConfig.derivatives, transformConfig.derivatives);
+          } else {
+            mergedConfig.derivatives = transformConfig.derivatives;
+          }
+        }
+        
+        // Add debugging info
+        if (logger) {
+          mergedConfig._derivativesLoaded = true;
+          mergedConfig._derivativesCount = mergedConfig.derivatives 
+            ? Object.keys(mergedConfig.derivatives).length 
+            : 0;
+        }
+      }
+      
+      // Properly merge storage settings
+      if (storageConfig) {
+        // Merge storage configuration
+        mergedConfig.storage = deepMerge(legacyConfig.storage, storageConfig);
+        
+        // Merge path templates
+        if (storageConfig.pathTemplates) {
+          if (legacyConfig.pathTemplates) {
+            mergedConfig.pathTemplates = deepMerge(legacyConfig.pathTemplates, storageConfig.pathTemplates);
+          } else {
+            mergedConfig.pathTemplates = storageConfig.pathTemplates;
+          }
+        }
+        
+        // Merge path transforms
+        if (storageConfig.pathTransforms) {
+          if (legacyConfig.pathTransforms) {
+            mergedConfig.pathTransforms = deepMerge(legacyConfig.pathTransforms, storageConfig.pathTransforms);
+          } else {
+            mergedConfig.pathTransforms = storageConfig.pathTransforms;
+          }
+        }
+      }
       
       logger.info('Using merged configuration from KV store and legacy config');
       return mergedConfig;

@@ -1817,8 +1817,12 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
 
 /**
  * Deep merge utility for configuration objects
+ * 
+ * @param target The target object to merge into
+ * @param source The source object to merge from
+ * @returns A new object with properties from both target and source
  */
-function deepMerge<T>(target: T, source: Partial<T>): T {
+export function deepMerge<T>(target: T, source: Partial<T>): T {
   const result = { ...target };
   
   if (source && typeof source === 'object' && !Array.isArray(source)) {
