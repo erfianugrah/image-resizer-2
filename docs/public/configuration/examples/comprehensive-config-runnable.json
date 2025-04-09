@@ -32,7 +32,8 @@
 					],
 					"allowedEnvironments": [
 						"development",
-						"staging"
+						"staging",
+						"production"
 					],
 					"includePerformance": true
 				},

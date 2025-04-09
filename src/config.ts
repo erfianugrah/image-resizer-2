@@ -711,7 +711,7 @@ export const defaultConfig: ImageResizerConfig = {
   debug: {
     enabled: true,
     headers: ['ir', 'cache', 'mode', 'client-hints', 'ua', 'device', 'strategy'],
-    allowedEnvironments: ['development', 'staging'],
+    allowedEnvironments: ['development', 'staging', 'production'],
     verbose: true,
     includePerformance: true,
     forceDebugHeaders: false,
@@ -1164,7 +1164,7 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
       enabled: true,
       verbose: true,
       headers: ['all'],
-      allowedEnvironments: ['development', 'staging'],
+      allowedEnvironments: ['development', 'staging', 'production'],
       includePerformance: true,
       forceDebugHeaders: false
     },
@@ -1430,7 +1430,7 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
         'x-processing-mode': true,
         'x-size-source': true
       },
-      allowedEnvironments: ['development', 'staging'],
+      allowedEnvironments: ['development', 'staging', 'production'],
       includePerformance: true,
       forceDebugHeaders: false
     },
@@ -1591,7 +1591,7 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
       enabled: false,
       verbose: false,
       // Only include minimal headers in production, and only when explicitly requested
-      allowedEnvironments: [], // Empty array means no debug headers by default
+      allowedEnvironments: ['production'], // Allow debug headers in production
       headers: [
         'cache',
         'mode'
