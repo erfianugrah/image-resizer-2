@@ -46,7 +46,7 @@ export default {
 
     // Create service container using the factory
     // This will automatically select the appropriate container type and add lifecycle manager
-    const services = createContainer(env, {
+    const services = await createContainer(env, {
       initializeServices: true,
       gracefulDegradation: true,
     });
@@ -477,7 +477,7 @@ export default {
     
     
     // Create service container with minimal initialization
-    const services = createContainer(env, {
+    const services = await createContainer(env, {
       initializeServices: false, // Don't initialize since we'll just shut down
     });
 

@@ -101,7 +101,33 @@ export function createPinoInstance(
   }
   
   // Create the logger instance
-  return pino(pinoOptions);
+  const logger = pino(pinoOptions);
+  
+  // Add isLevelEnabled method to the logger
+  // This implements the method used by our performance logging
+  // The standard Pino logger doesn't include this method
+  (logger as any).isLevelEnabled = function(levelName: string): boolean {
+    const requestedLevel = (LOG_LEVEL_MAP[levelName] || levelName).toLowerCase();
+    
+    // Pino level hierarchy: trace (10) < debug (20) < info (30) < warn (40) < error (50) < fatal (60)
+    const levels: Record<string, number> = {
+      trace: 10,
+      debug: 20,
+      info: 30,
+      warn: 40,
+      error: 50,
+      fatal: 60
+    };
+    
+    const requestedNumber = levels[requestedLevel] || levels.info;
+    const currentLevel = (this.level as string).toLowerCase();
+    const currentNumber = levels[currentLevel] || levels.info;
+    
+    // In Pino, a level is enabled if its number is >= the current level number
+    return requestedNumber >= currentNumber;
+  };
+  
+  return logger;
 }
 
 /**

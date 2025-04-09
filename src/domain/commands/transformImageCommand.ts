@@ -8,6 +8,7 @@ import { ServiceContainer, ClientInfo, TransformOptions, PerformanceMetrics } fr
 import { Env } from '../../types';
 import type { ExecutionContext } from '@cloudflare/workers-types';
 import { Command } from './command';
+import { createPerformanceLogger, OptimizedPerformanceLogger } from '../../utils/logger-factory';
 
 /**
  * Command to transform an image based on the provided options
@@ -53,8 +54,19 @@ export class TransformImageCommand implements Command<Response> {
    * @returns Response with the transformed image
    */
   async execute(): Promise<Response> {
-    const { logger, storageService, transformationService, cacheService, debugService, configurationService } = this.services;
+    const { storageService, transformationService, cacheService, debugService, configurationService } = this.services;
     const config = configurationService.getConfig();
+    
+    // Create a performance-enhanced logger
+    const logger = createPerformanceLogger(config, 'transformCommand', undefined, true) as any;
+    
+    // Start timer for the overall command execution
+    const commandTimer = logger.startTimer('transformCommand');
+    
+    // Track metrics in the logger only if the function exists
+    if (typeof logger.trackMetrics === 'function') {
+      logger.trackMetrics(this.metrics);
+    }
     
     // Create an AbortController to handle request cancellation
     const controller = new AbortController();
@@ -118,6 +130,9 @@ export class TransformImageCommand implements Command<Response> {
       
       // Fetch the image from storage
       this.metrics.storageStart = Date.now();
+      
+      // Start a timer for the storage operation
+      const storageTimer = logger.startTimer('storage');
       logger.breadcrumb('Fetching image from storage', undefined, { imagePath: this.imagePath });
       
       // Create fetch options with abort signal
@@ -141,8 +156,17 @@ export class TransformImageCommand implements Command<Response> {
         return new Response('Client disconnected', { status: 499 });
       }
       
+      // End the storage timer and record metrics
+      const storageDuration = storageTimer.end('storage');
       this.metrics.storageEnd = Date.now();
-      const storageDuration = this.metrics.storageEnd - this.metrics.storageStart;
+      
+      // Record the storage operation with detailed metrics
+      logger.recordOperation('storage', 'fetchImage', storageDuration, {
+        sourceType: storageResult.sourceType,
+        contentType: storageResult.contentType,
+        size: storageResult.size,
+        imagePath: this.imagePath
+      });
       
       logger.breadcrumb('Storage fetch completed', storageDuration, {
         sourceType: storageResult.sourceType,
@@ -152,6 +176,9 @@ export class TransformImageCommand implements Command<Response> {
 
       // Transform the image
       this.metrics.transformStart = Date.now();
+      
+      // Start a timer for the transform operation
+      const transformTimer = logger.startTimer('transform');
       logger.breadcrumb('Starting image transformation', undefined, {
         sourceType: storageResult.sourceType,
         contentType: storageResult.contentType,
@@ -161,6 +188,7 @@ export class TransformImageCommand implements Command<Response> {
       // Check if smart processing is requested
       let transformOptions = { ...this.options };
       if (transformOptions.smart === true && transformationService.processSmartOptions) {
+        const smartTimer = logger.startTimer('smartProcessing');
         logger.breadcrumb('Smart transformation requested, processing with metadata', undefined, {
           imagePath: this.imagePath,
           smartOptions: JSON.stringify({
@@ -181,6 +209,15 @@ export class TransformImageCommand implements Command<Response> {
             (this.request as unknown as { env: Env }).env
           );
           
+          // End the smart processing timer and record metrics
+          const smartDuration = smartTimer.end('smartProcessing');
+          logger.recordOperation('transform', 'smartProcessing', smartDuration, {
+            originalOptionCount: Object.keys(this.options).length,
+            processedOptionCount: Object.keys(transformOptions).length,
+            platform: transformOptions.platform,
+            content: transformOptions.content
+          });
+          
           logger.debug('Smart transformation options applied', {
             originalOptionCount: Object.keys(this.options).length,
             processedOptionCount: Object.keys(transformOptions).length,
@@ -190,6 +227,9 @@ export class TransformImageCommand implements Command<Response> {
             hasGravity: !!transformOptions.gravity
           });
         } catch (error) {
+          // End the smart processing timer even on error
+          smartTimer.end('smartProcessing');
+          
           logger.error('Error in smart transformation processing', {
             error: error instanceof Error ? error.message : String(error)
           });
@@ -204,8 +244,19 @@ export class TransformImageCommand implements Command<Response> {
         config
       );
       
+      // End the transform timer and record metrics
+      const transformDuration = transformTimer.end('transform');
       this.metrics.transformEnd = Date.now();
-      const transformDuration = this.metrics.transformEnd - this.metrics.transformStart;
+      
+      // Record the transform operation with detailed metrics
+      logger.recordOperation('transform', 'transformImage', transformDuration, {
+        width: transformOptions.width,
+        height: transformOptions.height,
+        fit: transformOptions.fit,
+        format: transformOptions.format,
+        quality: transformOptions.quality,
+        contentType: transformedResponse.headers.get('content-type')
+      });
       
       logger.breadcrumb('Image transformation completed', transformDuration, {
         status: transformedResponse.status,
@@ -353,7 +404,25 @@ export class TransformImageCommand implements Command<Response> {
 
       // Set the end time for performance metrics
       this.metrics.end = Date.now();
-      const totalDuration = this.metrics.end - this.metrics.start;
+      
+      // End the command timer and record metrics
+      const totalDuration = commandTimer.end('transformCommand');
+      
+      // Record the complete command execution
+      logger.recordOperation('command', 'transformImageCommand', totalDuration, {
+        status: finalResponse.status,
+        contentLength: finalResponse.headers.get('content-length'),
+        contentType: finalResponse.headers.get('content-type'),
+        imagePath: this.imagePath,
+        storageDuration: this.metrics.storageEnd && this.metrics.storageStart ? 
+          this.metrics.storageEnd - this.metrics.storageStart : undefined,
+        transformDuration: this.metrics.transformEnd && this.metrics.transformStart ?
+          this.metrics.transformEnd - this.metrics.transformStart : undefined,
+        detectionDuration: this.metrics.detectionEnd && this.metrics.detectionStart ?
+          this.metrics.detectionEnd - this.metrics.detectionStart : undefined,
+        hasClientInfo: !!this.clientInfo,
+        detectionSource: this.metrics.detectionSource
+      });
       
       logger.breadcrumb('Transform image command completed', totalDuration, {
         status: finalResponse.status,

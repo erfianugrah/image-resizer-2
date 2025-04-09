@@ -18,7 +18,7 @@ import { createLifecycleManager } from './lifecycleManager';
  * @param useLazyLoading Whether to use lazy loading for services
  * @returns A service container with all required services
  */
-export function createContainerFromDI(env: Env, useLazyLoading: boolean = false): ServiceContainer {
+export async function createContainerFromDI(env: Env, useLazyLoading: boolean = false): Promise<ServiceContainer> {
   // Create a container builder and register all services
   const container = createContainerBuilder(env);
   
@@ -48,7 +48,7 @@ export function createContainerFromDI(env: Env, useLazyLoading: boolean = false)
  * @param lifecycleOptions Optional initialization options for services
  * @returns A service container with all required services
  */
-export function createContainer(
+export async function createContainer(
   env: Env, 
   lifecycleOptions?: {
     initializeServices?: boolean;
@@ -56,7 +56,7 @@ export function createContainer(
     timeout?: number;
     critical?: string[];
   }
-): ServiceContainer {
+): Promise<ServiceContainer> {
   // Use a simple heuristic to decide whether to use the new DI system
   // For now, default to the legacy system to ensure compatibility
   const useDISystem = env.USE_DI_SYSTEM === 'true';
@@ -64,7 +64,7 @@ export function createContainer(
   let container: ServiceContainer;
   
   if (useDISystem) {
-    container = createContainerFromDI(env);
+    container = await createContainerFromDI(env);
   } else {
     // Use the legacy system - check if lazy loading is enabled
     // We need to peek at the env vars directly since we don't have access to config yet
@@ -73,7 +73,7 @@ export function createContainer(
     // Create the appropriate container
     container = useLazyLoading
       ? createLazyServiceContainer(env)
-      : createServiceContainer(env, false); // Pass false to prevent auto-initialization
+      : await createServiceContainer(env, false); // Pass false to prevent auto-initialization
   }
   
   // Add lifecycle manager if it doesn't exist yet
