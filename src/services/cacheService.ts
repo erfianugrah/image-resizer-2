@@ -1189,6 +1189,45 @@ export class DefaultCacheService implements CacheService {
         headers.set('Cache-Tag', metadata.tags.join(','));
       }
       
+      // Add format information for troubleshooting
+      if (metadata.contentType) {
+        const format = metadata.contentType.split('/')[1]?.split(';')[0] || 'unknown';
+        headers.set('X-Image-Format', format);
+      }
+      
+      // Add dimension information if available
+      if (metadata.width) {
+        headers.set('X-Image-Width', metadata.width.toString());
+      }
+      
+      if (metadata.height) {
+        headers.set('X-Image-Height', metadata.height.toString());
+      }
+      
+      // Add quality information if available in transformOptions
+      if (metadata.transformOptions?.quality) {
+        headers.set('X-Image-Quality', metadata.transformOptions.quality.toString());
+      }
+      
+      // Add aspect and focal information for troubleshooting if available
+      if (metadata.transformOptions?.aspect) {
+        headers.set('X-Image-Aspect', metadata.transformOptions.aspect.toString());
+      }
+      
+      if (metadata.transformOptions?.focal) {
+        headers.set('X-Image-Focal', metadata.transformOptions.focal.toString());
+      }
+      
+      // Add cache metadata timestamp and expiration
+      if (metadata.timestamp) {
+        headers.set('X-Cache-Time', new Date(metadata.timestamp).toISOString());
+        headers.set('X-Cache-Age', ((Date.now() - metadata.timestamp) / 1000).toFixed(0) + 's');
+      }
+      
+      if (metadata.expiration) {
+        headers.set('X-Cache-Expires', new Date(metadata.expiration).toISOString());
+      }
+      
       // Create the response with the cached data
       const response = new Response(value, {
         status: 200,

@@ -172,7 +172,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     
     // Check if logger has performance tracking capabilities
     if (this.logger) {
-      this.logDebug(`Initialized memory cache with capacity ${memoryCacheSize}`, {
+      this.logDebug('Initialized memory cache with capacity ' + memoryCacheSize, {
         operation: 'kv_transform_cache_init',
         memoryCacheSize,
         enabled: this.config.enabled
@@ -231,7 +231,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
   private async checkKeyExists(key: string, url: URL, startTime: number): Promise<boolean> {
     try {
       const operationStartTime = Date.now();
-      this.logDebug(`KV transform cache: Checking format-specific exists`, {
+      this.logDebug('KV transform cache: Checking format-specific exists', {
         operation: 'kv_key_check',
         key,
         format: key.split(':')[3] || 'unknown'
@@ -244,7 +244,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       
       const exists = metadata.metadata !== null;
       
-      this.logDebug(`KV transform cache: Key check - ${exists ? 'exists' : 'not found'}`, {
+      this.logDebug('KV transform cache: Key check - ' + (exists ? 'exists' : 'not found'), {
         operation: 'kv_key_check',
         result: exists ? 'hit' : 'miss',
         key,
@@ -256,7 +256,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       
       // Add more detailed logging for a successful key check
       if (exists) {
-        this.logDebug(`KV transform cache: Format-specific key exists`, {
+        this.logDebug('KV transform cache: Format-specific key exists', {
           key,
           keyFormat: key.split(':')[3] || 'unknown'
         });
@@ -266,7 +266,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     } catch (error) {
       const duration = Date.now() - startTime;
       
-      this.logError("KV transform cache: Error checking key existence", {
+      this.logError('KV transform cache: Error checking key existence', {
         operation: 'kv_key_check',
         category: 'cache',
         result: 'error',
@@ -285,42 +285,105 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
 
   /**
    * Check if a transformation is cached using format-aware lookup
+   * with optimized format prioritization
    */
   async isCached(request: Request, transformOptions: TransformOptions): Promise<boolean> {
     const startTime = Date.now();
     const url = new URL(request.url);
     
     if (!this.config.enabled) {
-      this.logDebug("KV transform cache is disabled", {
+      this.logDebug('KV transform cache is disabled', {
         operation: 'kv_is_cached',
+        category: 'cache',
         result: 'miss',
         reason: 'disabled',
         url: url.toString(),
-        path: url.pathname
+        path: url.pathname,
+        durationMs: 0
       });
       return false;
     }
     
-    // Try a format-aware lookup to handle different formats
-    // First, check with original format (or 'auto')
-    const baseKey = this.generateCacheKey(request, transformOptions);
-    let exists = await this.checkKeyExists(baseKey, url, startTime);
-    if (exists) return true;
+    // Track formats we've already checked to avoid duplicates
+    const checkedFormats = new Set<string>();
     
-    // If format is specified and not 'auto', check with that format too
+    // Priority 1: Check the format specified by CloudflareImageTransformer first (highest priority)
     if (transformOptions.format && transformOptions.format !== 'auto') {
+      checkedFormats.add(transformOptions.format);
       const formatKey = this.generateCacheKey(request, transformOptions, transformOptions.format);
-      exists = await this.checkKeyExists(formatKey, url, startTime);
+      
+      this.logDebug('KV transform cache: Checking if cached with decided format first', {
+        operation: 'kv_prioritized_is_cached',
+        category: 'cache',
+        format: transformOptions.format,
+        priority: 'highest'
+      });
+      
+      const exists = await this.checkKeyExists(formatKey, url, startTime);
       if (exists) return true;
     }
     
-    // Check common formats in order of likelihood
-    for (const format of ['webp', 'avif', 'jpeg', 'png']) {
-      // Skip if it's the same as the explicitly requested format
-      if (format === transformOptions.format) continue;
+    // Priority 2: Check client-supported formats based on clientInfo (if available)
+    const clientInfo = transformOptions.__clientInfo;
+    const supportedFormats: string[] = [];
+    
+    if (clientInfo?.formatSupport) {
+      // Build list of supported formats based on client capabilities
+      if (clientInfo.formatSupport.avif) supportedFormats.push('avif');
+      if (clientInfo.formatSupport.webp) supportedFormats.push('webp');
       
+      this.logDebug('KV transform cache: Checking if cached in client-supported formats', {
+        operation: 'kv_prioritized_is_cached',
+        category: 'cache',
+        supportedFormats: supportedFormats.join(', '),
+        priority: 'high',
+        clientInfo: clientInfo.deviceType
+      });
+      
+      // Check only the formats that client supports and haven't been checked yet
+      for (const format of supportedFormats) {
+        if (checkedFormats.has(format)) continue; // Skip if already checked
+        
+        checkedFormats.add(format);
+        const formatKey = this.generateCacheKey(request, transformOptions, format);
+        const exists = await this.checkKeyExists(formatKey, url, startTime);
+        if (exists) return true;
+      }
+    }
+    
+    // Priority 3: Check 'auto' format if not already checked
+    if (!checkedFormats.has('auto')) {
+      checkedFormats.add('auto');
+      
+      this.logDebug('KV transform cache: Checking if cached with auto format', {
+        operation: 'kv_prioritized_is_cached',
+        category: 'cache',
+        format: 'auto',
+        priority: 'medium'
+      });
+      
+      const baseKey = this.generateCacheKey(request, transformOptions);
+      const exists = await this.checkKeyExists(baseKey, url, startTime);
+      if (exists) return true;
+    }
+    
+    // Priority 4: Check remaining common formats as fallback
+    const fallbackFormats = ['jpeg', 'png', 'gif', 'webp', 'avif'];
+    
+    this.logDebug('KV transform cache: Checking if cached in fallback formats', {
+      operation: 'kv_prioritized_is_cached',
+      category: 'cache',
+      formats: fallbackFormats.filter(f => !checkedFormats.has(f)).join(', '),
+      priority: 'low'
+    });
+    
+    for (const format of fallbackFormats) {
+      // Skip formats we've already checked
+      if (checkedFormats.has(format)) continue;
+      
+      checkedFormats.add(format);
       const formatKey = this.generateCacheKey(request, transformOptions, format);
-      exists = await this.checkKeyExists(formatKey, url, startTime);
+      const exists = await this.checkKeyExists(formatKey, url, startTime);
       if (exists) return true;
     }
     
@@ -328,15 +391,15 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     const duration = Date.now() - startTime;
     this.logDebug('KV transform cache: Format-aware isCached - not found in any format', {
       operation: 'kv_is_cached',
+      category: 'cache',
       result: 'miss',
       url: url.toString(),
       path: url.pathname,
       durationMs: duration,
       transformOptions: typeof transformOptions === 'object' ? 
         Object.keys(transformOptions).join(',') : 'none',
-      formatsChecked: [transformOptions.format || 'auto', 'webp', 'avif', 'jpeg', 'png'].filter(
-        (f, i, a) => a.indexOf(f) === i // Remove duplicates
-      ).join(',')
+      formatsChecked: Array.from(checkedFormats).join(','),
+      checkedCount: checkedFormats.size
     });
     
     return false;
@@ -349,7 +412,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
   private async getFromKV(key: string, url: URL, startTime: number, transformOptions: TransformOptions): Promise<TransformCacheResult | null> {
     try {
       const operationStartTime = Date.now();
-      this.logDebug(`KV transform cache: Checking format-specific key`, {
+      this.logDebug('KV transform cache: Checking format-specific key', {
         operation: 'kv_key_get',
         category: 'cache',
         key,
@@ -362,7 +425,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       const operationDuration = Date.now() - operationStartTime;
       
       if (result.value === null || result.metadata === null) {
-        this.logDebug("KV transform cache: Key not found", {
+        this.logDebug('KV transform cache: Key not found', {
           operation: 'kv_key_get',
           category: 'cache',
           result: 'miss',
@@ -378,7 +441,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       
       // Verify that the cached content has valid metadata with a content type
       if (!result.metadata.contentType) {
-        this.logWarn("KV transform cache: Retrieved cache item is missing content type", {
+        this.logWarn('KV transform cache: Retrieved cache item is missing content type', {
           operation: 'kv_key_get',
           result: 'miss',
           reason: 'missing_content_type',
@@ -394,7 +457,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       // Ensure the content type is an image format
       // This prevents binary data being returned without proper image content type
       if (!result.metadata.contentType.startsWith('image/')) {
-        this.logWarn("KV transform cache: Retrieved cache item has non-image content type", {
+        this.logWarn('KV transform cache: Retrieved cache item has non-image content type', {
           operation: 'kv_key_get',
           result: 'miss',
           reason: 'invalid_content_type',
@@ -408,7 +471,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       }
       
       // Valid hit - create the cache result
-      this.logDebug("KV transform cache: Key hit", {
+      this.logDebug('KV transform cache: Key hit', {
         operation: 'kv_key_get',
         category: 'cache',
         result: 'hit',
@@ -422,7 +485,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
         age: Date.now() - (result.metadata.timestamp || 0)
       });
       
-      this.logDebug(`KV transform cache: Format-specific cache hit`, {
+      this.logDebug('KV transform cache: Format-specific cache hit', {
         key,
         contentType: result.metadata.contentType,
         originalFormat: transformOptions.format || 'auto',
@@ -440,7 +503,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     } catch (error) {
       const duration = Date.now() - startTime;
       
-      this.logError("KV transform cache: Error retrieving specific key", {
+      this.logError('KV transform cache: Error retrieving specific key', {
         operation: 'kv_key_get',
         result: 'error',
         key,
@@ -462,17 +525,19 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     const url = new URL(request.url);
     
     if (!this.config.enabled) {
-      this.logDebug("KV transform cache is disabled", {
+      this.logDebug('KV transform cache is disabled', {
         operation: 'kv_get',
+        category: 'cache',
         result: 'miss',
         reason: 'disabled',
         url: url.toString(),
-        path: url.pathname
+        path: url.pathname,
+        durationMs: 0
       });
       return null;
     }
     
-    // First check with the "default" key (which uses 'auto' format)
+    // Generate a base key (using auto format) - used for memory cache primarily
     const baseKey = this.generateCacheKey(request, transformOptions);
     
     // Check memory cache first (much faster than KV)
@@ -481,8 +546,9 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       this.stats.hits++;
       this.stats.memoryCacheHits++;
       
-      this.logDebug("Memory cache: Hit", {
+      this.logDebug('Memory cache: Hit', {
         operation: 'memory_get',
+        category: 'cache',
         result: 'hit',
         key: baseKey,
         contentType: memoryCacheResult.metadata.contentType,
@@ -496,44 +562,39 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       return memoryCacheResult;
     }
     
-    // Try a format-aware KV lookup
+    // Try a format-aware KV lookup with optimized order
     let cacheResult: TransformCacheResult | null = null;
     
-    // First try with the base key (using auto format)
-    cacheResult = await this.getFromKV(baseKey, url, startTime, transformOptions);
-    if (cacheResult) {
-      this.stats.hits++;
-      // Store in memory cache for faster future access
-      this.memoryCache.put(baseKey, cacheResult);
+    // Track formats we've already checked to avoid duplicates
+    const checkedFormats = new Set<string>();
+    
+    // Track the actual format requested for optimal priority-based lookups
+    const requestedFormat = transformOptions.format && transformOptions.format !== 'auto' ? 
+      transformOptions.format : undefined;
+        
+    // Format prioritization strategy
+    // Priority 1: Check the format specified by CloudflareImageTransformer first (highest priority)
+    if (requestedFormat) {
+      const formatKey = this.generateCacheKey(request, transformOptions, requestedFormat);
+      checkedFormats.add(requestedFormat);
       
-      // Log the successful hit
-      this.logDebug("KV transform cache: Cache hit using auto format", {
-        operation: 'kv_get',
-        result: 'hit',
-        key: baseKey,
-        contentType: cacheResult.metadata.contentType,
-        size: cacheResult.metadata.size,
-        url: url.toString(),
-        path: url.pathname,
-        durationMs: Date.now() - startTime,
-        format: 'auto'
+      this.logDebug('KV transform cache: Checking decided format first', {
+        operation: 'kv_prioritized_check',
+        category: 'cache',
+        format: requestedFormat,
+        priority: 'highest'
       });
       
-      return cacheResult;
-    }
-    
-    // If format is specified and not 'auto', check with that format too
-    if (transformOptions.format && transformOptions.format !== 'auto') {
-      const formatKey = this.generateCacheKey(request, transformOptions, transformOptions.format);
       cacheResult = await this.getFromKV(formatKey, url, startTime, transformOptions);
       if (cacheResult) {
         this.stats.hits++;
         // Store in memory cache for faster future access
-        this.memoryCache.put(baseKey, cacheResult); // Store under the base key for future lookups
+        this.memoryCache.put(baseKey, cacheResult);
         
         // Log the successful hit
-        this.logDebug("KV transform cache: Cache hit using specified format", {
+        this.logDebug('KV transform cache: Cache hit using decided format', {
           operation: 'kv_get',
+          category: 'cache',
           result: 'hit',
           key: formatKey,
           contentType: cacheResult.metadata.contentType,
@@ -541,36 +602,144 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
           url: url.toString(),
           path: url.pathname,
           durationMs: Date.now() - startTime,
-          format: transformOptions.format
+          format: requestedFormat,
+          source: 'format_priority'
         });
         
         return cacheResult;
       }
     }
     
-    // Check common formats in order of likelihood
-    for (const format of ['webp', 'avif', 'jpeg', 'png']) {
-      // Skip if it's the same as the explicitly requested format
-      if (format === transformOptions.format) continue;
+    // Priority 2: Check client-supported formats based on clientInfo (if available)
+    // Extract the client info from transformOptions.__clientInfo if present
+    const clientInfo = transformOptions.__clientInfo;
+    const supportedFormats: string[] = [];
+    
+    if (clientInfo?.formatSupport) {
+      // Build list of supported formats based on client capabilities
+      if (clientInfo.formatSupport.avif) supportedFormats.push('avif');
+      if (clientInfo.formatSupport.webp) supportedFormats.push('webp');
       
-      const formatKey = this.generateCacheKey(request, transformOptions, format);
-      cacheResult = await this.getFromKV(formatKey, url, startTime, transformOptions);
+      this.logDebug('KV transform cache: Checking client-supported formats', {
+        operation: 'kv_prioritized_check',
+        category: 'cache',
+        supportedFormats: supportedFormats.join(', '),
+        priority: 'high',
+        clientInfo: clientInfo.deviceType
+      });
+      
+      // Check only the formats that client supports and haven't been checked yet
+      for (const format of supportedFormats) {
+        if (checkedFormats.has(format)) continue; // Skip if already checked
+        
+        checkedFormats.add(format);
+        const formatKey = this.generateCacheKey(request, transformOptions, format);
+        cacheResult = await this.getFromKV(formatKey, url, startTime, transformOptions);
+        
+        if (cacheResult) {
+          this.stats.hits++;
+          // Store in memory cache for faster future access
+          this.memoryCache.put(baseKey, cacheResult);
+          
+          // Log the successful hit
+          this.logDebug('KV transform cache: Cache hit using client-supported format', {
+            operation: 'kv_get',
+            category: 'cache',
+            result: 'hit',
+            key: formatKey,
+            contentType: cacheResult.metadata.contentType,
+            size: cacheResult.metadata.size,
+            url: url.toString(),
+            path: url.pathname,
+            durationMs: Date.now() - startTime,
+            format,
+            source: 'client_support'
+          });
+          
+          // Even if we found a cache hit with a different format than requested,
+          // we should return this hit since the client supports this format
+          return cacheResult;
+        }
+      }
+    }
+    
+    // Priority 3: Check 'auto' format if not already checked
+    if (!checkedFormats.has('auto')) {
+      checkedFormats.add('auto');
+      
+      this.logDebug('KV transform cache: Checking auto format', {
+        operation: 'kv_prioritized_check',
+        category: 'cache',
+        format: 'auto',
+        priority: 'medium'
+      });
+      
+      cacheResult = await this.getFromKV(baseKey, url, startTime, transformOptions);
       if (cacheResult) {
         this.stats.hits++;
         // Store in memory cache for faster future access
-        this.memoryCache.put(baseKey, cacheResult); // Store under the base key for future lookups
+        this.memoryCache.put(baseKey, cacheResult);
         
         // Log the successful hit
-        this.logDebug("KV transform cache: Cache hit using common format", {
+        this.logDebug('KV transform cache: Cache hit using auto format', {
           operation: 'kv_get',
+          category: 'cache',
           result: 'hit',
-          key: formatKey,
+          key: baseKey,
           contentType: cacheResult.metadata.contentType,
           size: cacheResult.metadata.size,
           url: url.toString(),
           path: url.pathname,
           durationMs: Date.now() - startTime,
-          format
+          format: 'auto',
+          source: 'auto_format'
+        });
+        
+        return cacheResult;
+      }
+    }
+    
+    // Priority 4: Get list of keys to check any cached format
+    // Don't hardcode format priorities - let the cache return whatever was stored
+    const fallbackFormats = ['jpeg', 'png', 'gif', 'webp', 'avif'];
+    
+    this.logDebug('KV transform cache: Checking fallback formats', {
+      operation: 'kv_prioritized_check',
+      category: 'cache',
+      formats: fallbackFormats.filter(f => !checkedFormats.has(f)).join(', '),
+      priority: 'low'
+    });
+    
+    for (const format of fallbackFormats) {
+      // Skip formats we've already checked
+      if (checkedFormats.has(format)) continue;
+      
+      checkedFormats.add(format);
+      const formatKey = this.generateCacheKey(request, transformOptions, format);
+      cacheResult = await this.getFromKV(formatKey, url, startTime, transformOptions);
+      
+      if (cacheResult) {
+        this.stats.hits++;
+        // Store in memory cache for faster future access
+        this.memoryCache.put(baseKey, cacheResult);
+        
+        // Log the successful hit with detailed format comparison
+        const cachedFormat = cacheResult.metadata.contentType.split('/')[1]?.split(';')[0] || 'unknown';
+        
+        this.logDebug('KV transform cache: Cache hit using fallback format', {
+          operation: 'kv_get',
+          category: 'cache',
+          result: 'hit',
+          key: formatKey,
+          contentType: cacheResult.metadata.contentType,
+          cachedFormat,
+          requestedFormat: requestedFormat || 'auto',
+          size: cacheResult.metadata.size,
+          url: url.toString(),
+          path: url.pathname,
+          durationMs: Date.now() - startTime,
+          format,
+          source: 'fallback'
         });
         
         return cacheResult;
@@ -584,15 +753,15 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     const duration = Date.now() - startTime;
     this.logDebug('KV transform cache: Format-aware get - not found in any format', {
       operation: 'kv_get',
+      category: 'cache',
       result: 'miss',
       url: url.toString(),
       path: url.pathname,
       durationMs: duration,
       transformOptions: typeof transformOptions === 'object' ? 
         Object.keys(transformOptions).join(',') : 'none',
-      formatsChecked: [transformOptions.format || 'auto', 'webp', 'avif', 'jpeg', 'png'].filter(
-        (f, i, a) => a.indexOf(f) === i // Remove duplicates
-      ).join(',')
+      formatsChecked: Array.from(checkedFormats).join(','),
+      checkedCount: checkedFormats.size
     });
     
     return null;
@@ -715,7 +884,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     
     // Check if this exact operation was already performed in this request lifecycle
     if (this.operationCache.has(operationKey)) {
-      this.logDebug("KV transform cache: Skipping duplicate operation", {
+      this.logDebug('KV transform cache: Skipping duplicate operation', {
         url: request.url,
         operationKey
       });
@@ -723,7 +892,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     }
     
     // Log the initiation of a KV transform cache operation
-    this.logDebug("SimpleKVTransformCacheManager.put called", {
+    this.logDebug('SimpleKVTransformCacheManager.put called', {
       url: request.url,
       hasBuffer: !!storageResult.buffer,
       bufferSize: storageResult.buffer ? storageResult.buffer.byteLength : 0,
@@ -734,7 +903,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     // Skip caching for metadata requests (format=json)
     // These are already handled by the metadata service
     if (transformOptions.format === 'json' || request.url.includes('format=json')) {
-      this.logDebug("KV transform cache: Skipping storage for metadata request", {
+      this.logDebug('KV transform cache: Skipping storage for metadata request', {
         url: request.url,
         format: transformOptions.format
       });
@@ -743,7 +912,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     
     // Check if we should cache this response
     if (!storageResult.buffer) {
-      this.logDebug("KV transform cache: Missing buffer, skipping storage", {
+      this.logDebug('KV transform cache: Missing buffer, skipping storage', {
         storageResultKeys: Object.keys(storageResult).join(','),
         hasResponse: !!storageResult.response,
         contentType: storageResult.contentType,
@@ -753,7 +922,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     }
     
     if (response.status !== 200) {
-      this.logDebug("KV transform cache: Non-200 status, skipping storage", {
+      this.logDebug('KV transform cache: Non-200 status, skipping storage', {
         status: response.status
       });
       return;
@@ -761,7 +930,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     
     const contentType = response.headers.get('content-type');
     if (!contentType?.startsWith('image/')) {
-      this.logDebug("KV transform cache: Non-image content type, skipping storage", {
+      this.logDebug('KV transform cache: Non-image content type, skipping storage', {
         contentType
       });
       return;
@@ -769,7 +938,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     
     // Verify this is actually a transformed image, not just the original
     if (!this.isActuallyTransformed(response, storageResult, transformOptions)) {
-      this.logWarn("KV transform cache: Skipping cache for untransformed image", {
+      this.logWarn('KV transform cache: Skipping cache for untransformed image', {
         url: request.url,
         contentType: response.headers.get('content-type'),
         originalContentType: storageResult.contentType,
@@ -782,7 +951,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     
     // Check file size limits
     if (storageResult.buffer.byteLength > this.config.maxSize) {
-      this.logDebug("KV transform cache: File size exceeds maximum, skipping storage", {
+      this.logDebug('KV transform cache: File size exceeds maximum, skipping storage', {
         size: storageResult.buffer.byteLength,
         maxSize: this.config.maxSize
       });
@@ -793,7 +962,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     const url = new URL(request.url);
     const path = url.pathname;
     if (this.config.disallowedPaths.some(p => path.includes(p))) {
-      this.logDebug("KV transform cache: Path in disallowed list, skipping storage", {
+      this.logDebug('KV transform cache: Path in disallowed list, skipping storage', {
         path,
         disallowedPaths: this.config.disallowedPaths
       });
@@ -804,7 +973,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     // This is managed at the DefaultCacheService level, but we log it here for clarity
     const cacheControl = request.headers.get('Cache-Control');
     if (cacheControl && (cacheControl.includes('no-cache') || cacheControl.includes('no-store'))) {
-      this.logDebug("KV transform cache: Ignoring Cache-Control header", {
+      this.logDebug('KV transform cache: Ignoring Cache-Control header', {
         cacheControl
       });
       // Continue with caching despite the Cache-Control header
@@ -864,7 +1033,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       };
       
       if (typeof console !== 'undefined' && console.debug) {
-        console.debug("KV transform cache: Storing aspect crop info in metadata", {
+        console.debug('KV transform cache: Storing aspect crop info in metadata', {
           aspect: transformOptions.aspect,
           focal: transformOptions.focal
         });
@@ -878,7 +1047,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       if (formatMatch && formatMatch[1]) {
         actualFormat = formatMatch[1];
         if (typeof console !== 'undefined' && console.debug) {
-          console.debug("KV transform cache: Extracted format from content-type", {
+          console.debug('KV transform cache: Extracted format from content-type', {
             contentType,
             format: actualFormat,
             requestedFormat: transformOptions.format || 'auto'
@@ -890,7 +1059,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     // Generate cache key using actual format from response
     const key = this.generateCacheKey(request, transformOptions, actualFormat);
     
-    this.logDebug("KV transform cache: Storing item", {
+    this.logDebug('KV transform cache: Storing item', {
       key,
       ttl,
       size: storageResult.buffer.byteLength,
@@ -910,9 +1079,9 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
           expirationTtl: ttl,
           metadata
         }).then(() => {
-          this.logDebug("KV transform cache: Successfully stored item in background", { key });
+          this.logDebug('KV transform cache: Successfully stored item in background', { key });
         }).catch(error => {
-          this.logError("KV transform cache: Error storing item in background", { 
+          this.logError('KV transform cache: Error storing item in background', { 
             key, 
             error: error instanceof Error ? error.message : String(error)
           });
@@ -925,9 +1094,9 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
           expirationTtl: ttl,
           metadata
         });
-        this.logDebug("KV transform cache: Successfully stored item", { key });
+        this.logDebug('KV transform cache: Successfully stored item', { key });
       } catch (error) {
-        this.logError("KV transform cache: Error storing item", { 
+        this.logError('KV transform cache: Error storing item', { 
           key, 
           error: error instanceof Error ? error.message : String(error)
         });
@@ -956,8 +1125,8 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       keysToDelete.push(formatKey);
     }
     
-    // Add keys for common formats in order of likelihood
-    for (const format of ['webp', 'avif', 'jpeg', 'png']) {
+    // Add keys for all possible formats to ensure complete cache cleanup
+    for (const format of ['jpeg', 'png', 'gif', 'webp', 'avif']) {
       // Skip if it's the same as the explicitly requested format
       if (format === transformOptions.format) continue;
       
@@ -984,7 +1153,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       path: url.pathname,
       durationMs: duration,
       keyCount: uniqueKeys.length,
-      formats: [transformOptions.format || 'auto', 'webp', 'avif', 'jpeg', 'png'].filter(
+      formats: [transformOptions.format || 'auto', 'jpeg', 'png', 'gif', 'webp', 'avif'].filter(
         (f, i, a) => a.indexOf(f) === i // Remove duplicates
       ).join(',')
     });
