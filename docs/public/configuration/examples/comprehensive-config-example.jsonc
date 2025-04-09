@@ -89,8 +89,8 @@
           // Whether to include breadcrumbs for request tracing
           "enableBreadcrumbs": true,
           
-          // Use Pino logger implementation
-          "usePino": true,
+          // Use legacy logger instead of Pino (not recommended)
+          "useLegacy": false,
           
           // Format logs in a human-readable format
           "prettyPrint": false,

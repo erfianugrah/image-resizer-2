@@ -221,7 +221,8 @@ export interface ImageResizerConfig {
     enableStructuredLogs: boolean;
     enableBreadcrumbs?: boolean; // Enable breadcrumbs for e2e tracing
     enableCacheMetrics?: boolean; // Enable cache hit/miss metrics
-    usePino?: boolean; // Use Pino logger instead of custom logger
+    usePino?: boolean; // DEPRECATED: Maintained for backwards compatibility
+    useLegacy?: boolean; // Use legacy logger instead of Pino
     prettyPrint?: boolean; // Use pretty printing for Pino logs (development)
     colorize?: boolean; // Colorize Pino logs
   };
@@ -710,7 +711,7 @@ export const defaultConfig: ImageResizerConfig = {
   debug: {
     enabled: true,
     headers: ['ir', 'cache', 'mode', 'client-hints', 'ua', 'device', 'strategy'],
-    allowedEnvironments: ['development', 'staging'],
+    allowedEnvironments: ['development', 'staging', 'production'],
     verbose: true,
     includePerformance: true,
     forceDebugHeaders: false,
@@ -740,7 +741,10 @@ export const defaultConfig: ImageResizerConfig = {
     level: 'DEBUG',
     includeTimestamp: true,
     enableStructuredLogs: true,
-    enableBreadcrumbs: true
+    enableBreadcrumbs: true,
+    useLegacy: false, // Use Pino by default, rather than legacy console.log
+    prettyPrint: false, // Pretty print is off by default in production
+    colorize: false // Colorized output is off by default in production
   },
   
   cache: {
@@ -1160,7 +1164,7 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
       enabled: true,
       verbose: true,
       headers: ['all'],
-      allowedEnvironments: ['development', 'staging'],
+      allowedEnvironments: ['development', 'staging', 'production'],
       includePerformance: true,
       forceDebugHeaders: false
     },
@@ -1168,7 +1172,10 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
       level: 'DEBUG',
       includeTimestamp: true,
       enableStructuredLogs: true,
-      enableBreadcrumbs: true
+      enableBreadcrumbs: true,
+      useLegacy: false,
+      prettyPrint: true, // Enable pretty printing in development
+      colorize: true // Enable colorized output in development
     },
     cache: {
       method: 'cf',
@@ -1423,7 +1430,7 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
         'x-processing-mode': true,
         'x-size-source': true
       },
-      allowedEnvironments: ['development', 'staging'],
+      allowedEnvironments: ['development', 'staging', 'production'],
       includePerformance: true,
       forceDebugHeaders: false
     },
@@ -1584,7 +1591,7 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
       enabled: false,
       verbose: false,
       // Only include minimal headers in production, and only when explicitly requested
-      allowedEnvironments: [], // Empty array means no debug headers by default
+      allowedEnvironments: ['production'], // Allow debug headers in production
       headers: [
         'cache',
         'mode'
@@ -1817,34 +1824,73 @@ const environmentConfigs: Record<string, Partial<ImageResizerConfig>> = {
 
 /**
  * Deep merge utility for configuration objects
+ * 
+ * @param target The target object to merge into
+ * @param source The source object to merge from
+ * @returns A new object with properties from both target and source
  */
-function deepMerge<T>(target: T, source: Partial<T>): T {
+export function deepMerge<T>(target: T, source: Partial<T>): T {
+  // If source is null or undefined, return target
+  if (source === null || source === undefined) {
+    return target;
+  }
+  
+  // Create a copy of the target
   const result = { ...target };
   
-  if (source && typeof source === 'object' && !Array.isArray(source)) {
-    Object.keys(source).forEach(key => {
-      const sourceValue = source[key as keyof typeof source];
-      const targetValue = target[key as keyof typeof target];
-      
-      if (
-        sourceValue && 
-        typeof sourceValue === 'object' && 
-        !Array.isArray(sourceValue) &&
-        targetValue && 
-        typeof targetValue === 'object' && 
-        !Array.isArray(targetValue)
-      ) {
-        // If both values are objects, recursively merge them
-        result[key as keyof typeof result] = deepMerge(
-          targetValue, 
-          sourceValue as any
-        ) as any;
-      } else {
-        // Otherwise just override the target value
-        result[key as keyof typeof result] = sourceValue as any;
-      }
-    });
+  // If both are not objects, return source
+  if (typeof target !== 'object' || typeof source !== 'object' ||
+      target === null || Array.isArray(target) !== Array.isArray(source)) {
+    return source as T;
   }
+  
+  // Handle arrays specially
+  if (Array.isArray(target) && Array.isArray(source)) {
+    // For arrays, we'll take all unique items from both arrays
+    const combined = [...target, ...source].filter((item, index, self) => {
+      // For primitive items, remove duplicates
+      if (typeof item !== 'object' || item === null) {
+        return self.findIndex(i => i === item) === index;
+      }
+      // For object items, we'll keep them all as we can't easily detect duplicates
+      return true;
+    });
+    return combined as unknown as T;
+  }
+  
+  // Process all keys from source object
+  Object.keys(source).forEach(key => {
+    const sourceValue = source[key as keyof typeof source];
+    
+    // Skip undefined values to avoid overriding with undefined
+    if (sourceValue === undefined) {
+      return;
+    }
+    
+    // Get the target value if it exists
+    const targetValue = target ? target[key as keyof typeof target] : undefined;
+    
+    // Process based on value types
+    if (sourceValue === null) {
+      // Null explicitly overrides any existing value
+      result[key as keyof typeof result] = null as any;
+    } else if (
+      typeof sourceValue === 'object' && 
+      typeof targetValue === 'object' &&
+      targetValue !== null &&
+      sourceValue !== null &&
+      !Array.isArray(sourceValue) === !Array.isArray(targetValue)
+    ) {
+      // If both are objects of the same type (array or non-array), merge recursively
+      result[key as keyof typeof result] = deepMerge(
+        targetValue,
+        sourceValue as any
+      ) as any;
+    } else {
+      // Otherwise override the target value
+      result[key as keyof typeof result] = sourceValue as any;
+    }
+  });
   
   return result;
 }
@@ -2278,8 +2324,16 @@ export function getConfig(env: Env): ImageResizerConfig {
     config.logging.enableBreadcrumbs = env.LOGGING_BREADCRUMBS_ENABLED === 'true';
   }
   
+  if (env.LOGGING_USE_LEGACY) {
+    config.logging.useLegacy = env.LOGGING_USE_LEGACY === 'true';
+  }
+  
+  // For backward compatibility
   if (env.LOGGING_USE_PINO) {
-    config.logging.usePino = env.LOGGING_USE_PINO === 'true';
+    // If LOGGING_USE_PINO=false and LOGGING_USE_LEGACY isn't set, use legacy
+    if (env.LOGGING_USE_PINO === 'false' && !env.LOGGING_USE_LEGACY) {
+      config.logging.useLegacy = true;
+    }
   }
   
   if (env.LOGGING_PRETTY_PRINT) {

@@ -2,13 +2,16 @@
  * Logging utilities for the image resizer worker
  * 
  * This module provides centralized logging functions with configurable log levels
- * and structured logging capabilities.
+ * and structured logging capabilities. It serves as a compatibility layer that
+ * delegates to Pino, allowing for a smooth transition to the new logging system.
  */
 
 import { ImageResizerConfig } from '../config';
-import { OptimizedLogger, createOptimizedLogger } from './optimized-logging';
+import { createCompatiblePinoLogger } from './pino-compat';
+import { createOptimizedPinoLogger } from './pino-optimized';
+import { OptimizedLogger } from './optimized-logging';
 
-// Define log levels for clarity and control
+// Define log levels for compatibility with existing code
 export enum LogLevel {
   DEBUG = 0,
   INFO = 1,
@@ -16,21 +19,11 @@ export enum LogLevel {
   ERROR = 3
 }
 
-// Mapping from string log levels to enum values
-const LOG_LEVEL_MAP: Record<string, LogLevel> = {
-  'DEBUG': LogLevel.DEBUG,
-  'INFO': LogLevel.INFO,
-  'WARN': LogLevel.WARN,
-  'ERROR': LogLevel.ERROR
-};
-
-/**
- * Type for log data with flexible structure but known types
- */
+// Type for log data with flexible structure but known types - kept for compatibility
 export type LogData = Record<string, string | number | boolean | null | undefined | string[] | number[] | Record<string, string | number | boolean | null | undefined>>;
 
 /**
- * Logger interface
+ * Logger interface - kept the same for backward compatibility
  */
 export interface Logger {
   debug(message: string, data?: LogData): void;
@@ -41,7 +34,7 @@ export interface Logger {
 }
 
 /**
- * Create a logger instance
+ * Create a logger instance - wrapper that uses Pino underneath
  * 
  * @param config The image resizer configuration
  * @param context Optional context name for the logger (e.g., 'Akamai', 'Storage')
@@ -53,177 +46,49 @@ export function createLogger(
   context?: string, 
   useOptimized: boolean = false
 ): Logger | OptimizedLogger {
-  // Use optimized logger if requested
-  if (useOptimized) {
-    return createOptimizedLogger(config, context);
-  }
-
-  // Get configured log level, defaulting to INFO
-  const configuredLevel = config.logging?.level || 'INFO';
-  const minLevel = LOG_LEVEL_MAP[configuredLevel] || LogLevel.INFO;
-  
-  // Include timestamp in logs if configured
-  const includeTimestamp = config.logging?.includeTimestamp !== false;
-  
-  // Enable structured logs if configured
-  const useStructuredLogs = config.logging?.enableStructuredLogs === true;
-  
-  // Enable breadcrumbs if configured
-  const enableBreadcrumbs = config.logging?.enableBreadcrumbs !== false;
-  
-  // Return a logger object with methods for each log level
-  return {
-    debug(message: string, data?: LogData): void {
-      if (minLevel <= LogLevel.DEBUG) {
-        logMessage(LogLevel.DEBUG, message, data, context, includeTimestamp, useStructuredLogs);
-      }
-    },
-    
-    info(message: string, data?: LogData): void {
-      if (minLevel <= LogLevel.INFO) {
-        logMessage(LogLevel.INFO, message, data, context, includeTimestamp, useStructuredLogs);
-      }
-    },
-    
-    warn(message: string, data?: LogData): void {
-      if (minLevel <= LogLevel.WARN) {
-        logMessage(LogLevel.WARN, message, data, context, includeTimestamp, useStructuredLogs);
-      }
-    },
-    
-    error(message: string, data?: LogData): void {
-      if (minLevel <= LogLevel.ERROR) {
-        logMessage(LogLevel.ERROR, message, data, context, includeTimestamp, useStructuredLogs);
-      }
-    },
-    
-    breadcrumb(step: string, duration?: number, data?: LogData): void {
-      // Only log breadcrumbs if enabled in config
-      if (enableBreadcrumbs && minLevel <= LogLevel.INFO) {
-        const breadcrumbData = {
-          ...data,
-          ...(duration !== undefined ? { durationMs: duration } : {})
-        };
-        
-        logMessage(
-          LogLevel.INFO, 
-          `BREADCRUMB: ${step}`, 
-          breadcrumbData, 
-          context, 
-          includeTimestamp, 
-          useStructuredLogs,
-          true // mark as breadcrumb
-        );
-      }
-    }
-  };
-}
-
-/**
- * Internal function to format and log messages
- */
-function logMessage(
-  level: LogLevel,
-  message: string,
-  data?: LogData,
-  context?: string,
-  includeTimestamp = true,
-  useStructuredLogs = false,
-  isBreadcrumb = false
-): void {
-  // Get level name for display
-  const levelName = LogLevel[level];
-  
-  if (useStructuredLogs) {
-    // Create structured log object with known properties
-    const logObj: Record<string, string | number | boolean | null | LogData | undefined> = {
-      level: levelName,
-      message
-    };
-    
-    // Add timestamp if configured
-    if (includeTimestamp) {
-      logObj.timestamp = new Date().toISOString();
-    }
-    
-    // Add context if provided
-    if (context) {
-      logObj.context = context;
-    }
-    
-    // Mark as breadcrumb if it is one
-    if (isBreadcrumb) {
-      logObj.type = 'breadcrumb';
-    }
-    
-    // Add additional data if provided
-    if (data) {
-      // Avoid overwriting existing properties
-      logObj.data = data;
-    }
-    
-    // Log as JSON
-    console[getConsoleMethod(level)](JSON.stringify(logObj));
-  } else {
-    // Create formatted log message
-    let logMsg = `[${levelName}]`;
-    
-    // Add timestamp if configured
-    if (includeTimestamp) {
-      logMsg = `${new Date().toISOString()} ${logMsg}`;
-    }
-    
-    // Add context if provided
-    if (context) {
-      logMsg = `${logMsg} [${context}]`;
-    }
-    
-    // Add breadcrumb marker for easier visual identification
-    if (isBreadcrumb) {
-      logMsg = `${logMsg} 🔶`;
-    }
-    
-    // Add message
-    logMsg = `${logMsg} ${message}`;
-    
-    // Log the message
-    console[getConsoleMethod(level)](logMsg);
-    
-    // Log additional data on a separate line if provided
-    if (data) {
-      console[getConsoleMethod(level)]('Additional data:', data);
-    }
-  }
-}
-
-/**
- * Get the appropriate console method for the log level
- */
-function getConsoleMethod(_level: LogLevel): 'log' {
-  // In Cloudflare Workers, console.log is the most reliable method
-  // Other methods (debug, info) might not show up in wrangler tail
-  return 'log';
+  // Use Pino implementations based on optimization preference
+  return useOptimized
+    ? createOptimizedPinoLogger(config, context)
+    : createCompatiblePinoLogger(config, context);
 }
 
 // Export a default logger that can be used before config is loaded
-export const defaultLogger: Logger = {
-  debug(message: string, data?: LogData): void {
-    console.log(`[DEBUG] ${message}`, data || '');
+// This now uses a simplified Pino logger without full configuration
+export const defaultLogger: Logger = createCompatiblePinoLogger({
+  environment: 'development',
+  version: '1.0.0',
+  debug: { 
+    enabled: true, 
+    headers: [], 
+    allowedEnvironments: [], 
+    verbose: false, 
+    includePerformance: false 
   },
-  info(message: string, data?: LogData): void {
-    console.log(`[INFO] ${message}`, data || '');
+  cache: {
+    method: 'cf',
+    ttl: { ok: 86400, clientError: 60, serverError: 10 },
+    cacheability: true
   },
-  warn(message: string, data?: LogData): void {
-    console.log(`[WARN] ${message}`, data || '');
+  responsive: {
+    breakpoints: [320, 640, 768, 1024, 1440, 1920],
+    deviceWidths: { mobile: 480, tablet: 768, desktop: 1440 },
+    quality: 85,
+    fit: 'scale-down',
+    format: 'auto',
+    metadata: 'none'
   },
-  error(message: string, data?: LogData): void {
-    console.log(`[ERROR] ${message}`, data || '');
+  storage: {
+    priority: ['r2', 'remote', 'fallback'],
+    r2: { enabled: false, bindingName: 'IMAGES_BUCKET' }
   },
-  breadcrumb(step: string, duration?: number, data?: LogData): void {
-    const breadcrumbData = {
-      ...data,
-      ...(duration !== undefined ? { durationMs: duration } : {})
-    };
-    console.log(`[INFO] 🔶 BREADCRUMB: ${step}`, breadcrumbData || '');
+  derivatives: {},
+  logging: {
+    level: 'DEBUG',
+    includeTimestamp: true,
+    enableStructuredLogs: true,
+    enableBreadcrumbs: true,
+    useLegacy: false,
+    prettyPrint: false,
+    colorize: false
   }
-};
+}, 'default');

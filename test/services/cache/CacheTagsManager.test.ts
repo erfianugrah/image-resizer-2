@@ -75,7 +75,16 @@ describe('CacheTagsManager', () => {
       const tags = disabledTagsManager.generateCacheTags(request, storageResult, options);
 
       expect(tags).toEqual([]);
-      expect(logger.debug).toHaveBeenCalledWith('Cache tags are disabled');
+      // Check that the second debug call contains the disabled message
+      expect(logger.debug).toHaveBeenCalledWith(
+        "Cache tags are disabled", 
+        expect.objectContaining({
+          operation: 'generate_cache_tags',
+          category: 'cache',
+          result: 'skipped',
+          reason: 'disabled_in_config'
+        })
+      );
     });
 
     it('should generate tags with proper prefix and content information', () => {

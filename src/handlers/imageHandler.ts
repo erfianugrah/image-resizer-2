@@ -9,6 +9,7 @@ import { ValidationError } from '../utils/errors';
 import { TransformImageCommand } from '../domain/commands';
 import { PerformanceMetrics } from '../services/interfaces';
 import { ParameterHandler } from '../parameters';
+import { createPerformanceLogger } from '../utils/logger-factory';
 
 /**
  * Process an image transformation request
@@ -25,8 +26,19 @@ export async function handleImageRequest(
   services: ServiceContainer,
   metrics: PerformanceMetrics
 ): Promise<Response> {
-  const { logger, configurationService } = services;
+  const { configurationService } = services;
   const config = configurationService.getConfig();
+  
+  // Create a performance-enhanced logger
+  const logger = createPerformanceLogger(config, 'imageHandler', undefined, true) as any;
+  
+  // Start timer for the overall handler execution
+  const handlerTimer = logger.startTimer('imageHandler');
+  
+  // Track the metrics in the logger only if the function exists
+  if (typeof logger.trackMetrics === 'function') {
+    logger.trackMetrics(metrics);
+  }
   
   // Validate request method
   if (request.method !== 'GET' && request.method !== 'HEAD') {
@@ -187,11 +199,20 @@ export async function handleImageRequest(
       // Record KV cache lookup start time for metrics
       metrics.kvCacheLookupStart = Date.now();
       
+      // Start cache lookup timer
+      const cacheTimer = logger.startTimer('kvCacheLookup');
+      
       const cachedResponse = await cacheService.getTransformedImage(request, optionsFromUrl);
+      
+      // End cache lookup timer and record the operation
+      const kvCacheLookupDuration = cacheTimer.end('kvCacheLookup');
+      logger.recordOperation('cache', 'kvLookup', kvCacheLookupDuration, {
+        hit: cachedResponse !== null,
+        path: imagePath
+      });
       
       // Record KV cache lookup end time for metrics
       metrics.kvCacheLookupEnd = Date.now();
-      const kvCacheLookupDuration = metrics.kvCacheLookupEnd - metrics.kvCacheLookupStart;
       
       if (cachedResponse) {
         // Record that we had a cache hit
@@ -265,6 +286,34 @@ export async function handleImageRequest(
     url
   );
   
+  // Track the command execution with performance metrics
   logger.breadcrumb('Executing transform image command');
-  return await transformCommand.execute();
+  try {
+    const response = await transformCommand.execute();
+    
+    // End the handler timer and record the operation
+    const duration = handlerTimer.end('imageHandler');
+    logger.recordOperation('handler', 'imageRequest', duration, {
+      path: imagePath,
+      hasWidth: optionsFromUrl.width !== undefined,
+      hasHeight: optionsFromUrl.height !== undefined,
+      hasFormat: optionsFromUrl.format !== undefined,
+      derivative: optionsFromUrl.derivative,
+      kvCacheHit: metrics.kvCacheHit
+    });
+    
+    return response;
+  } catch (error) {
+    // End the handler timer even on error
+    handlerTimer.end('imageHandler');
+    
+    // Record the error
+    logger.recordOperation('handler', 'imageRequestError', Date.now() - metrics.start, {
+      path: imagePath,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    
+    // Re-throw the error
+    throw error;
+  }
 }

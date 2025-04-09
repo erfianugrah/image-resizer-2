@@ -32,7 +32,8 @@
 					],
 					"allowedEnvironments": [
 						"development",
-						"staging"
+						"staging",
+						"production"
 					],
 					"includePerformance": true
 				},
@@ -50,7 +51,7 @@
 					"includeTimestamp": true,
 					"enableStructuredLogs": true,
 					"enableBreadcrumbs": true,
-					"usePino": true,
+					"useLegacy": false,
 					"prettyPrint": true,
 					"colorize": true
 				}
