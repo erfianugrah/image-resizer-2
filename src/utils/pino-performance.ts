@@ -436,6 +436,7 @@ export function createOptimizedPerformancePinoLogger(
   
   /**
    * Record an operation's performance to the baseline
+   * with standardized field names compliant with internal services documentation
    * 
    * @param category The operation category
    * @param operation The specific operation
@@ -449,16 +450,25 @@ export function createOptimizedPerformancePinoLogger(
     data?: Record<string, unknown>
   ): void {
     if (enablePerformanceTracking && baseline) {
-      baseline.record(category, operation, duration, data);
+      // Create standardized performance data that follows required field names
+      const standardizedData = {
+        // Required standard fields
+        operation: operation,
+        durationMs: duration,
+        category: category,
+        result: (data?.result as string) || 'completed',
+        
+        // Original data (may contain additional fields)
+        ...data
+      };
+      
+      // Record to baseline with standardized fields
+      baseline.record(category, operation, duration, standardizedData);
       
       if (isLevelEnabled('DEBUG')) {
+        // Log with standardized field structure
         pinoLogger.debug({
-          performance: {
-            category,
-            operation,
-            duration,
-            ...data
-          }
+          performance: standardizedData
         }, `Performance: ${category}:${operation} - ${duration}ms`);
       }
     }
@@ -468,6 +478,7 @@ export function createOptimizedPerformancePinoLogger(
    * Track a complete set of performance metrics
    * 
    * This will extract timing information and log a structured performance event
+   * with standardized field names compliant with internal services documentation.
    * 
    * @param metrics The performance metrics to track
    */
@@ -487,19 +498,31 @@ export function createOptimizedPerformancePinoLogger(
     const kvCacheLookupTime = metrics.kvCacheLookupEnd && metrics.kvCacheLookupStart ? 
       metrics.kvCacheLookupEnd - metrics.kvCacheLookupStart : undefined;
     
-    // Create performance data structure
+    // Create standardized performance data structure
+    // Using the fields required by the services.md specification
     const performanceData = {
-      totalTime,
-      storageTime,
-      transformTime,
-      detectionTime,
-      kvCacheLookupTime,
+      // Standard timing fields with proper names
+      durationMs: totalTime,
+      storageTimeMs: storageTime,
+      transformTimeMs: transformTime,
+      detectionTimeMs: detectionTime,
+      cacheLookupTimeMs: kvCacheLookupTime,
+      
+      // Standard operation fields
+      operation: 'request_processing',
+      result: metrics.kvCacheHit ? 'cache_hit' : 'processed',
+      
+      // Additional context fields
       detectionSource: metrics.detectionSource,
       kvCacheHit: metrics.kvCacheHit,
-      kvCacheError: metrics.kvCacheError
+      kvCacheError: metrics.kvCacheError,
+      
+      // Include timestamps for debugging
+      startTimestamp: metrics.start,
+      endTimestamp: metrics.end
     };
     
-    // Log the performance data
+    // Log the performance data with standardized field names
     pinoLogger.debug({
       performance: performanceData,
       metrics: metrics
@@ -507,26 +530,46 @@ export function createOptimizedPerformancePinoLogger(
     
     // Record to baseline if total time is available
     if (totalTime !== undefined && baseline) {
-      baseline.record('request', 'total', totalTime, { metrics });
+      // Record request total with standardized fields
+      baseline.record('request', 'total', totalTime, { 
+        operation: 'request_processing',
+        durationMs: totalTime,
+        result: metrics.kvCacheHit ? 'cache_hit' : 'processed'
+      });
       
-      // Record individual operations
+      // Record individual operations with standardized fields
       if (storageTime !== undefined) {
         baseline.record('storage', 'fetch', storageTime, { 
+          operation: 'storage_fetch',
+          durationMs: storageTime,
+          result: 'completed',
           detectionSource: metrics.detectionSource
         });
       }
+      
       if (transformTime !== undefined) {
         baseline.record('transform', 'process', transformTime, { 
+          operation: 'transform_image',
+          durationMs: transformTime,
+          result: 'completed',
           kvCacheHit: metrics.kvCacheHit
         });
       }
+      
       if (detectionTime !== undefined) {
         baseline.record('detection', 'analyze', detectionTime, { 
+          operation: 'client_detection',
+          durationMs: detectionTime,
+          result: 'completed',
           source: metrics.detectionSource
         });
       }
+      
       if (kvCacheLookupTime !== undefined) {
         baseline.record('cache', 'lookup', kvCacheLookupTime, { 
+          operation: 'kv_cache_lookup',
+          durationMs: kvCacheLookupTime,
+          result: metrics.kvCacheHit ? 'hit' : (metrics.kvCacheError ? 'error' : 'miss'),
           hit: metrics.kvCacheHit,
           error: metrics.kvCacheError
         });

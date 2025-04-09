@@ -170,8 +170,13 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     const memoryCacheSize = config.memoryCacheSize || 100;
     this.memoryCache = new LRUCache<string, TransformCacheResult>(memoryCacheSize);
     
+    // Check if logger has performance tracking capabilities
     if (this.logger) {
-      this.logger.debug(`Initialized memory cache with capacity ${memoryCacheSize}`);
+      this.logDebug(`Initialized memory cache with capacity ${memoryCacheSize}`, {
+        operation: 'kv_transform_cache_init',
+        memoryCacheSize,
+        enabled: this.config.enabled
+      });
     }
   }
   
@@ -225,7 +230,9 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
    */
   private async checkKeyExists(key: string, url: URL, startTime: number): Promise<boolean> {
     try {
+      const operationStartTime = Date.now();
       this.logDebug(`KV transform cache: Checking format-specific exists`, {
+        operation: 'kv_key_check',
         key,
         format: key.split(':')[3] || 'unknown'
       });
@@ -233,6 +240,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       // Working around TypeScript errors with KV types
       const metadata = await (this.kvNamespace as any).getWithMetadata(key, { type: 'metadata' });
       const duration = Date.now() - startTime;
+      const operationDuration = Date.now() - operationStartTime;
       
       const exists = metadata.metadata !== null;
       
@@ -242,7 +250,8 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
         key,
         url: url.toString(),
         path: url.pathname,
-        durationMs: duration
+        durationMs: duration,
+        operationMs: operationDuration
       });
       
       // Add more detailed logging for a successful key check
@@ -259,12 +268,14 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       
       this.logError("KV transform cache: Error checking key existence", {
         operation: 'kv_key_check',
+        category: 'cache',
         result: 'error',
         key,
         url: url.toString(),
         path: url.pathname,
         durationMs: duration,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
+        errorType: error instanceof Error ? error.constructor.name : 'Unknown'
       });
       
       // If there's an error, assume it's not cached
@@ -337,7 +348,10 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
    */
   private async getFromKV(key: string, url: URL, startTime: number, transformOptions: TransformOptions): Promise<TransformCacheResult | null> {
     try {
+      const operationStartTime = Date.now();
       this.logDebug(`KV transform cache: Checking format-specific key`, {
+        operation: 'kv_key_get',
+        category: 'cache',
         key,
         format: key.split(':')[3] || 'unknown'
       });
@@ -345,16 +359,19 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       // Working around TypeScript errors with KV types
       const result = await (this.kvNamespace as any).getWithMetadata(key, { type: 'arrayBuffer' });
       const duration = Date.now() - startTime;
+      const operationDuration = Date.now() - operationStartTime;
       
       if (result.value === null || result.metadata === null) {
         this.logDebug("KV transform cache: Key not found", {
           operation: 'kv_key_get',
+          category: 'cache',
           result: 'miss',
           reason: 'not_found',
           key,
           url: url.toString(),
           path: url.pathname,
-          durationMs: duration
+          durationMs: duration,
+          operationMs: operationDuration
         });
         return null;
       }
@@ -393,6 +410,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       // Valid hit - create the cache result
       this.logDebug("KV transform cache: Key hit", {
         operation: 'kv_key_get',
+        category: 'cache',
         result: 'hit',
         key,
         contentType: result.metadata.contentType,
@@ -400,6 +418,7 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
         url: url.toString(),
         path: url.pathname,
         durationMs: duration,
+        operationMs: operationDuration,
         age: Date.now() - (result.metadata.timestamp || 0)
       });
       

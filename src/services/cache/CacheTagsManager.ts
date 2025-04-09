@@ -20,6 +20,8 @@ export class CacheTagsManager {
   }
   private logger: Logger;
   private configService: ConfigurationService;
+  // Using a variable to track operation start time at the class level
+  private operationStartTime: number = 0;
 
   constructor(logger: Logger, configService: ConfigurationService) {
     this.logger = logger;
@@ -41,7 +43,11 @@ export class CacheTagsManager {
     options: TransformOptions,
   ): string[] {
     try {
+      this.operationStartTime = Date.now();
       this.logger.debug("CacheTagsManager module generating cache tags", {
+        operation: 'generate_cache_tags',
+        category: 'cache',
+        result: 'started',
         path: storageResult.path,
         sourceType: storageResult.sourceType,
         moduleInstance: "CacheTagsManager"
@@ -51,7 +57,12 @@ export class CacheTagsManager {
 
       // Check if cache tags are enabled
       if (!config.cache.cacheTags?.enabled) {
-        this.logger.debug("Cache tags are disabled");
+        this.logger.debug("Cache tags are disabled", {
+          operation: 'generate_cache_tags',
+          category: 'cache',
+          result: 'skipped',
+          reason: 'disabled_in_config'
+        });
         return [];
       }
 
@@ -270,7 +281,13 @@ export class CacheTagsManager {
             } catch (e) {
               // If regex is invalid, fall back to simple inclusion
               this.logger.warn(`Invalid regex pattern in cache tags: ${pattern}`, {
-                error: e instanceof Error ? e.message : String(e)
+                operation: 'process_path_pattern',
+                category: 'cache',
+                result: 'error',
+                durationMs: 0, // No timing information available
+                error: e instanceof Error ? e.message : String(e),
+                errorType: e instanceof Error ? e.constructor.name : 'Unknown',
+                pattern
               });
               isMatch = normalizedPath.includes(pattern);
             }
@@ -287,7 +304,13 @@ export class CacheTagsManager {
             } catch (e) {
               // If conversion fails, fall back to simple inclusion
               this.logger.warn(`Invalid glob pattern in cache tags: ${pattern}`, {
-                error: e instanceof Error ? e.message : String(e)
+                operation: 'process_glob_pattern',
+                category: 'cache',
+                result: 'error',
+                durationMs: 0, // No timing information available
+                error: e instanceof Error ? e.message : String(e),
+                errorType: e instanceof Error ? e.constructor.name : 'Unknown',
+                pattern
               });
               isMatch = normalizedPath.includes(pattern);
             }
@@ -298,7 +321,15 @@ export class CacheTagsManager {
           
           // If match found, add all associated tags
           if (isMatch && Array.isArray(tagGroup)) {
-            this.logger.debug(`Path "${normalizedPath}" matched pattern "${pattern}", adding tags: ${tagGroup.join(', ')}`);
+            this.logger.debug(`Path "${normalizedPath}" matched pattern "${pattern}", adding tags: ${tagGroup.join(', ')}`, {
+              operation: 'path_tag_matching',
+              category: 'cache',
+              result: 'match',
+              durationMs: 0, // No timing information available
+              pattern,
+              matchedPath: normalizedPath,
+              tagCount: tagGroup.length
+            });
             tagGroup.forEach(groupTag => {
               if (typeof groupTag === 'string') {
                 // Add the group tag with prefix
@@ -334,12 +365,20 @@ export class CacheTagsManager {
         finalTags = uniqueTags.slice(0, maxTags);
       }
 
-      // Log tag generation for debugging
+      // Calculate operation duration
+      const operationDuration = Date.now() - this.operationStartTime;
+      
+      // Log tag generation for debugging with standardized fields
       this.logger.debug("Generated cache tags", {
+        operation: 'generate_cache_tags',
+        category: 'cache',
+        result: 'success',
+        durationMs: operationDuration,
         count: finalTags.length,
         tags: finalTags.length <= 5 ? finalTags : finalTags.slice(0, 5).concat(['... and more']),
         url: request.url,
-        truncated: uniqueTags.length > maxTags
+        truncated: uniqueTags.length > maxTags,
+        originalCount: uniqueTags.length
       });
 
       return finalTags;
@@ -351,7 +390,12 @@ export class CacheTagsManager {
         request.url : 'unknown';
       
       this.logger.error("Failed to generate cache tags", {
+        operation: 'generate_cache_tags',
+        category: 'cache',
+        result: 'error',
+        durationMs: Date.now() - this.operationStartTime,
         error: errorMessage,
+        errorType: error instanceof Error ? error.constructor.name : 'Unknown',
         url,
       });
       
@@ -452,7 +496,13 @@ export class CacheTagsManager {
       }
     } catch (error) {
       this.logger.warn(`Error evaluating condition ${condition}`, {
-        error: error instanceof Error ? error.message : String(error)
+        operation: 'evaluate_tag_condition',
+        category: 'cache',
+        result: 'error',
+        durationMs: 0, // No timing information available
+        error: error instanceof Error ? error.message : String(error),
+        errorType: error instanceof Error ? error.constructor.name : 'Unknown',
+        condition
       });
       return false;
     }
@@ -524,6 +574,10 @@ export class CacheTagsManager {
     }
 
     this.logger.debug("Applied cache tags", {
+      operation: 'apply_cache_tags',
+      category: 'cache',
+      result: 'success',
+      durationMs: 0, // No timing information available
       tagCount: tags.length,
       sampleTags: tags.slice(0, 3).join(", ") + (tags.length > 3 ? "..." : ""),
       cacheMethod: config.cache.method,
@@ -616,6 +670,10 @@ export class CacheTagsManager {
 
       if (tags.length > 0) {
         this.logger.debug("Adding cache tags to request/response", {
+          operation: 'add_cache_tags',
+          category: 'cache',
+          result: 'success',
+          durationMs: 0, // No timing information available
           tagCount: tags.length,
           sampleTags: tags.slice(0, 3).join(", ") +
             (tags.length > 3 ? "..." : ""),
@@ -628,9 +686,12 @@ export class CacheTagsManager {
     } catch (tagsError) {
       // If tag generation fails, log but continue with the originals
       this.logger.warn("Failed to generate cache tags for request", {
-        error: tagsError instanceof Error
-          ? tagsError.message
-          : String(tagsError),
+        operation: 'prepare_tagged_request',
+        category: 'cache',
+        result: 'error',
+        durationMs: 0, // No timing information available
+        error: tagsError instanceof Error ? tagsError.message : String(tagsError),
+        errorType: tagsError instanceof Error ? tagsError.constructor.name : 'Unknown',
         url: request.url,
       });
     }

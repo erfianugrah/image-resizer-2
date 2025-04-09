@@ -94,6 +94,10 @@ export class CachePerformanceManager {
     }
 
     this.logger.debug("Added resource hints to response", {
+      operation: 'resource_hints',
+      category: 'cache',
+      result: 'success',
+      durationMs: 0, // No timing here, but include for consistency
       contentType,
       hasPreconnect: !!config.cache.resourceHints?.preconnect,
       hasPreloads,
@@ -128,8 +132,12 @@ export class CachePerformanceManager {
     // Generate metric key
     const metricKey = `cache_${cacheStatus}_${pathBucket}`;
 
-    // Log the metric
+    // Log the metric with standardized field names
     this.logger.debug("Cache metric", {
+      operation: 'cache_metric',
+      category: 'cache',
+      result: cacheStatus.toLowerCase(),
+      durationMs: 0, // No timing information available
       url: request.url,
       cacheStatus,
       pathBucket,

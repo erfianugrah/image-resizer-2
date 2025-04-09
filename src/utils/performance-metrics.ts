@@ -174,7 +174,26 @@ export class PerformanceTimer {
     
     // Log completion if debug level is enabled
     if (this.logger && this.shouldLog('DEBUG' as keyof typeof LogLevel)) {
-      this.logger.debug(`Completed measurement: ${name} - ${duration}ms`, metadata);
+      // Create standardized metrics data with required fields
+      const performanceData = {
+        operation: name,
+        durationMs: duration,
+        category: 'performance',
+        result: 'completed',
+        ...metadata
+      };
+      
+      this.logger.debug(`Completed measurement: ${name} - ${duration}ms`, performanceData);
+      
+      // Check if logger supports recordOperation method (added by performance loggers)
+      if (typeof (this.logger as any).recordOperation === 'function') {
+        (this.logger as any).recordOperation('performance', name, duration, performanceData);
+      }
+      
+      // Check if logger supports breadcrumb with standardized fields
+      if (typeof this.logger.breadcrumb === 'function') {
+        this.logger.breadcrumb(`Performance: ${name}`, duration, performanceData);
+      }
     }
     
     return duration;
@@ -350,12 +369,35 @@ export class PerformanceBaseline {
     if (this.logger) {
       const isOptimizedLogger = !!(this.logger as OptimizedLogger).isLevelEnabled;
       
+      // Create standardized metrics data with required fields
+      const performanceData = {
+        operation: operation,
+        category: category,
+        durationMs: duration,
+        result: 'recorded',
+        avg: stats.average.toFixed(2),
+        count: stats.count,
+        min: stats.minTime,
+        max: stats.maxTime,
+        ...metadata
+      };
+      
       if (isOptimizedLogger) {
         if ((this.logger as OptimizedLogger).isLevelEnabled('DEBUG')) {
-          this.logger.debug(`Performance: ${category}:${operation} - ${duration}ms (avg: ${stats.average.toFixed(2)}ms)`, metadata);
+          this.logger.debug(`Performance: ${category}:${operation} - ${duration}ms (avg: ${stats.average.toFixed(2)}ms)`, performanceData);
+          
+          // Check if logger supports recordOperation method
+          if (typeof (this.logger as any).recordOperation === 'function') {
+            (this.logger as any).recordOperation(category, operation, duration, performanceData);
+          }
         }
       } else {
-        this.logger.debug(`Performance: ${category}:${operation} - ${duration}ms (avg: ${stats.average.toFixed(2)}ms)`, metadata);
+        this.logger.debug(`Performance: ${category}:${operation} - ${duration}ms (avg: ${stats.average.toFixed(2)}ms)`, performanceData);
+        
+        // Check if logger supports recordOperation method
+        if (typeof (this.logger as any).recordOperation === 'function') {
+          (this.logger as any).recordOperation(category, operation, duration, performanceData);
+        }
       }
     }
   }
