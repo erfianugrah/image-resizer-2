@@ -1,0 +1,22 @@
+{
+  "modules": {
+    "cache": {
+      "config": {
+        "transformCache": {
+          "enabled": true,
+          "binding": "IMAGE_TRANSFORMATIONS_CACHE",
+          "prefix": "transform",
+          "maxSize": 26214400,
+          "defaultTtl": 86400,
+          "backgroundIndexing": true,
+          "disallowedPaths": [
+            "/admin/",
+            "/preview/",
+            "/draft/",
+            "/temp/"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -48,7 +48,17 @@ export function createKVTransformCacheManager(options: KVTransformCacheOptions):
   let { kvNamespace } = options;
   
   // Check if KV transform cache is entirely disabled
-  if (!config.enabled) {
+  // Ensure proper boolean handling
+  const isEnabled = Boolean(config.enabled);
+  
+  // Log the value we're using
+  logger.debug('KV transform cache enabled check', {
+    enabled: isEnabled,
+    rawEnabled: config.enabled,
+    rawEnabledType: typeof config.enabled
+  });
+  
+  if (!isEnabled) {
     logger.info('KV transform cache is disabled, returning a disabled implementation');
     // Create a disabled implementation that doesn't need a KV namespace
     return new SimpleKVTransformCacheManager({

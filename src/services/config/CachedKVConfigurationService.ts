@@ -24,7 +24,6 @@ interface ExtendedImageResizerConfig extends ImageResizerConfig {
   features: {
     enableAkamaiCompatibility?: boolean;
     enableAkamaiAdvancedFeatures?: boolean;
-    forceTransformCache?: boolean;
   };
   cache: {
     method: 'cf' | 'cache-api' | 'none';
@@ -58,7 +57,7 @@ interface ExtendedImageResizerConfig extends ImageResizerConfig {
   };
 }
 
-// Extended transform cache config to include the force fields
+// Extended transform cache config
 interface ExtendedTransformCacheConfig {
   enabled: boolean;
   binding: string;
@@ -77,9 +76,6 @@ interface ExtendedTransformCacheConfig {
   skipIndicesForSmallFiles?: boolean;
   smallFileThreshold?: number;
   useSimpleImplementation?: boolean;
-  // Added extension fields
-  forceEnable?: boolean;
-  allowedEnvironments?: string[];
 }
 
 /**
@@ -135,8 +131,7 @@ export class CachedKVConfigurationService implements ConfigurationService {
       features: {
         ...baseConfig.features,
         enableAkamaiCompatibility: baseConfig.features?.enableAkamaiCompatibility || false,
-        enableAkamaiAdvancedFeatures: baseConfig.features?.enableAkamaiAdvancedFeatures || false,
-        forceTransformCache: false
+        enableAkamaiAdvancedFeatures: baseConfig.features?.enableAkamaiAdvancedFeatures || false
       },
       cache: {
         ...baseConfig.cache,
@@ -161,9 +156,7 @@ export class CachedKVConfigurationService implements ConfigurationService {
           backgroundIndexing: true,
           purgeDelay: 500,
           disallowedPaths: [],
-          memoryCacheSize: 200,
-          forceEnable: false,
-          allowedEnvironments: []
+          memoryCacheSize: 200
         }
       },
       debug: {
@@ -192,37 +185,35 @@ export class CachedKVConfigurationService implements ConfigurationService {
   
   /**
    * Get the complete configuration - this is the synchronous method expected by consumers
-   * This method applies force flags for features like transform cache before returning
    * 
-   * @returns Complete configuration object from cache with force flags applied
+   * @returns Complete configuration object from cache
    */
   getConfig(): ImageResizerConfig {
     if (!this.initialized) {
       this.logger.debug('Configuration accessed before full initialization, using fallback');
     }
     
-    // Apply force flags to ensure features are enabled in production
-    const config = this.applyForceFlags(this.cachedConfig);
+    // Ensure core objects exist but don't override values
+    const config = this.ensureRequiredStructure(this.cachedConfig);
     return config;
   }
   
   /**
-   * Apply force flags to the configuration to ensure certain features are enabled
-   * regardless of environment-specific settings
+   * Ensure the configuration has required structure without modifying values
+   * Only provides defaults for missing objects, never overrides existing values
    * 
-   * @param config The configuration to modify
-   * @returns Configuration with force flags applied
+   * @param config The configuration to check
+   * @returns Configuration with required structure
    */
-  private applyForceFlags(config: ExtendedImageResizerConfig): ExtendedImageResizerConfig {
-    // Create a deep copy to avoid modifying the original
+  private ensureRequiredStructure(config: ExtendedImageResizerConfig): ExtendedImageResizerConfig {
+    // Create a shallow copy to avoid modifying the original
     const modifiedConfig = { ...config };
     
-    // Ensure all required objects exist
+    // Ensure all required objects exist (but don't override values)
     if (!modifiedConfig.features) {
       modifiedConfig.features = {
         enableAkamaiCompatibility: false,
-        enableAkamaiAdvancedFeatures: false,
-        forceTransformCache: false
+        enableAkamaiAdvancedFeatures: false
       };
     }
     
@@ -244,10 +235,7 @@ export class CachedKVConfigurationService implements ConfigurationService {
         contentTypeTtls: {},
         backgroundIndexing: true,
         purgeDelay: 500,
-        disallowedPaths: [],
-        memoryCacheSize: 200,
-        forceEnable: false,
-        allowedEnvironments: []
+        disallowedPaths: []
       };
     }
     
@@ -261,46 +249,6 @@ export class CachedKVConfigurationService implements ConfigurationService {
       };
     }
     
-    // Transform Cache forcing
-    const forceTransformCache = modifiedConfig.features.forceTransformCache || false;
-    if (forceTransformCache) {
-      this.logger.debug('Force enabling transform cache due to forceTransformCache flag');
-            
-      // Force enable the transform cache
-      if (modifiedConfig.cache.transformCache) {
-        modifiedConfig.cache.transformCache.enabled = true;
-        modifiedConfig.cache.transformCache.forceEnable = true;
-        
-        // Push current environment to allowed environments if not already included
-        if (!modifiedConfig.cache.transformCache.allowedEnvironments) {
-          modifiedConfig.cache.transformCache.allowedEnvironments = [];
-        }
-        
-        if (!modifiedConfig.cache.transformCache.allowedEnvironments.includes(config.environment)) {
-          modifiedConfig.cache.transformCache.allowedEnvironments.push(config.environment);
-        }
-      }
-    }
-    
-    // Debug Headers forcing
-    const forceDebugHeaders = modifiedConfig.debug.forceDebugHeaders || false;
-    if (forceDebugHeaders) {
-      this.logger.debug('Force enabling debug headers due to forceDebugHeaders flag');
-            
-      // Force enable debug headers
-      modifiedConfig.debug.enabled = true;
-      modifiedConfig.debug.forceDebugHeaders = true;
-      
-      // Push current environment to allowed environments if not already included
-      if (!modifiedConfig.debug.allowedEnvironments) {
-        modifiedConfig.debug.allowedEnvironments = [];
-      }
-      
-      if (!modifiedConfig.debug.allowedEnvironments.includes(config.environment)) {
-        modifiedConfig.debug.allowedEnvironments.push(config.environment);
-      }
-    }
-    
     return modifiedConfig;
   }
 
@@ -308,11 +256,11 @@ export class CachedKVConfigurationService implements ConfigurationService {
    * Get a specific configuration section
    * 
    * @param section Name of the configuration section to retrieve
-   * @returns Configuration section with force flags applied
+   * @returns Configuration section with required structure
    */
   getSection<K extends keyof ImageResizerConfig>(section: K): ImageResizerConfig[K] {
-    // Apply force flags to ensure features are enabled before returning a section
-    const config = this.applyForceFlags(this.cachedConfig);
+    // Ensure core objects exist but don't override values
+    const config = this.ensureRequiredStructure(this.cachedConfig);
     return config[section];
   }
 
@@ -576,36 +524,15 @@ export class CachedKVConfigurationService implements ConfigurationService {
    */
   async initialize(): Promise<void> {
     try {
+      // Refresh configuration from KV
       await this.refreshConfigFromKV();
-      
-      // Apply an emergency patch to make sure transformCache is enabled 
-      // This is a critical fix that ensures transform cache works in all environments,
-      // regardless of what's in the KV config
-      const emergencyConfig = {
-        features: {
-          forceTransformCache: true
-        },
-        cache: {
-          transformCache: {
-            enabled: true,
-            binding: 'IMAGE_TRANSFORMATIONS_CACHE',
-            forceEnable: true,
-            allowedEnvironments: [this.cachedConfig.environment]
-          }
-        }
-      };
-      
-      // Apply emergency config
-      this.cachedConfig = this.mergeConfigs(this.cachedConfig, emergencyConfig);
       
       this.initialized = true;
       
       this.logger.info('CachedKVConfigurationService fully initialized', {
         configVersion: this.configVersion,
         environment: this.cachedConfig.environment,
-        transformCacheEnabled: this.cachedConfig.cache.transformCache?.enabled,
-        transformCacheForceEnabled: this.cachedConfig.cache.transformCache?.forceEnable,
-        transformCacheAllowedEnvironments: this.cachedConfig.cache.transformCache?.allowedEnvironments
+        configSections: Object.keys(this.cachedConfig)
       });
     } catch (error) {
       // Log the error but don't fail - we'll continue with the fallback config
@@ -614,33 +541,13 @@ export class CachedKVConfigurationService implements ConfigurationService {
         continuingWithFallback: true
       });
       
-      // Create emergency config with enabled transform cache
-      const emergencyConfig = {
-        features: {
-          forceTransformCache: true
-        },
-        cache: {
-          method: 'cf',
-          ttl: { ok: 86400, clientError: 60, serverError: 10 },
-          cacheability: true,
-          transformCache: {
-            enabled: true,
-            binding: 'IMAGE_TRANSFORMATIONS_CACHE',
-            forceEnable: true,
-            prefix: 'transform',
-            maxSize: 26214400, // 25MB
-            defaultTtl: 86400, // 1 day
-            backgroundIndexing: true,
-            allowedEnvironments: [this.cachedConfig.environment]
-          }
-        }
-      };
-      
-      // Apply emergency config
-      this.cachedConfig = this.mergeConfigs(this.cachedConfig, emergencyConfig);
-      
-      // Still mark as initialized to avoid repeated attempts
+      // Mark as initialized to avoid repeated attempts, but keep using fallback config
       this.initialized = true;
+      
+      this.logger.info('Using fallback configuration', {
+        environment: this.cachedConfig.environment,
+        configSections: Object.keys(this.cachedConfig)
+      });
     }
   }
 
@@ -875,74 +782,54 @@ export class CachedKVConfigurationService implements ConfigurationService {
         });
       }
       
-      // Look for force flags from all modules and apply them
-      const forceTransformCache = this.findValueInModules(
-        configSystem.modules, 
-        ['features.forceTransformCache', 'forceTransformCache'],
-        false
-      ) as boolean;
+      // Log additional configuration info that's helpful for debugging
+      this.logger.debug('KV configuration loaded with transform cache settings', {
+        hasTransformCache: !!mergedConfig.cache?.transformCache,
+        transformCacheEnabled: mergedConfig.cache?.transformCache?.enabled,
+        binding: mergedConfig.cache?.transformCache?.binding,
+        configVersion: configSystem._meta.version
+      });
       
-      // Apply the force flags
-      if (forceTransformCache) {
-        // Create a configuration with the force flags enabled
-        const forceConfig = {
-          features: {
-            forceTransformCache: true
-          },
-          cache: {
-            transformCache: {
-              enabled: true,
-              forceEnable: true,
-              allowedEnvironments: [mergedConfig.environment]
-            }
-          }
+      // Only apply defaults for missing properties, never override existing values
+      if (!mergedConfig.features) {
+        mergedConfig.features = {
+          enableAkamaiCompatibility: false,
+          enableAkamaiAdvancedFeatures: false
         };
-        
-        // Merge into our config
-        mergedConfig = this.mergeConfigs(mergedConfig, forceConfig);
-        
-        this.logger.info('Force transform cache flag found in KV config, enabling transform cache', {
-          configVersion: configSystem._meta.version
-        });
       }
       
-      // Always ensure critical properties exist
-      const defaultsConfig = {
-        features: {
-          enableAkamaiCompatibility: false,
-          enableAkamaiAdvancedFeatures: false,
-          forceTransformCache: forceTransformCache
-        },
-        cache: {
+      if (!mergedConfig.cache) {
+        mergedConfig.cache = {
           method: 'cf',
           ttl: {
             ok: 86400,
             clientError: 60,
             serverError: 10
           },
-          cacheability: true,
-          transformCache: {
-            enabled: forceTransformCache || false,
-            binding: 'IMAGE_TRANSFORMATIONS_CACHE',
-            prefix: 'transform',
-            defaultTtl: 86400,
-            maxSize: 26214400,
-            backgroundIndexing: true,
-            forceEnable: forceTransformCache || false,
-            allowedEnvironments: [mergedConfig.environment]
-          }
-        },
-        debug: {
+          cacheability: true
+        };
+      }
+      
+      if (!mergedConfig.cache.transformCache) {
+        mergedConfig.cache.transformCache = {
+          enabled: false, // Default to disabled - let KV config control this
+          binding: 'IMAGE_TRANSFORMATIONS_CACHE',
+          prefix: 'transform',
+          defaultTtl: 86400,
+          maxSize: 26214400,
+          backgroundIndexing: true
+        };
+      }
+      
+      if (!mergedConfig.debug) {
+        mergedConfig.debug = {
           enabled: false,
           headers: [],
           allowedEnvironments: [],
           verbose: false,
           includePerformance: false
-        }
-      };
-      
-      // Apply all defaults
-      mergedConfig = this.mergeConfigs(mergedConfig, defaultsConfig);
+        };
+      }
       
       // Update cached config with our properly typed config
       this.cachedConfig = mergedConfig;
@@ -957,9 +844,7 @@ export class CachedKVConfigurationService implements ConfigurationService {
         primaryModuleSource,
         modules: Object.keys(configSystem.modules),
         configSections: Object.keys(this.cachedConfig),
-        cacheEnabled: this.cachedConfig.cache && !!this.cachedConfig.cache.transformCache?.enabled,
-        forceEnable: this.cachedConfig.cache && !!this.cachedConfig.cache.transformCache?.forceEnable,
-        forceTransformCache: forceTransformCache
+        cacheEnabled: this.cachedConfig.cache && !!this.cachedConfig.cache.transformCache?.enabled
       });
     } catch (error) {
       // Improved error logging with context
@@ -1047,10 +932,7 @@ export class CachedKVConfigurationService implements ConfigurationService {
           result.features.enableAkamaiCompatibility,
         enableAkamaiAdvancedFeatures: (source.features as any)?.enableAkamaiAdvancedFeatures !== undefined ?
           (source.features as any).enableAkamaiAdvancedFeatures :
-          result.features.enableAkamaiAdvancedFeatures,
-        forceTransformCache: (source.features as any)?.forceTransformCache !== undefined ?
-          (source.features as any).forceTransformCache :
-          result.features.forceTransformCache
+          result.features.enableAkamaiAdvancedFeatures
       };
     }
     
@@ -1223,6 +1105,7 @@ export class CachedKVConfigurationService implements ConfigurationService {
 
   /**
    * Load environment-specific configurations
+   * These are only used as a fallback when KV configuration is unavailable
    */
   private loadEnvironmentConfigs(): void {
     // Development environment configuration
@@ -1230,16 +1113,14 @@ export class CachedKVConfigurationService implements ConfigurationService {
       environment: 'development',
       features: {
         enableAkamaiCompatibility: true,
-        enableAkamaiAdvancedFeatures: true,
-        forceTransformCache: true
+        enableAkamaiAdvancedFeatures: true
       },
       debug: { 
         enabled: true,
         verbose: true,
         headers: ['all'],
         allowedEnvironments: ['development', 'staging'],
-        includePerformance: true,
-        forceDebugHeaders: false
+        includePerformance: true
       },
       logging: {
         level: 'DEBUG',
@@ -1252,17 +1133,13 @@ export class CachedKVConfigurationService implements ConfigurationService {
         ttl: {
           ok: 60, // Short TTL for development
           clientError: 10,
-          serverError: 5,
-          remoteFetch: 60,
-          r2Headers: 60
+          serverError: 5
         },
         cacheability: true,
         bypassInDevelopment: true,
         transformCache: {
           enabled: true,
-          binding: 'IMAGE_TRANSFORMATIONS_CACHE',
-          forceEnable: true,
-          allowedEnvironments: ['development', 'staging', 'production']
+          binding: 'IMAGE_TRANSFORMATIONS_CACHE'
         }
       }
     } as Partial<ExtendedImageResizerConfig>;
@@ -1272,8 +1149,7 @@ export class CachedKVConfigurationService implements ConfigurationService {
       environment: 'staging',
       features: {
         enableAkamaiCompatibility: true,
-        enableAkamaiAdvancedFeatures: true,
-        forceTransformCache: true
+        enableAkamaiAdvancedFeatures: true
       },
       debug: { 
         enabled: true,
@@ -1293,16 +1169,12 @@ export class CachedKVConfigurationService implements ConfigurationService {
         ttl: {
           ok: 3600, // 1 hour
           clientError: 30,
-          serverError: 5,
-          remoteFetch: 1800, // 30 minutes
-          r2Headers: 3600 // 1 hour
+          serverError: 5
         },
         cacheability: true,
         transformCache: {
           enabled: true,
-          binding: 'IMAGE_TRANSFORMATIONS_CACHE',
-          forceEnable: true,
-          allowedEnvironments: ['development', 'staging', 'production']
+          binding: 'IMAGE_TRANSFORMATIONS_CACHE'
         }
       }
     } as Partial<ExtendedImageResizerConfig>;
@@ -1312,8 +1184,7 @@ export class CachedKVConfigurationService implements ConfigurationService {
       environment: 'production',
       features: {
         enableAkamaiCompatibility: false,
-        enableAkamaiAdvancedFeatures: false,
-        forceTransformCache: true
+        enableAkamaiAdvancedFeatures: false
       },
       debug: { 
         enabled: false,
@@ -1333,16 +1204,12 @@ export class CachedKVConfigurationService implements ConfigurationService {
         ttl: {
           ok: 604800, // 1 week
           clientError: 60,
-          serverError: 10,
-          remoteFetch: 86400, // 1 day
-          r2Headers: 604800 // 1 week
+          serverError: 10
         },
         cacheability: true,
         transformCache: {
           enabled: true,
-          binding: 'IMAGE_TRANSFORMATIONS_CACHE',
-          forceEnable: true,
-          allowedEnvironments: ['development', 'staging', 'production']
+          binding: 'IMAGE_TRANSFORMATIONS_CACHE'
         }
       }
     } as Partial<ExtendedImageResizerConfig>;

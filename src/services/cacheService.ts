@@ -131,11 +131,37 @@ export class DefaultCacheService implements CacheService {
     // Log that we are always using the simplified implementation
     this.logger.info('Using simplified KV transform cache implementation');
     
+    // Ensure transform cache enabled is properly coerced to a boolean
+    let transformCacheEnabled = false;
+    
+    if (config.cache.transformCache) {
+      // Use a simple Boolean conversion for any type of value
+      transformCacheEnabled = Boolean(config.cache.transformCache.enabled);
+      
+      // Additional logging to help debug the issue
+      this.logger.debug('Transform cache enabled value details', {
+        hasTransformCache: !!config.cache.transformCache,
+        enabledType: typeof config.cache.transformCache.enabled,
+        enabledValue: config.cache.transformCache.enabled,
+        convertedValue: transformCacheEnabled
+      });
+    }
+      
+    // Log the transform cache configuration
+    this.logger.info('Transform cache configuration', {
+      enabled: transformCacheEnabled,
+      rawEnabled: config.cache.transformCache?.enabled,
+      rawEnabledType: config.cache.transformCache?.enabled !== undefined 
+        ? typeof config.cache.transformCache.enabled 
+        : 'undefined',
+      binding: config.cache.transformCache?.binding || 'IMAGE_TRANSFORMATIONS_CACHE'
+    });
+    
     // Create the KV transform cache manager using the factory
     this.kvTransformCache = createKVTransformCacheManager({
       kvNamespace: kvNamespace as KVNamespace,
       config: {
-        enabled: config.cache.transformCache?.enabled === true,
+        enabled: transformCacheEnabled,
         binding: config.cache.transformCache?.binding || 'IMAGE_TRANSFORMATIONS_CACHE',
         prefix: config.cache.transformCache?.prefix || 'transform',
         maxSize: config.cache.transformCache?.maxSize || 10 * 1024 * 1024, // 10MB default
