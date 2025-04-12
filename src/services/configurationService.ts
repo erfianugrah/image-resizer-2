@@ -6,7 +6,8 @@
  * single source of truth for application configuration.
  */
 
-import { ImageResizerConfig, defaultConfig, getConfig } from '../config';
+import { ImageResizerConfig } from '../types/config';
+import { getConfig, defaultConfig } from '../config';
 import { ConfigurationService } from './interfaces';
 import { Logger } from '../utils/logging';
 import { Env } from '../types';
@@ -27,11 +28,26 @@ export class DefaultConfigurationService implements ConfigurationService {
    * 
    * @param logger Logger instance
    * @param env Environment variables
+   * @param initialConfig Optional pre-fetched configuration from KV store
    */
-  constructor(logger: Logger, env: Env) {
+  constructor(logger: Logger, env: Env, initialConfig?: ImageResizerConfig) {
     this.logger = logger;
     this.env = env;
-    this.config = this.loadConfigFromEnvironment(env);
+    
+    // Use the provided config if available, otherwise load from environment
+    if (initialConfig) {
+      this.config = initialConfig;
+      this.logger.debug('Configuration service initialized with pre-fetched config', {
+        source: 'kv-store',
+        environment: initialConfig.environment
+      });
+    } else {
+      this.config = this.loadConfigFromEnvironment(env);
+      this.logger.debug('Configuration service initialized from environment variables', {
+        source: 'environment',
+        environment: this.config.environment
+      });
+    }
     
     // Initialize environment-specific configurations
     this.environmentConfigs = {
@@ -202,15 +218,67 @@ export class DefaultConfigurationService implements ConfigurationService {
   }
 
   /**
-   * Reload configuration from environment variables
+   * Reload configuration
+   * 
+   * This method attempts to reload the configuration from the KV store via ConfigurationApiService
+   * if available, otherwise falls back to reloading from environment variables.
    * 
    * @returns Updated configuration
    */
-  reloadConfig(): ImageResizerConfig {
+  async reloadConfig(): Promise<ImageResizerConfig> {
+    try {
+      // Try to import ConfigurationApiService factory and create a service
+      const configStore = this.env.IMAGE_CONFIGURATION_STORE 
+        || this.env.IMAGE_CONFIGURATION_STORE_DEV 
+        || this.env.CONFIG_STORE;
+      
+      if (configStore) {
+        // Import dependencies dynamically to avoid circular dependencies
+        const { KVConfigStore } = await import('./config/KVConfigStore');
+        const { DefaultConfigurationApiService } = await import('./config/ConfigurationApiService');
+        const { getConfigWithFallback } = await import('./config/configBridge');
+        
+        // Create KV config store
+        const kvConfigStore = new KVConfigStore(configStore, this.logger);
+        
+        // Extract environment variables as a record for config value resolution
+        const envVars: Record<string, string> = {};
+        for (const key in this.env) {
+          if (Object.prototype.hasOwnProperty.call(this.env, key)) {
+            const value = this.env[key as keyof typeof this.env];
+            if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+              envVars[key] = String(value);
+            }
+          }
+        }
+        
+        // Create Configuration API service
+        const configApiService = new DefaultConfigurationApiService(kvConfigStore, envVars, this.logger);
+        
+        // Get config from KV with fallback to env vars
+        const newConfig = await getConfigWithFallback(configApiService, this.env, this.logger);
+        
+        this.config = newConfig;
+        
+        this.logger.info('Configuration reloaded from KV store', {
+          environment: this.config.environment,
+          configSource: 'kv'
+        });
+        
+        return this.config;
+      }
+    } catch (error) {
+      this.logger.error('Failed to reload configuration from KV store, falling back to environment variables', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+    
+    // Fallback to environment variables
     this.config = this.loadConfigFromEnvironment(this.env);
     
-    this.logger.debug('Configuration reloaded from environment', {
-      environment: this.config.environment
+    this.logger.debug('Configuration reloaded from environment variables', {
+      environment: this.config.environment,
+      configSource: 'environment'
     });
     
     return this.config;

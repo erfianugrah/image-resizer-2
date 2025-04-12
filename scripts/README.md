@@ -50,6 +50,17 @@ npm run config:get -- --environment prod
 
 # Create .env template
 npm run config:init-env
+
+# Module Management Commands
+npm run config:modules -- list                                      # List all available modules
+npm run config:modules -- get storage                               # Get a specific module
+npm run config:modules -- validate storage                          # Validate a module
+npm run config:modules -- update storage ./path/to/storage.json     # Update a module
+npm run config:modules -- upload-kv storage --env dev               # Upload a module to KV
+
+# Comprehensive Config Commands
+npm run config:comprehensive -- create                              # Create from modules
+npm run config:comprehensive -- extract ./path/to/config.json       # Extract modules
 ```
 
 ##### Command Options
@@ -84,7 +95,21 @@ node config-api-demo.js
 
 ## Configuration Files
 
-The configuration examples used by these scripts are located in the `/docs/public/configuration/examples/` directory:
+### Modular Configuration Structure
+
+The new modular configuration is organized in the `/config` directory:
+
+- Individual modules: `/config/modules/`
+  - Core module: `/config/modules/core.json`
+  - Storage module: `/config/modules/storage.json`
+  - Transform module: `/config/modules/transform.json`
+  - Cache module: `/config/modules/cache.json`
+  
+- Comprehensive configuration: `/config/comprehensive/complete-config.json`
+
+### Legacy Configuration Examples
+
+Legacy configuration examples used by these scripts are located in the `/docs/public/configuration/examples/` directory:
 
 - Authentication and path-based origins: `/docs/public/configuration/examples/auth-and-path-origins-config.json`
 - Comprehensive configuration: `/docs/public/configuration/examples/comprehensive-config-runnable.json`
@@ -93,6 +118,7 @@ The configuration examples used by these scripts are located in the `/docs/publi
 
 For more information about configuration options and the API, see:
 
-- [Configuration API Documentation](../docs/public/core/configuration-api.md)
-- [Configuration Reference](../docs/public/core/configuration-reference.md)
+- [Modular Configuration Guide](../docs/public/configuration/modular-config-guide.md)
+- [Configuration API Documentation](../docs/public/configuration/api.md)
+- [Configuration Reference](../docs/public/configuration/index.md)
 - [Configuration Examples](../docs/public/configuration/examples/)

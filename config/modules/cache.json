@@ -1,0 +1,105 @@
+{
+  "_meta": {
+    "name": "cache",
+    "version": "1.0.0",
+    "description": "Cache configuration module"
+  },
+  "config": {
+    "method": "cf",
+    "ttl": {
+      "default": 86400,
+      "status": {
+        "success": 86400,
+        "redirects": 3600,
+        "clientError": 60,
+        "serverError": 10
+      },
+      "contentType": {
+        "image/jpeg": 604800,
+        "image/png": 604800,
+        "image/webp": 604800,
+        "image/avif": 604800,
+        "image/gif": 604800,
+        "image/svg+xml": 2592000
+      }
+    },
+    "cacheEverything": true,
+    "useTtlByStatus": true,
+    "cacheTtlByStatus": {
+      "200-299": 604800,
+      "301-302": 86400,
+      "404": 60,
+      "500-599": 10
+    },
+    "cacheability": true,
+    "tags": {
+      "enabled": true,
+      "prefix": "img-",
+      "includeImageDimensions": true,
+      "includeFormat": true,
+      "includeQuality": true,
+      "includeDerivative": true,
+      "customTags": [],
+      "maxTags": 10
+    },
+    "bypass": {
+      "paths": [
+        "/admin/",
+        "/preview/",
+        "/draft/",
+        "/temp/",
+        "/test/"
+      ],
+      "params": [
+        "nocache",
+        "refresh",
+        "force-refresh"
+      ],
+      "inDevelopment": true,
+      "forAdmin": true,
+      "formats": []
+    },
+    "bypassParams": [
+      "nocache",
+      "refresh"
+    ],
+    "pathBasedTtl": {
+      "/products/": 86400,
+      "/profiles/": 1209600,
+      "/blog/": 86400,
+      "/static/": 2592000
+    },
+    "pathBasedTags": {
+      "/products/": [
+        "product",
+        "catalog"
+      ],
+      "/profiles/": [
+        "profile",
+        "avatar"
+      ],
+      "/blog/": [
+        "blog",
+        "content"
+      ],
+      "/static/": [
+        "static",
+        "assets"
+      ]
+    },
+    "transformCache": {
+      "enabled": true,
+      "binding": "IMAGE_TRANSFORMATIONS_CACHE",
+      "prefix": "transform",
+      "maxSize": 26214400,
+      "defaultTtl": 86400,
+      "backgroundIndexing": true,
+      "disallowedPaths": [
+        "/admin/",
+        "/preview/",
+        "/draft/",
+        "/temp/"
+      ]
+    }
+  }
+}

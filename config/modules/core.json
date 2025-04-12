@@ -1,0 +1,47 @@
+{
+  "_meta": {
+    "name": "core",
+    "version": "1.0.0",
+    "description": "Core configuration module for system-wide settings"
+  },
+  "config": {
+    "environment": "production",
+    "debug": {
+      "enabled": true,
+      "verbose": true,
+      "headers": [
+        "ir",
+        "cache",
+        "mode",
+        "client-hints",
+        "ua",
+        "device",
+        "strategy"
+      ],
+      "allowedEnvironments": [
+        "development",
+        "staging",
+        "production"
+      ],
+      "includePerformance": true
+    },
+    "features": {
+      "enableAkamaiCompatibility": true,
+      "enableAkamaiAdvancedFeatures": true,
+      "optimizedLogging": true,
+      "lazyServiceInitialization": true,
+      "optimizedClientDetection": true,
+      "optimizedCaching": true,
+      "optimizedMetadataFetching": true
+    },
+    "logging": {
+      "level": "DEBUG",
+      "includeTimestamp": true,
+      "enableStructuredLogs": true,
+      "enableBreadcrumbs": true,
+      "useLegacy": false,
+      "prettyPrint": true,
+      "colorize": true
+    }
+  }
+}
