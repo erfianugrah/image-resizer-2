@@ -648,11 +648,14 @@ export interface ConfigurationServiceCore {
   getDefaultConfig(): ImageResizerConfig;
   
   /**
-   * Reload configuration from environment variables
+   * Reload configuration
    * 
-   * @returns Updated configuration
+   * This method attempts to reload the configuration from the KV store via ConfigurationApiService
+   * if available, otherwise falls back to reloading from environment variables.
+   * 
+   * @returns Promise with the updated configuration
    */
-  reloadConfig(): ImageResizerConfig;
+  reloadConfig(): Promise<ImageResizerConfig>;
   
   /**
    * Get the path transformations for a specific origin type

@@ -50,6 +50,11 @@ program
   .description('TypeScript Configuration management CLI for image-resizer-2')
   .version('1.0.0');
 
+// Base paths for config files
+const configDir = path.resolve(process.cwd(), 'config');
+const modulesDir = path.resolve(configDir, 'modules');
+const comprehensiveDir = path.resolve(configDir, 'comprehensive');
+
 // Helper function to read a config file
 function readConfigFile(filePath: string): Record<string, any> {
   try {
@@ -383,6 +388,330 @@ program
       process.exit(1);
     }
   });
+
+// Module management commands
+program
+  .command('modules')
+  .description('Manage configuration modules')
+  .addCommand(
+    new Command('list')
+      .description('List all available configuration modules')
+      .action(() => {
+        try {
+          console.log(chalk.blue('Available configuration modules:'));
+          
+          // Create modules directory if it doesn't exist
+          if (!fs.existsSync(modulesDir)) {
+            console.log(chalk.yellow('Modules directory does not exist. Creating directory...'));
+            fs.mkdirSync(modulesDir, { recursive: true });
+          }
+          
+          // List files in the modules directory
+          const files = fs.readdirSync(modulesDir);
+          
+          if (files.length === 0) {
+            console.log(chalk.yellow('No modules found in the modules directory.'));
+            return;
+          }
+          
+          files.forEach(file => {
+            if (file.endsWith('.json')) {
+              const moduleName = path.basename(file, '.json');
+              const modulePath = path.join(modulesDir, file);
+              try {
+                const module = readConfigFile(modulePath);
+                console.log(`- ${chalk.green(moduleName)} (${chalk.yellow(module._meta?.version || 'unknown')}): ${module._meta?.description || 'No description'}`);
+              } catch (error) {
+                console.log(`- ${chalk.red(moduleName)} (Invalid module format)`);
+              }
+            }
+          });
+        } catch (error) {
+          console.error(chalk.red(`Error listing modules: ${error instanceof Error ? error.message : String(error)}`));
+          process.exit(1);
+        }
+      })
+  )
+  .addCommand(
+    new Command('get')
+      .description('Get a specific module configuration')
+      .argument('<name>', 'Name of the module to get')
+      .option('-o, --output <path>', 'Save output to file')
+      .action((moduleName, options) => {
+        try {
+          const modulePath = path.join(modulesDir, `${moduleName}.json`);
+          
+          if (!fs.existsSync(modulePath)) {
+            console.error(chalk.red(`Module ${moduleName} not found`));
+            process.exit(1);
+          }
+          
+          const module = readConfigFile(modulePath);
+          console.log(chalk.green(`Module ${moduleName} configuration:`));
+          const moduleJson = JSON.stringify(module, null, 2);
+          console.log(moduleJson);
+          
+          if (options.output) {
+            fs.writeFileSync(options.output, moduleJson);
+            console.log(chalk.blue(`Saved module ${moduleName} to ${options.output}`));
+          }
+        } catch (error) {
+          console.error(chalk.red(`Error retrieving module: ${error instanceof Error ? error.message : String(error)}`));
+          process.exit(1);
+        }
+      })
+  )
+  .addCommand(
+    new Command('update')
+      .description('Update a module configuration')
+      .argument('<name>', 'Name of the module to update')
+      .argument('<file>', 'Path to the new module configuration file')
+      .action((moduleName, filePath) => {
+        try {
+          const modulePath = path.join(modulesDir, `${moduleName}.json`);
+          const newModule = readConfigFile(filePath);
+          
+          // Basic validation
+          if (!newModule._meta || !newModule._meta.name || !newModule._meta.version) {
+            console.error(chalk.red('Invalid module format: Missing _meta information'));
+            process.exit(1);
+          }
+          
+          if (!newModule.config) {
+            console.error(chalk.red('Invalid module format: Missing config section'));
+            process.exit(1);
+          }
+          
+          // Create directory if it doesn't exist
+          if (!fs.existsSync(modulesDir)) {
+            fs.mkdirSync(modulesDir, { recursive: true });
+          }
+          
+          // Update the module name to match the parameter
+          newModule._meta.name = moduleName;
+          
+          // Write the updated module
+          fs.writeFileSync(modulePath, JSON.stringify(newModule, null, 2));
+          console.log(chalk.green(`Module ${moduleName} updated successfully`));
+        } catch (error) {
+          console.error(chalk.red(`Error updating module: ${error instanceof Error ? error.message : String(error)}`));
+          process.exit(1);
+        }
+      })
+  )
+  .addCommand(
+    new Command('validate')
+      .description('Validate a module configuration')
+      .argument('<name>', 'Name of the module to validate')
+      .argument('[file]', 'Path to the module configuration file (optional)')
+      .action((moduleName, filePath) => {
+        try {
+          let module;
+          
+          if (filePath) {
+            // Validate a file
+            module = readConfigFile(filePath);
+          } else {
+            // Validate an existing module
+            const modulePath = path.join(modulesDir, `${moduleName}.json`);
+            
+            if (!fs.existsSync(modulePath)) {
+              console.error(chalk.red(`Module ${moduleName} not found`));
+              process.exit(1);
+            }
+            
+            module = readConfigFile(modulePath);
+          }
+          
+          // Basic validation
+          const validationIssues = [];
+          
+          if (!module._meta) {
+            validationIssues.push('Missing _meta section');
+          } else {
+            if (!module._meta.name) validationIssues.push('Missing _meta.name');
+            if (!module._meta.version) validationIssues.push('Missing _meta.version');
+            if (!module._meta.description) validationIssues.push('Missing _meta.description');
+            
+            // Check if name matches the expected module name
+            if (module._meta.name !== moduleName) {
+              validationIssues.push(`Module name mismatch: Expected "${moduleName}", got "${module._meta.name}"`);
+            }
+          }
+          
+          if (!module.config) {
+            validationIssues.push('Missing config section');
+          }
+          
+          if (validationIssues.length > 0) {
+            console.error(chalk.red(`Validation failed for module ${moduleName}:`));
+            validationIssues.forEach(issue => {
+              console.error(chalk.red(`- ${issue}`));
+            });
+            process.exit(1);
+          }
+          
+          console.log(chalk.green(`Module ${moduleName} is valid`));
+        } catch (error) {
+          console.error(chalk.red(`Error validating module: ${error instanceof Error ? error.message : String(error)}`));
+          process.exit(1);
+        }
+      })
+  )
+  .addCommand(
+    new Command('upload-kv')
+      .description('Upload a specific module to KV store')
+      .argument('<name>', 'Name of the module to upload')
+      .requiredOption('-e, --env <environment>', 'Environment to use (dev, staging, prod)')
+      .option('-n, --namespace <namespace>', 'KV namespace ID or binding name', process.env.KV_NAMESPACE || 'IMAGE_CONFIGURATION_STORE')
+      .action((moduleName, options) => {
+        try {
+          const modulePath = path.join(modulesDir, `${moduleName}.json`);
+          
+          if (!fs.existsSync(modulePath)) {
+            console.error(chalk.red(`Module ${moduleName} not found`));
+            process.exit(1);
+          }
+          
+          const module = readConfigFile(modulePath);
+          
+          // Create temporary file for the value
+          const tempFilePath = path.join(
+            process.env.TMPDIR || process.env.TMP || '/tmp', 
+            `module-${moduleName}-${Date.now()}.json`
+          );
+          
+          // Write module to temporary file
+          fs.writeFileSync(tempFilePath, JSON.stringify(module, null, 2));
+          console.log(chalk.blue(`Wrote module to temporary file: ${chalk.cyan(tempFilePath)}`));
+          
+          // Create KV put command
+          const command = `wrangler kv:key put --binding=${options.namespace} config_module_${moduleName} --path=${tempFilePath} --env=${options.env}`;
+          console.log(chalk.blue(`Executing command: ${chalk.cyan(command)}`));
+          
+          // Execute command
+          const output = execSync(command, { encoding: 'utf8' });
+          console.log(output);
+          
+          console.log(chalk.green(
+            `Module ${moduleName} successfully loaded into KV namespace '${chalk.cyan(options.namespace)}' for environment '${chalk.cyan(options.env)}'`
+          ));
+          
+          // Clean up temporary file
+          fs.unlinkSync(tempFilePath);
+          console.log(chalk.blue(`Removed temporary file: ${chalk.cyan(tempFilePath)}`));
+        } catch (error) {
+          console.error(chalk.red(`Error uploading module to KV: ${error instanceof Error ? error.message : String(error)}`));
+          process.exit(1);
+        }
+      })
+  );
+
+// Comprehensive config commands
+program
+  .command('comprehensive')
+  .description('Manage comprehensive configuration')
+  .addCommand(
+    new Command('create')
+      .description('Create a comprehensive configuration from individual modules')
+      .option('-o, --output <path>', 'Output path for the comprehensive config', path.join(comprehensiveDir, 'complete-config.json'))
+      .action((options) => {
+        try {
+          // Create directory if it doesn't exist
+          const outputDir = path.dirname(options.output);
+          if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
+          }
+          
+          // Check if modules directory exists
+          if (!fs.existsSync(modulesDir)) {
+            console.error(chalk.red('Modules directory does not exist'));
+            process.exit(1);
+          }
+          
+          const files = fs.readdirSync(modulesDir);
+          const moduleFiles = files.filter(file => file.endsWith('.json'));
+          
+          if (moduleFiles.length === 0) {
+            console.error(chalk.red('No module files found'));
+            process.exit(1);
+          }
+          
+          // Create comprehensive config structure
+          const comprehensiveConfig = {
+            _meta: {
+              version: '1.0.0',
+              lastUpdated: new Date().toISOString(),
+              activeModules: []
+            },
+            modules: {}
+          };
+          
+          // Load and add each module
+          moduleFiles.forEach(file => {
+            const moduleName = path.basename(file, '.json');
+            const modulePath = path.join(modulesDir, file);
+            
+            try {
+              const module = readConfigFile(modulePath);
+              comprehensiveConfig.modules[moduleName] = module;
+              comprehensiveConfig._meta.activeModules.push(moduleName);
+              console.log(chalk.blue(`Added module ${chalk.cyan(moduleName)}`));
+            } catch (error) {
+              console.warn(chalk.yellow(`Skipping invalid module ${moduleName}: ${error instanceof Error ? error.message : String(error)}`));
+            }
+          });
+          
+          // Save the comprehensive config
+          fs.writeFileSync(options.output, JSON.stringify(comprehensiveConfig, null, 2));
+          console.log(chalk.green(`Created comprehensive configuration at ${options.output}`));
+          console.log(chalk.blue(`Included modules: ${comprehensiveConfig._meta.activeModules.join(', ')}`));
+        } catch (error) {
+          console.error(chalk.red(`Error creating comprehensive config: ${error instanceof Error ? error.message : String(error)}`));
+          process.exit(1);
+        }
+      })
+  )
+  .addCommand(
+    new Command('extract')
+      .description('Extract individual modules from a comprehensive configuration')
+      .argument('<file>', 'Path to the comprehensive configuration file')
+      .option('-o, --output-dir <path>', 'Output directory for the modules', modulesDir)
+      .action((filePath, options) => {
+        try {
+          const config = readConfigFile(filePath);
+          
+          // Validate that it's a comprehensive config
+          if (!config.modules || !config._meta || !config._meta.activeModules) {
+            console.error(chalk.red('Not a valid comprehensive configuration: missing modules or _meta section'));
+            process.exit(1);
+          }
+          
+          // Create output directory if it doesn't exist
+          if (!fs.existsSync(options.outputDir)) {
+            fs.mkdirSync(options.outputDir, { recursive: true });
+          }
+          
+          // Extract each module
+          let extractedCount = 0;
+          for (const [moduleName, module] of Object.entries(config.modules)) {
+            try {
+              const outputPath = path.join(options.outputDir, `${moduleName}.json`);
+              fs.writeFileSync(outputPath, JSON.stringify(module, null, 2));
+              console.log(chalk.blue(`Extracted module ${chalk.cyan(moduleName)} to ${outputPath}`));
+              extractedCount++;
+            } catch (error) {
+              console.warn(chalk.yellow(`Failed to extract module ${moduleName}: ${error instanceof Error ? error.message : String(error)}`));
+            }
+          }
+          
+          console.log(chalk.green(`Extracted ${extractedCount} modules from comprehensive configuration`));
+        } catch (error) {
+          console.error(chalk.red(`Error extracting modules: ${error instanceof Error ? error.message : String(error)}`));
+          process.exit(1);
+        }
+      })
+  );
 
 // Parse command line arguments
 program.parse();

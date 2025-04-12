@@ -11,9 +11,9 @@ The [Configuration API](./api.md) provides a dynamic, modular approach to config
 - Schema validation
 - Module-based organization
 
-## Simplified Structure
+## Modular Structure
 
-The configuration system uses a simplified structure that balances flexibility and maintainability:
+The configuration system uses a modular structure that balances flexibility and maintainability:
 
 - **Core Module**: Environment, debug settings, and feature flags
 - **Transform Module**: Image transformation settings
@@ -22,6 +22,13 @@ The configuration system uses a simplified structure that balances flexibility a
 - **Client Module**: Client detection and responsive settings
 - **Security Module**: Security headers and access control
 - **Monitoring Module**: Performance tracking and error reporting
+
+Our [Modular Configuration Guide](./modular-config-guide.md) explains how to work with individual configuration modules, including how to:
+
+- Manage module configurations independently
+- Create comprehensive configurations from modules
+- Use the configuration CLI tool
+- Upload modules to KV storage
 
 ## Example Configuration
 
@@ -85,11 +92,21 @@ Configuration values can reference environment variables using `${VAR_NAME}` syn
    ]
    ```
 
-3. Upload your initial configuration using the CLI tool or API
+3. Upload your initial configuration using the config-loader CLI tool:
+   ```
+   # Upload individual modules
+   npx ts-node scripts/config-loader.ts modules upload-kv core --env dev
+   npx ts-node scripts/config-loader.ts modules upload-kv storage --env dev
+   
+   # Or upload a comprehensive config
+   npx ts-node scripts/config-loader.ts load-kv config/comprehensive/complete-config.json --env dev
+   ```
 
 ## Further Reading
 
+- [Modular Configuration Guide](./modular-config-guide.md)
 - [Configuration API Documentation](./api.md)
 - [Schema Reference](./schema.md)
-- [Migration Guide](./migration.md)
+- [Migration Guide](./migration-guide.md)
 - [Migration Example](./migration-example.md)
+- [Example Configurations](./examples/index.md)

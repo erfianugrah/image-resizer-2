@@ -70,7 +70,7 @@
 					"fallback"
 				],
 				"r2": {
-					"enabled": true,
+					"enabled": false,
 					"bindingName": "IMAGES_BUCKET"
 				},
 				"remote": {

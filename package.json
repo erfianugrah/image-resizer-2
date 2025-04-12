@@ -22,7 +22,16 @@
 		"config:activate": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts activate",
 		"config:init-env": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts init-env",
 		"config:load-initial": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts load-kv ./docs/public/configuration/examples/templates/initial-config.json --env dev",
-		"config:load-production": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts load-kv ./docs/public/configuration/examples/templates/production-config.json --env production"
+		"config:load-production": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts load-kv ./docs/public/configuration/examples/templates/production-config.json --env production",
+		"config:modules": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts modules",
+		"config:modules:list": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts modules list",
+		"config:modules:get": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts modules get",
+		"config:modules:validate": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts modules validate",
+		"config:modules:upload-kv": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts modules upload-kv",
+		"config:comprehensive": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts comprehensive",
+		"config:comprehensive:create": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts comprehensive create",
+		"config:comprehensive:extract": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts comprehensive extract",
+		"config:fix-storage": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts modules upload-kv storage --env dev"
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.7.5",

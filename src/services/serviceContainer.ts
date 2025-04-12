@@ -6,6 +6,7 @@
 export type { ServiceContainer } from './interfaces';
 
 import { Env } from '../types';
+import type { ImageResizerConfig } from '../types/config';
 import { createLogger } from '../utils/logger-factory';
 import { 
   AuthService,
@@ -43,9 +44,7 @@ import { ConfigStoreInterface, ConfigurationApiService } from './config/interfac
  * @returns Service container with all services
  */
 export async function createServiceContainer(env: Env, initializeLifecycle = false): Promise<ServiceContainer> {
-  // Create the configuration service first
-  // Create a minimal logger for bootstrapping the configuration service
-  // We're using any here because we need to bootstrap without a full config
+  // Create a minimal logger for bootstrapping
   const bootstrapConfig = { 
     environment: 'dev',
     debug: { enabled: true },
@@ -65,8 +64,72 @@ export async function createServiceContainer(env: Env, initializeLifecycle = fal
   // Create a temporary logger for bootstrapping, using optimized logging
   const configLogger = createLogger(bootstrapConfig, 'ConfigurationService', true);
   
-  // Initialize the configuration service
-  const configurationService: ConfigurationService = new DefaultConfigurationService(configLogger, env);
+  // We now have the type imported at the module level
+  
+  // Prioritize KV configs
+  const configNamespace = env.ENVIRONMENT === 'development' && env.IMAGE_CONFIGURATION_STORE_DEV
+    ? env.IMAGE_CONFIGURATION_STORE_DEV
+    : env.IMAGE_CONFIGURATION_STORE || env.CONFIG_STORE;
+  
+  // Create objects to store services and configs
+  const configServices = {
+    kvConfigStore: undefined as ConfigStoreInterface | undefined,
+    configApiService: undefined as ConfigurationApiService | undefined,
+    configFromKV: undefined as ImageResizerConfig | undefined
+  };
+  
+  // If KV namespace is available, create the config services
+  if (configNamespace) {
+    const kvsLogger = createLogger(bootstrapConfig, 'KVConfigStore', true);
+    
+    // Create KV store and Configuration API service
+    configServices.kvConfigStore = new KVConfigStore(configNamespace, kvsLogger);
+    
+    // Extract environment variables as a record for config value resolution
+    const envVars: Record<string, string> = {};
+    for (const key in env) {
+      if (Object.prototype.hasOwnProperty.call(env, key)) {
+        const value = env[key as keyof typeof env];
+        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+          envVars[key] = String(value);
+        }
+      }
+    }
+    
+    const apiLogger = createLogger(bootstrapConfig, 'ConfigApiService', true);
+    configServices.configApiService = new DefaultConfigurationApiService(
+      configServices.kvConfigStore, 
+      envVars, 
+      apiLogger
+    );
+    
+    // Try to fetch the configuration from the KV store
+    try {
+      // Import configBridge dynamically to avoid circular dependencies
+      const { getConfigWithFallback } = await import('./config/configBridge');
+      
+      // Get config from KV with fallback to env vars
+      configServices.configFromKV = await getConfigWithFallback(configServices.configApiService, env, configLogger);
+      
+      configLogger.info('Successfully loaded configuration from KV store', {
+        environment: configServices.configFromKV.environment,
+        configSource: 'kv'
+      });
+    } catch (error) {
+      configLogger.error('Failed to load configuration from KV store, will use environment variables', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+  
+  // Initialize the configuration service with either KV config or environment vars
+  const configurationService: ConfigurationService = new DefaultConfigurationService(
+    configLogger, 
+    env,
+    configServices.configFromKV // Pass the KV config if available
+  );
+  
+  // Get the final configuration
   const config = configurationService.getConfig();
   
   // Create the logging service
@@ -165,49 +228,16 @@ export async function createServiceContainer(env: Env, initializeLifecycle = fal
   // Connect the metadata service to the transformation service
   transformationService.setMetadataService(metadataService);
   
-  // Create configuration store service
-  let configStore: KVNamespace | undefined;
-  const configStoreLogger = loggingService.getLogger('KVConfigStore');
-  
-  // Check if we're in development mode
-  if (env.ENVIRONMENT === 'development' && env.IMAGE_CONFIGURATION_STORE_DEV) {
-    configStore = env.IMAGE_CONFIGURATION_STORE_DEV;
-    configStoreLogger.debug('Using development configuration store binding: IMAGE_CONFIGURATION_STORE_DEV');
-  }
-  // Otherwise, use the production binding
-  else if (env.IMAGE_CONFIGURATION_STORE) {
-    configStore = env.IMAGE_CONFIGURATION_STORE;
-    configStoreLogger.debug('Using production configuration store binding: IMAGE_CONFIGURATION_STORE');
-  }
-  // Legacy fallback for backward compatibility
-  else if (env.CONFIG_STORE) {
-    configStore = env.CONFIG_STORE;
-    configStoreLogger.warn('Using deprecated CONFIG_STORE binding - please update to IMAGE_CONFIGURATION_STORE');
+  // Use the config store services created earlier
+  // If we have a KV namespace, create KVConfigStore and ConfigApiService if not already created
+  if (!configServices.kvConfigStore && configNamespace) {
+    const kvLogger = loggingService.getLogger('KVConfigStore');
+    configServices.kvConfigStore = new KVConfigStore(configNamespace, kvLogger);
   }
   
-  // Create the KV config store if binding is available
-  let kvConfigStore: ConfigStoreInterface | undefined;
-  let configApiService: ConfigurationApiService | undefined;
-  
-  if (configStore) {
-    kvConfigStore = new KVConfigStore(configStore, configStoreLogger);
-    
-    // Create Configuration API service
-    const configApiLogger = loggingService.getLogger('ConfigApiService');
-    
-    // Extract environment variables as a record for config value resolution
-    const envVars: Record<string, string> = {};
-    for (const key in env) {
-      if (Object.prototype.hasOwnProperty.call(env, key)) {
-        const value = env[key as keyof typeof env];
-        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-          envVars[key] = String(value);
-        }
-      }
-    }
-    
-    configApiService = new DefaultConfigurationApiService(kvConfigStore, envVars, configApiLogger);
-  }
+  // Set the container's KV store and API service to the ones we created earlier
+  const kvConfigStore = configServices.kvConfigStore;
+  const configApiService = configServices.configApiService;
 
   // Create the service container
   const container: ServiceContainer = {

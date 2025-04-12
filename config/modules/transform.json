@@ -1,0 +1,88 @@
+{
+  "_meta": {
+    "name": "transform",
+    "version": "1.0.0",
+    "description": "Transformation configuration module for image processing"
+  },
+  "config": {
+    "defaults": {
+      "quality": 85,
+      "format": "auto",
+      "fit": "scale-down",
+      "metadata": "none"
+    },
+    "formatQuality": {
+      "webp": 85,
+      "avif": 80,
+      "jpeg": 85,
+      "png": 90,
+      "gif": 85
+    },
+    "derivatives": {
+      "thumbnail": {
+        "width": 320,
+        "height": 150,
+        "fit": "cover",
+        "gravity": "auto"
+      },
+      "avatar": {
+        "width": 180,
+        "height": 180,
+        "fit": "cover",
+        "gravity": "face"
+      },
+      "banner": {
+        "width": 1600,
+        "height": 400,
+        "fit": "cover",
+        "gravity": "auto"
+      },
+      "product": {
+        "width": 800,
+        "height": 800,
+        "fit": "contain",
+        "background": "white"
+      },
+      "og": {
+        "width": 1200,
+        "height": 630,
+        "fit": "cover",
+        "gravity": "auto"
+      },
+      "twitter": {
+        "width": 1200,
+        "height": 600,
+        "fit": "cover",
+        "gravity": "auto"
+      },
+      "mobile": {
+        "width": 480,
+        "format": "auto",
+        "quality": 80
+      },
+      "desktop": {
+        "width": 1440,
+        "format": "auto",
+        "quality": 85
+      }
+    },
+    "sizeCodes": {
+      "xxu": 40,
+      "xu": 80,
+      "u": 160,
+      "xxxs": 300,
+      "xxs": 400,
+      "xs": 500,
+      "s": 600,
+      "m": 700,
+      "l": 750,
+      "xl": 900,
+      "xxl": 1100,
+      "xxxl": 1400,
+      "sg": 1600,
+      "g": 2000,
+      "xg": 3000,
+      "xxg": 4000
+    }
+  }
+}
