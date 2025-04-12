@@ -14,12 +14,14 @@ import { ServiceContainer, MetadataProcessingOptions } from '../services/interfa
  * @param request Original request
  * @param env Environment variables
  * @param services Service container
+ * @param config Application configuration (optional, will be fetched if not provided)
  * @returns Response with transformed image
  */
 export async function handleMetadataTransformation(
   request: Request,
   env: Env,
-  services: ServiceContainer
+  services: ServiceContainer,
+  config?: any
 ): Promise<Response> {
   const { 
     logger, 
@@ -33,7 +35,10 @@ export async function handleMetadataTransformation(
   }
   
   try {
-    const config = configurationService.getConfig();
+    // Use provided config or get it from the service if not provided
+    if (!config) {
+      config = configurationService.getConfig();
+    }
     
     // Only proceed if metadata service is enabled
     if (!config.metadata?.enabled) {

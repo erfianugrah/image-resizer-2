@@ -160,7 +160,8 @@ export default {
             request,
             services,
             env,
-            ctx
+            ctx,
+            config
           );
           
           performanceMonitor.endOperation("transform_cache_debug", {
@@ -193,6 +194,7 @@ export default {
       const performanceResponse = await handlePerformanceReport(
         request,
         services,
+        config
       );
       if (performanceResponse) {
         performanceMonitor.endOperation("total", {
@@ -206,7 +208,7 @@ export default {
       }
 
       // Check for performance reset request
-      const resetResponse = await handlePerformanceReset(request, services);
+      const resetResponse = await handlePerformanceReset(request, services, config);
       if (resetResponse) {
         performanceMonitor.endOperation("total", { type: "performance_reset" });
         performanceMonitor.endRequest({
@@ -250,6 +252,7 @@ export default {
             request,
             env,
             services,
+            config
           );
 
           performanceMonitor.endOperation("metadata_transform", {
@@ -342,7 +345,7 @@ export default {
       // Handle Akamai compatibility if applicable
       performanceMonitor.startOperation("akamai_compat");
       const isAkamai = isAkamaiFormat(url);
-      url = handleAkamaiCompatibility(request, url, services);
+      url = handleAkamaiCompatibility(request, url, services, config);
       performanceMonitor.endOperation("akamai_compat", { used: isAkamai });
 
       // Process the image transformation request
@@ -352,6 +355,7 @@ export default {
         url,
         services,
         metrics,
+        config
       );
       performanceMonitor.endOperation("image_request", {
         status: finalResponse.status,

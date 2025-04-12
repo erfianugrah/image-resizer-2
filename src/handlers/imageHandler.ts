@@ -18,16 +18,21 @@ import { createPerformanceLogger } from '../utils/logger-factory';
  * @param url The URL to process
  * @param services Service container
  * @param metrics Performance metrics
+ * @param config Application configuration (optional, will be fetched if not provided)
  * @returns Response with the transformed image
  */
 export async function handleImageRequest(
   request: Request,
   url: URL,
   services: ServiceContainer,
-  metrics: PerformanceMetrics
+  metrics: PerformanceMetrics,
+  config?: any
 ): Promise<Response> {
+  // Use provided config or get it from the service if not provided
   const { configurationService } = services;
-  const config = configurationService.getConfig();
+  if (!config) {
+    config = configurationService.getConfig();
+  }
   
   // Create a performance-enhanced logger
   const logger = createPerformanceLogger(config, 'imageHandler', undefined, true) as any;
