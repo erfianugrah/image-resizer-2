@@ -13,15 +13,21 @@ import { isAkamaiFormat, createTranslatedUrl } from '../utils/akamai-compatibili
  * @param request The original request
  * @param url The URL of the request
  * @param services Services container
+ * @param config Application configuration (optional, will be fetched if not provided)
  * @returns Modified URL if Akamai format detected, or original URL
  */
 export function handleAkamaiCompatibility(
   request: Request,
   url: URL,
-  services: ServiceContainer
+  services: ServiceContainer,
+  config?: any
 ): URL {
   const { logger, configurationService } = services;
-  const config = configurationService.getConfig();
+  
+  // Use provided config or get it from the service if not provided
+  if (!config) {
+    config = configurationService.getConfig();
+  }
   
   // Check for Akamai compatibility mode using the configuration service
   if (!configurationService.isFeatureEnabled('enableAkamaiCompatibility')) {

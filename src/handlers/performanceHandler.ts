@@ -15,14 +15,20 @@ import { PerformanceBaseline } from '../utils/performance-metrics';
  * 
  * @param request Original request
  * @param services Service container
+ * @param config Application configuration (optional, will be fetched if not provided)
  * @returns Response with performance report, or null if not a performance report request
  */
 export async function handlePerformanceReport(
   request: Request,
-  services: ServiceContainer
+  services: ServiceContainer,
+  config?: any
 ): Promise<Response | null> {
   const { logger, configurationService } = services;
-  const config = configurationService.getConfig();
+  
+  // Use provided config or get it from the service if not provided
+  if (!config) {
+    config = configurationService.getConfig();
+  }
   const url = new URL(request.url);
   
   // Check if this is a performance report request
@@ -58,14 +64,20 @@ export async function handlePerformanceReport(
  * 
  * @param request Original request
  * @param services Service container
+ * @param config Application configuration (optional, will be fetched if not provided)
  * @returns Response confirming reset, or null if not a reset request
  */
 export async function handlePerformanceReset(
   request: Request,
-  services: ServiceContainer
+  services: ServiceContainer,
+  config?: any
 ): Promise<Response | null> {
   const { logger, configurationService } = services;
-  const config = configurationService.getConfig();
+  
+  // Use provided config or get it from the service if not provided
+  if (!config) {
+    config = configurationService.getConfig();
+  }
   const url = new URL(request.url);
   
   // Check if this is a performance reset request

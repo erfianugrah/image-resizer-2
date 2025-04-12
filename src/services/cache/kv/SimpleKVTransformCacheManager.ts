@@ -304,6 +304,21 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       return false;
     }
     
+    // Early return for metadata requests (format=json)
+    // These are handled by the metadata service with its own caching mechanism
+    const requestedFormatParam = url.searchParams.get('format');
+    const requestedOptionsFormat = transformOptions.format;
+    
+    if (requestedFormatParam === 'json' || requestedOptionsFormat === 'json') {
+      this.logDebug('KV transform cache: Skipping lookup for format=json request', { 
+        operation: 'kv_json_bypass',
+        url: url.toString(),
+        durationMs: Date.now() - startTime
+      });
+      // Return immediately for JSON requests
+      return false;
+    }
+    
     // Track formats we've already checked to avoid duplicates
     const checkedFormats = new Set<string>();
     
@@ -534,6 +549,21 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
         path: url.pathname,
         durationMs: 0
       });
+      return null;
+    }
+    
+    // Early return for metadata requests (format=json)
+    // These are handled by the metadata service with its own caching mechanism
+    const requestedFormatParam = url.searchParams.get('format');
+    const requestedOptionsFormat = transformOptions.format;
+    
+    if (requestedFormatParam === 'json' || requestedOptionsFormat === 'json') {
+      this.logDebug('KV transform cache: Skipping lookup for format=json request', { 
+        operation: 'kv_json_bypass',
+        url: url.toString(),
+        durationMs: Date.now() - startTime
+      });
+      // Return immediately for JSON requests
       return null;
     }
     

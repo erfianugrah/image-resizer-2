@@ -20,16 +20,22 @@ import { ServiceContainer } from '../services/interfaces';
  * @param serviceContainer Service container
  * @param env Environment variables
  * @param ctx Execution context
+ * @param config Application configuration (optional, will be fetched if not provided)
  * @returns Response with debug information
  */
 export async function transformCacheDebugHandler(
   request: Request,
   serviceContainer: ServiceContainer,
   env: any,
-  ctx: ExecutionContext
+  ctx: ExecutionContext,
+  config?: any
 ): Promise<Response> {
   const { cacheService, configurationService, debugService } = serviceContainer;
-  const config = configurationService.getConfig();
+  
+  // Use provided config or get it from the service if not provided
+  if (!config) {
+    config = configurationService.getConfig();
+  }
   
   // Only allow if debug is enabled
   if (!debugService.isDebugEnabled(request, config)) {
