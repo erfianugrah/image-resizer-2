@@ -1,120 +1,180 @@
-# Image Resizer Scripts
+# Configuration Management
 
-This directory contains utility scripts for managing, testing, and deploying the Image Resizer service.
+This guide provides a streamlined approach to managing configuration for the Image Resizer system.
 
-## Configuration Management Scripts
+## Quick Start
 
-### TypeScript Configuration Loader CLI
+| Task | Command | Description |
+|------|---------|-------------|
+| **Deploy all modules** | `npm run config:deploy` | Upload all modules to production |
+| **Deploy to dev** | `npm run config:deploy:dev` | Upload all modules to development |
+| **Update storage** | `npm run config:update:storage` | Update storage module in production |
+| **Fix issues** | `npm run config:fix` | Complete configuration repair |
+| **View configuration** | `npm run config:get -- -e production` | View active configuration |
+| **List modules** | `npm run config:list` | Show all available modules |
+| **Diagnose issues** | `npm run config:diagnose` | Diagnose and fix configuration |
 
-The `config-loader.ts` script provides a robust TypeScript-based CLI for managing configuration:
+## Configuration Structure
 
-#### Prerequisites
+The configuration system uses a modular approach:
 
-Make sure you have the required dependencies:
+- **Individual Modules** (`/config/modules/`):
+  - `core.json`: Core application settings
+  - `storage.json`: Storage configuration (R2, remote URLs, fallbacks)
+  - `transform.json`: Image transformation settings
+  - `cache.json`: Caching behavior and settings
+
+- **Comprehensive Configuration**:
+  `/config/comprehensive/complete-config.json`: Combined configuration file
+
+## Common Workflows
+
+### Initial Setup
 
 ```bash
-npm install --save-dev commander chalk node-fetch dotenv ts-node typescript @types/node @types/node-fetch
+# One-step deployment to development
+npm run config:deploy:dev
+
+# Once tested, deploy to production
+npm run config:deploy
 ```
 
-#### Configuration
+These commands handle everything automatically - they create the comprehensive configuration from modules, upload it to KV, and set it as the active configuration.
 
-Configuration is managed through:
-- Environment variables
-- `.env` file (use `config:init-env` command to create a template)
-- Command-line flags
+### Making Changes to Configuration
 
-##### Environment Variables
-
-The CLI uses standardized environment variable names:
-
-| Environment                   | URL Variable             | API Key Variable         |
-|------------------------------|-------------------------|-------------------------|
-| dev, development             | CONFIG_API_URL_DEV      | CONFIG_API_KEY_DEV      |
-| staging, stage               | CONFIG_API_URL_STAGING  | CONFIG_API_KEY_STAGING  |
-| prod, production             | CONFIG_API_URL_PROD     | CONFIG_API_KEY_PROD     |
-| other                        | CONFIG_API_URL_[ENV]    | CONFIG_API_KEY_[ENV]    |
-
-The tool automatically normalizes environment names (e.g., "production" → "PROD") and falls back to default variables (CONFIG_API_URL, CONFIG_API_KEY) if environment-specific ones aren't found.
-
-#### Commands
+1. Edit the module file directly in the `config/modules/` directory
+2. Then deploy the specific module:
 
 ```bash
-# Post configuration to API
-npm run config:post -- ./path/to/config.json --environment dev
+# For storage module in production (default)
+npm run config:update:storage
 
-# Load configuration to KV
-npm run config:load-kv -- ./path/to/config.json --env dev
+# For storage module in development
+npm run config:update:storage:dev
+```
 
-# Get current configuration
-npm run config:get -- --environment prod
+When you update individual modules, the system automatically sets the configuration as active. There's no need for a separate activation step.
 
-# Create .env template
+## Module Management
+
+### Updating Modules
+
+Edit the module file in `/config/modules/` and then update:
+
+```bash
+# Update specific modules (defaults to production)
+npm run config:update:storage     # Update storage module
+npm run config:update:transform   # Update transform module
+npm run config:update:cache       # Update cache module
+npm run config:update:core        # Update core module
+
+# Specify development environment
+npm run config:update:storage:dev # Update in development
+```
+
+### Viewing and Diagnosing
+
+```bash
+# List all modules
+npm run config:list
+
+# View current configuration
+npm run config:get -- -e production
+
+# Diagnose and fix issues
+npm run config:diagnose
+npm run config:fix
+```
+
+## Module Structure
+
+Each module follows a standard structure with metadata and configuration:
+
+```json
+{
+  "_meta": {
+    "name": "module-name",
+    "version": "1.0.0",
+    "description": "Module description"
+  },
+  "config": {
+    // Module-specific configuration
+  }
+}
+```
+
+The comprehensive configuration combines all modules:
+
+```json
+{
+  "_meta": {
+    "version": "1.0.0",
+    "lastUpdated": "2025-04-12T10:00:00.000Z",
+    "activeModules": ["core", "storage", "transform", "cache"]
+  },
+  "modules": {
+    "core": { /* core module */ },
+    "storage": { /* storage module */ },
+    "transform": { /* transform module */ },
+    "cache": { /* cache module */ }
+  }
+}
+```
+
+## Advanced Usage
+
+### Advanced Commands
+
+For more advanced use cases, you can use the CLI directly:
+
+```bash
+# Direct CLI usage
+npm run config -- modules upload-kv storage --env production
+
+# Get help for specific commands
+npm run config -- modules --help
+npm run config -- comprehensive --help
+```
+
+### Module Validation and Management
+
+```bash
+# Validate a module
+npm run config:modules:validate -- storage
+
+# Extract modules from a comprehensive config
+npm run config:comprehensive:extract -- path/to/config.json
+```
+
+### Environment Setup
+
+Initialize environment variables for the CLI:
+
+```bash
 npm run config:init-env
-
-# Module Management Commands
-npm run config:modules -- list                                      # List all available modules
-npm run config:modules -- get storage                               # Get a specific module
-npm run config:modules -- validate storage                          # Validate a module
-npm run config:modules -- update storage ./path/to/storage.json     # Update a module
-npm run config:modules -- upload-kv storage --env dev               # Upload a module to KV
-
-# Comprehensive Config Commands
-npm run config:comprehensive -- create                              # Create from modules
-npm run config:comprehensive -- extract ./path/to/config.json       # Extract modules
 ```
 
-##### Command Options
+This creates a `.env.example` file with the required variables:
+- `CONFIG_API_URL_[ENV]` - API URL for each environment
+- `CONFIG_API_KEY_[ENV]` - API key for each environment
+- `KV_NAMESPACE` - KV namespace for configuration storage
+- `KV_KEY` - Default key for storing configuration
 
-All commands support the following options:
+### KV Storage Structure
 
-- `--environment <env>` - Target environment (dev, staging, prod)
-- `--api-key <key>` - Override API key from .env file
-- `--api-url <url>` - Override API URL from .env file
+When uploading modules to the KV store, they are stored with keys in the format:
 
-The CLI will first check for command-line arguments, then environment-specific variables, and finally fall back to default variables.
+- `config_module_core` - Core module
+- `config_module_storage` - Storage module
+- `config_module_transform` - Transform module
+- `config_module_cache` - Cache module
 
-Run with `--help` for more details on each command:
+The comprehensive configuration is stored as a versioned key:
+- `config_v1`, `config_v2`, etc. - Configuration versions
+- `config_current` - Points to the active version
 
-```bash
-npm run config:post -- --help
-npm run config:get -- --help
-npm run config:load-kv -- --help
-```
-
-### Additional Scripts
-
-#### Configuration API Demo
-
-- `config-api-demo.js`: Demonstrates programmatic usage of the Configuration API
-
-Usage:
-```bash
-# Run the Configuration API demo
-node config-api-demo.js
-```
-
-## Configuration Files
-
-### Modular Configuration Structure
-
-The new modular configuration is organized in the `/config` directory:
-
-- Individual modules: `/config/modules/`
-  - Core module: `/config/modules/core.json`
-  - Storage module: `/config/modules/storage.json`
-  - Transform module: `/config/modules/transform.json`
-  - Cache module: `/config/modules/cache.json`
-  
-- Comprehensive configuration: `/config/comprehensive/complete-config.json`
-
-### Legacy Configuration Examples
-
-Legacy configuration examples used by these scripts are located in the `/docs/public/configuration/examples/` directory:
-
-- Authentication and path-based origins: `/docs/public/configuration/examples/auth-and-path-origins-config.json`
-- Comprehensive configuration: `/docs/public/configuration/examples/comprehensive-config-runnable.json`
-
-## Documentation
+## Additional Documentation
 
 For more information about configuration options and the API, see:
 

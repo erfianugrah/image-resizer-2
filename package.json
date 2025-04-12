@@ -16,22 +16,53 @@
 		"build": "node scripts/generate-browser-support.js && npx esbuild src/index.ts --bundle --format=esm --outfile=dist/index.js",
 		"cf-typegen": "wrangler types",
 		"update-browser-support": "node scripts/generate-browser-support.js",
-		"config:post": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts post",
-		"config:get": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts get",
-		"config:load-kv": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts load-kv",
-		"config:activate": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts activate",
-		"config:init-env": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts init-env",
-		"config:load-initial": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts load-kv ./docs/public/configuration/examples/templates/initial-config.json --env dev",
-		"config:load-production": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts load-kv ./docs/public/configuration/examples/templates/production-config.json --env production",
-		"config:modules": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts modules",
-		"config:modules:list": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts modules list",
-		"config:modules:get": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts modules get",
-		"config:modules:validate": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts modules validate",
-		"config:modules:upload-kv": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts modules upload-kv",
-		"config:comprehensive": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts comprehensive",
-		"config:comprehensive:create": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts comprehensive create",
-		"config:comprehensive:extract": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts comprehensive extract",
-		"config:fix-storage": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts modules upload-kv storage --env dev"
+		
+		"config": "NODE_OPTIONS=--experimental-specifier-resolution=node ts-node scripts/config-loader.ts",
+		"config:help": "npm run config -- --help",
+		
+		"config:deploy": "npm run config:deploy:prod",
+		"config:deploy:dev": "npm run config:comprehensive:create && npm run config:load-kv -- ./config/comprehensive/complete-config.json --env dev && npm run config:diagnose:dev",
+		"config:deploy:prod": "npm run config:comprehensive:create && npm run config:load-kv -- ./config/comprehensive/complete-config.json --env production && npm run config:diagnose:prod",
+		
+		"config:update:core": "npm run config:update:core:prod",
+		"config:update:core:dev": "npm run config -- modules upload-kv core --env dev",
+		"config:update:core:prod": "npm run config -- modules upload-kv core --env production",
+		"config:update:storage": "npm run config:update:storage:prod",
+		"config:update:storage:dev": "npm run config -- modules upload-kv storage --env dev",
+		"config:update:storage:prod": "npm run config -- modules upload-kv storage --env production",
+		"config:update:transform": "npm run config:update:transform:prod",
+		"config:update:transform:dev": "npm run config -- modules upload-kv transform --env dev",
+		"config:update:transform:prod": "npm run config -- modules upload-kv transform --env production",
+		"config:update:cache": "npm run config:update:cache:prod",
+		"config:update:cache:dev": "npm run config -- modules upload-kv cache --env dev",
+		"config:update:cache:prod": "npm run config -- modules upload-kv cache --env production",
+		
+		"config:list": "npm run config -- modules list",
+		"config:get": "npm run config -- get",
+		"config:diagnose": "npm run config:diagnose:prod",
+		"config:diagnose:dev": "npm run config -- diagnose --env dev",
+		"config:diagnose:prod": "npm run config -- diagnose --env production",
+		
+		"config:comprehensive:create": "npm run config -- comprehensive create",
+		"config:comprehensive:extract": "npm run config -- comprehensive extract",
+		
+		"config:fix": "npm run config:fix-all:prod",
+		"config:fix-all:prod": "npm run config:deploy:prod && npm run config:diagnose:prod",
+		"config:set-current:dev": "npm run config -- set-current v1 --env dev",
+		"config:set-current:prod": "npm run config -- set-current v1 --env production",
+		"config:init-env": "npm run config -- init-env",
+		
+		"config:post": "npm run config -- post",
+		"config:load-kv": "npm run config -- load-kv",
+		"config:activate": "npm run config -- activate",
+		"config:modules": "npm run config -- modules",
+		"config:modules:list": "npm run config -- modules list",
+		"config:modules:get": "npm run config -- modules get",
+		"config:modules:validate": "npm run config -- modules validate",
+		"config:modules:upload-kv": "npm run config -- modules upload-kv",
+		"config:comprehensive": "npm run config -- comprehensive",
+		"config:load-initial": "npm run config -- load-kv ./docs/public/configuration/examples/templates/initial-config.json --env dev",
+		"config:load-production": "npm run config -- load-kv ./docs/public/configuration/examples/templates/production-config.json --env production"
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.7.5",
@@ -51,7 +82,7 @@
 		"ts-node": "^10.9.2",
 		"typescript": "^5.8.2",
 		"vitest": "~3.0.7",
-		"wrangler": "^4.7.2"
+		"wrangler": "^4.10.0"
 	},
 	"dependencies": {
 		"ajv": "^8.17.1",

@@ -122,7 +122,12 @@ export class KVConfigStore implements ConfigStoreInterface {
       }
       
       // Fetch the configuration for this version
-      const config = await this.kvNamespace.get(`${KV_KEYS.VERSION_PREFIX}${currentVersionId}`, { type: 'json' }) as ConfigurationSystem;
+      // Handle case where currentVersionId already starts with 'v'
+      const versionKey = currentVersionId.startsWith('v') 
+        ? `config_${currentVersionId}`  // Already has 'v' prefix, just add 'config_'
+        : `${KV_KEYS.VERSION_PREFIX}${currentVersionId}`; // Add full prefix
+      
+      const config = await this.kvNamespace.get(versionKey, { type: 'json' }) as ConfigurationSystem;
       
       if (!config) {
         this.logError(`Current config version ${currentVersionId} not found in KV`);
@@ -147,7 +152,12 @@ export class KVConfigStore implements ConfigStoreInterface {
    */
   async getConfigVersion(versionId: string): Promise<ConfigurationSystem | null> {
     try {
-      const config = await this.kvNamespace.get(`${KV_KEYS.VERSION_PREFIX}${versionId}`, { type: 'json' }) as ConfigurationSystem;
+      // Handle case where versionId already starts with 'v'
+      const versionKey = versionId.startsWith('v') 
+        ? `config_${versionId}`  // Already has 'v' prefix, just add 'config_'
+        : `${KV_KEYS.VERSION_PREFIX}${versionId}`; // Add full prefix
+      
+      const config = await this.kvNamespace.get(versionKey, { type: 'json' }) as ConfigurationSystem;
       
       if (!config) {
         this.logWarn(`Config version ${versionId} not found`);
@@ -250,7 +260,12 @@ export class KVConfigStore implements ConfigStoreInterface {
       };
       
       // Store the new configuration version
-      await this.kvNamespace.put(`${KV_KEYS.VERSION_PREFIX}${versionId}`, JSON.stringify(updatedConfig));
+      // Handle case where versionId already starts with 'v'
+      const storeKey = versionId.startsWith('v') 
+        ? `config_${versionId}`  // Already has 'v' prefix, just add 'config_'
+        : `${KV_KEYS.VERSION_PREFIX}${versionId}`; // Add full prefix
+      
+      await this.kvNamespace.put(storeKey, JSON.stringify(updatedConfig));
       
       // Update the history
       history.push(newVersionMetadata);
