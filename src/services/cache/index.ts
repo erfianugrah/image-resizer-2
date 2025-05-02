@@ -11,6 +11,7 @@ export { CacheBypassManager } from './CacheBypassManager';
 export { CacheFallbackManager } from './CacheFallbackManager';
 export { CloudflareCacheManager } from './CloudflareCacheManager';
 export { TTLCalculator } from './TTLCalculator';
+export { PathPatternTTLCalculator, type PathPattern } from './PathPatternTTLCalculator';
 export { CacheResilienceManager } from './CacheResilienceManager';
 export { CachePerformanceManager } from './CachePerformanceManager';
 

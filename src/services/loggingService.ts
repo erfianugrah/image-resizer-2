@@ -6,14 +6,25 @@
  */
 
 import { ImageResizerConfig } from '../config';
-import { Logger, LogLevel, 
+import { 
+  Logger, 
+  LogLevel,
   // LogData is imported for type reference but not directly used
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  LogData 
+  LogData
 } from '../utils/logging';
 import { OptimizedLogger } from '../utils/optimized-logging';
 import { createLogger } from '../utils/logger-factory';
 import { LoggingService } from './interfaces';
+
+// Add imports for context-aware logging
+import { 
+  RequestContext, 
+  getCurrentContext 
+} from '../utils/requestContext';
+import { 
+  createContextAwareLogger
+} from '../utils/contextAwareLogger';
 
 // Mapping from string log levels to enum values
 const LOG_LEVEL_MAP: Record<string, LogLevel> = {
@@ -28,6 +39,8 @@ const LOG_LEVEL_MAP: Record<string, LogLevel> = {
  * 
  * This service provides a centralized way to manage logging throughout the application,
  * ensuring consistent log formats and levels across different components.
+ * 
+ * Enhanced with request context awareness for breadcrumb tracking and diagnostic information.
  */
 export class DefaultLoggingService implements LoggingService {
   private config: ImageResizerConfig;
@@ -36,6 +49,8 @@ export class DefaultLoggingService implements LoggingService {
   private useOptimizedLoggers: boolean = false;
   // Self-reference for logging
   private internalLogger: Logger | OptimizedLogger | null = null;
+  // Track whether we're using context-aware logging
+  private useContextLogging: boolean = true;
   
   /**
    * Create a new DefaultLoggingService
@@ -47,6 +62,8 @@ export class DefaultLoggingService implements LoggingService {
     this.defaultLogLevel = config.logging?.level || 'INFO';
     // Enable optimized logging by default if performance optimization is enabled
     this.useOptimizedLoggers = config.performance?.optimizedLogging !== false;
+    // Enable context logging by default unless explicitly disabled
+    this.useContextLogging = config.logging?.enableBreadcrumbs !== false;
     
     // Create internal logger for the service itself
     const standardLogger = createLogger(config, 'LoggingService', false);
@@ -59,7 +76,8 @@ export class DefaultLoggingService implements LoggingService {
       result: 'success',
       durationMs: 0, // No timing information available
       logLevel: this.defaultLogLevel,
-      optimizedLogging: this.useOptimizedLoggers
+      optimizedLogging: this.useOptimizedLoggers,
+      contextLogging: this.useContextLogging
     });
   }
   
@@ -74,11 +92,13 @@ export class DefaultLoggingService implements LoggingService {
     // Save old settings for logging changes
     const oldLevel = this.defaultLogLevel;
     const oldOptimized = this.useOptimizedLoggers;
+    const oldContextLogging = this.useContextLogging;
     
     // Update settings
     this.config = config;
     this.defaultLogLevel = config.logging?.level || 'INFO';
     this.useOptimizedLoggers = config.performance?.optimizedLogging !== false;
+    this.useContextLogging = config.logging?.enableBreadcrumbs !== false;
     
     // Clear existing loggers so they will be recreated with new settings
     const loggerCount = this.loggers.size;
@@ -101,6 +121,8 @@ export class DefaultLoggingService implements LoggingService {
       newLogLevel: this.defaultLogLevel,
       oldOptimized: oldOptimized,
       newOptimized: this.useOptimizedLoggers,
+      oldContextLogging: oldContextLogging,
+      newContextLogging: this.useContextLogging,
       clearedLoggers: loggerCount
     });
   }
@@ -180,9 +202,13 @@ export class DefaultLoggingService implements LoggingService {
   getLogger(context: string): Logger | OptimizedLogger {
     const startTime = Date.now();
     
+    // Get the current request context if available
+    const requestContext = getCurrentContext();
+    
     // Check if we already have a logger for this context
-    if (this.loggers.has(context)) {
-      const logger = this.loggers.get(context)!;
+    const cacheKey = `${context}${requestContext ? '_with_context' : ''}`;
+    if (this.loggers.has(cacheKey)) {
+      const logger = this.loggers.get(cacheKey)!;
       
       // Log retrieval with standardized fields if we have internal logger
       if (this.internalLogger) {
@@ -192,17 +218,32 @@ export class DefaultLoggingService implements LoggingService {
           result: 'cache_hit',
           durationMs: Date.now() - startTime,
           context,
+          hasRequestContext: !!requestContext,
           optimized: this.useOptimizedLoggers,
-          loggerType: this.useOptimizedLoggers ? 'optimized' : 'standard'
+          contextLoggerEnabled: this.useContextLogging,
+          loggerType: this.useContextLogging && requestContext 
+            ? 'context_aware'
+            : this.useOptimizedLoggers ? 'optimized' : 'standard'
         });
       }
       
       return logger;
     }
     
-    // Create a new logger for this context using the factory function
-    const logger = createLogger(this.config, context, this.useOptimizedLoggers);
-    this.loggers.set(context, logger);
+    // If context-aware logging is enabled and request context is available,
+    // create a context-aware logger
+    let logger: Logger | OptimizedLogger;
+    
+    if (this.useContextLogging && requestContext) {
+      // Create context-aware logger
+      logger = createContextAwareLogger(this.config, context, requestContext);
+    } else {
+      // Create standard logger using the factory function
+      logger = createLogger(this.config, context, this.useOptimizedLoggers);
+    }
+    
+    // Store in cache
+    this.loggers.set(cacheKey, logger);
     
     // Log creation with standardized fields if we have internal logger
     if (this.internalLogger) {
@@ -212,12 +253,53 @@ export class DefaultLoggingService implements LoggingService {
         result: 'created',
         durationMs: Date.now() - startTime,
         context,
+        hasRequestContext: !!requestContext,
         optimized: this.useOptimizedLoggers,
-        loggerType: this.useOptimizedLoggers ? 'optimized' : 'standard',
+        contextLoggerEnabled: this.useContextLogging,
+        loggerType: this.useContextLogging && requestContext 
+          ? 'context_aware'
+          : this.useOptimizedLoggers ? 'optimized' : 'standard',
         logLevel: this.config.logging?.level || this.defaultLogLevel
       });
     }
     
     return logger;
+  }
+
+  /**
+   * Create a context-aware logger for a specific request
+   * 
+   * @param request The HTTP request
+   * @param context The context for the logger
+   * @returns A logger that automatically tracks breadcrumbs for the request
+   */
+  createRequestLogger(request: Request, context: string): Logger {
+    // Check if request has context attached
+    const requestContext = (request as any).context as RequestContext | undefined;
+    
+    // Create logger with request context if available
+    const logger = requestContext && this.useContextLogging
+      ? createContextAwareLogger(this.config, context, requestContext)
+      : this.getLogger(context);
+      
+    return logger;
+  }
+
+  /**
+   * Get a context-aware logger for the current request context
+   * 
+   * @param context The context for the logger
+   * @returns A logger that automatically tracks breadcrumbs
+   */
+  getContextLogger(context: string): Logger {
+    const requestContext = getCurrentContext();
+    
+    // Create context-aware logger if context is available and enabled
+    if (requestContext && this.useContextLogging) {
+      return createContextAwareLogger(this.config, context, requestContext);
+    }
+    
+    // Fall back to standard logger
+    return this.getLogger(context);
   }
 }

@@ -371,6 +371,165 @@ describe('CacheService Integration', () => {
       expect(result === null || result instanceof Response).toBe(true);
     });
     
+    it('should set age-adjusted Cache-Control headers for KV cached images', async () => {
+      await cacheService.initialize();
+      
+      const request = new Request('https://example.com/image.jpg');
+      const transformOptions = { width: 800, height: 600, format: 'webp' };
+      
+      // Mock successful KV cache hit with a timestamp from 30 seconds ago
+      const timestamp = Date.now() - 30000; // 30 seconds ago
+      const originalTtl = 300; // 5 minutes
+      
+      mockKV.getWithMetadata.mockResolvedValueOnce({
+        value: new Uint8Array([1, 2, 3, 4]),
+        metadata: {
+          url: 'https://example.com/image.jpg',
+          timestamp: timestamp,
+          contentType: 'image/jpeg',
+          size: 4,
+          tags: ['test-tag1', 'test-tag2'],
+          ttl: originalTtl,
+          expiration: timestamp + originalTtl * 1000
+        }
+      });
+      
+      // Get the cached image
+      const result = await cacheService.getTransformedImage(request, transformOptions);
+      
+      // Verify the response was created
+      expect(result).toBeInstanceOf(Response);
+      
+      if (result) {
+        // Verify cache control headers are set
+        expect(result.headers.has('Cache-Control')).toBe(true);
+        
+        // Get the Cache-Control header value
+        const cacheControl = result.headers.get('Cache-Control');
+        
+        // Calculate the expected max-age (original TTL - item age)
+        // 300 - 30 = 270 seconds
+        const expectedMaxAge = originalTtl - 30;
+        
+        // Verify max-age is adjusted
+        expect(cacheControl).toMatch(new RegExp(`max-age=${expectedMaxAge}`));
+        
+        // Verify we have CDN-specific headers with original TTL
+        expect(result.headers.has('Surrogate-Control')).toBe(true);
+        expect(result.headers.get('Surrogate-Control')).toMatch(new RegExp(`max-age=${originalTtl}`));
+        
+        // Verify Age header is set correctly
+        expect(result.headers.has('Age')).toBe(true);
+        expect(result.headers.get('Age')).toBe('30');
+      }
+    });
+    
+    it('should set max-age=0 for KV cached images older than TTL', async () => {
+      await cacheService.initialize();
+      
+      const request = new Request('https://example.com/image.jpg');
+      const transformOptions = { width: 800, height: 600, format: 'webp' };
+      
+      // Mock a KV cache hit with a timestamp from longer ago than the TTL
+      const originalTtl = 300; // 5 minutes
+      const timestamp = Date.now() - 400000; // 400 seconds ago (> TTL of 300)
+      
+      mockKV.getWithMetadata.mockResolvedValueOnce({
+        value: new Uint8Array([1, 2, 3, 4]),
+        metadata: {
+          url: 'https://example.com/image.jpg',
+          timestamp: timestamp,
+          contentType: 'image/jpeg',
+          size: 4,
+          tags: ['test-tag1', 'test-tag2'],
+          ttl: originalTtl,
+          expiration: timestamp + originalTtl * 1000
+        }
+      });
+      
+      // Get the cached image
+      const result = await cacheService.getTransformedImage(request, transformOptions);
+      
+      // Verify the response was created
+      expect(result).toBeInstanceOf(Response);
+      
+      if (result) {
+        // Verify cache control headers are set
+        expect(result.headers.has('Cache-Control')).toBe(true);
+        
+        // Get the Cache-Control header value
+        const cacheControl = result.headers.get('Cache-Control');
+        
+        // Verify max-age is set to 0 since the item age exceeds TTL
+        expect(cacheControl).toMatch(/max-age=0/);
+        
+        // Verify we still have CDN-specific headers with original TTL
+        expect(result.headers.has('Surrogate-Control')).toBe(true);
+        expect(result.headers.get('Surrogate-Control')).toMatch(new RegExp(`max-age=${originalTtl}`));
+        
+        // Verify Age header is set to the actual age
+        expect(result.headers.has('Age')).toBe(true);
+        
+        // Age should be around 400 seconds (we can't check exact value due to timing)
+        const age = parseInt(result.headers.get('Age') || '0', 10);
+        expect(age).toBeGreaterThan(350);
+      }
+    });
+    
+    it('should handle missing timestamp in metadata gracefully', async () => {
+      await cacheService.initialize();
+      
+      const request = new Request('https://example.com/image.jpg');
+      const transformOptions = { width: 800, height: 600, format: 'webp' };
+      
+      // Mock a KV cache hit with no timestamp in metadata
+      const originalTtl = 300; // 5 minutes
+      
+      mockKV.getWithMetadata.mockResolvedValueOnce({
+        value: new Uint8Array([1, 2, 3, 4]),
+        metadata: {
+          url: 'https://example.com/image.jpg',
+          // No timestamp field
+          contentType: 'image/jpeg',
+          size: 4,
+          tags: ['test-tag1', 'test-tag2'],
+          ttl: originalTtl
+        }
+      });
+      
+      // Get the cached image
+      const result = await cacheService.getTransformedImage(request, transformOptions);
+      
+      // Verify the response was created
+      expect(result).toBeInstanceOf(Response);
+      
+      if (result) {
+        // Verify cache control headers are set
+        expect(result.headers.has('Cache-Control')).toBe(true);
+        
+        // Cache-Control should use the original TTL when timestamp is missing
+        expect(result.headers.get('Cache-Control')).toMatch(
+          new RegExp(`max-age=${originalTtl}`)
+        );
+        
+        // Verify we still have CDN-specific headers with original TTL
+        expect(result.headers.has('Surrogate-Control')).toBe(true);
+        expect(result.headers.get('Surrogate-Control')).toMatch(
+          new RegExp(`max-age=${originalTtl}`)
+        );
+        
+        // When timestamp is missing, Age should be 0
+        expect(result.headers.has('Age')).toBe(true);
+        expect(result.headers.get('Age')).toBe('0');
+        
+        // We also expect a warning in the logs
+        expect(logger.warn).toHaveBeenCalledWith(
+          expect.stringContaining('Missing timestamp in cache metadata'),
+          expect.any(Object)
+        );
+      }
+    });
+    
     it('should store a transformed image in cache', async () => {
       await cacheService.initialize();
       

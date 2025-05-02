@@ -3,6 +3,8 @@
  * 
  * Responsible for implementing resilience patterns for cache operations,
  * including circuit breaking, retries, and error handling.
+ * 
+ * Enhanced with waitUntil pattern for background caching operations.
  */
 
 import { Logger } from "../../utils/logging";
@@ -17,6 +19,8 @@ import {
   CacheWriteError 
 } from "../../errors/cacheErrors";
 import { CircuitBreakerState } from "../../utils/retry";
+import { runInBackground, getExecutionContext } from "../../utils/backgroundOperations";
+import { getCurrentContext, addBreadcrumb } from "../../utils/requestContext";
 
 // Type for callback functions passed by the main service
 export interface CacheResilienceFunctions {
@@ -197,21 +201,52 @@ export class CacheResilienceManager {
             responseToCache,
           );
 
-          // Use waitUntil to cache the response without blocking, using the tagged request and response
-          ctx.waitUntil(
-            caches.default.put(taggedRequest, taggedResponse).then(() => {
+          // Define storage operation for background execution
+          const storeCacheOperation = async () => {
+            try {
+              await caches.default.put(taggedRequest, taggedResponse);
+              
+              // Add success breadcrumb
               this.logger.breadcrumb("Successfully stored in Cache API");
-            }).catch((error) => {
+              
+              // Add request context breadcrumb if available
+              const requestContext = getCurrentContext();
+              if (requestContext) {
+                addBreadcrumb(requestContext, 'CacheAPI', 'Successfully stored in Cache API', {
+                  url: request.url,
+                  contentType: taggedResponse.headers.get('Content-Type') || 'unknown'
+                });
+              }
+            } catch (error) {
+              // Log error
               this.logger.breadcrumb(
                 "Failed to store in Cache API",
                 undefined,
                 {
-                  error: error instanceof Error
-                    ? error.message
-                    : String(error),
+                  error: error instanceof Error ? error.message : String(error),
                 },
               );
-            }),
+              
+              // Add error breadcrumb if request context is available
+              const requestContext = getCurrentContext();
+              if (requestContext) {
+                addBreadcrumb(requestContext, 'CacheAPI', 'Failed to store in Cache API', {
+                  url: request.url,
+                  error: error instanceof Error ? error.message : String(error)
+                });
+              }
+              
+              // Re-throw for error handling
+              throw error;
+            }
+          };
+          
+          // Use our enhanced background operations utility with waitUntil
+          runInBackground(
+            storeCacheOperation,
+            "CacheApiStorage",
+            this.logger,
+            ctx
           );
         } else {
           this.logger.breadcrumb(
@@ -263,6 +298,10 @@ export class CacheResilienceManager {
   /**
    * Store a response in cache in the background
    *
+   * Enhanced with waitUntil pattern for non-blocking background operations.
+   * This method will run the storage operation in the background, using
+   * the waitUntil API if available, otherwise falls back to synchronous execution.
+   *
    * @param request The original request
    * @param response The response to cache
    * @param ctx The execution context
@@ -284,48 +323,106 @@ export class CacheResilienceManager {
       ) => { request: Request, response: Response };
     }
   ): Promise<void> {
-    try {
-      // Check if Cache API is available
-      if (typeof caches === "undefined" || !caches.default) {
-        throw new CacheUnavailableError("Cache API is not available");
+    // Define the storage operation as a separate function
+    const storageOperation = async () => {
+      try {
+        // Check if Cache API is available
+        if (typeof caches === "undefined" || !caches.default) {
+          throw new CacheUnavailableError("Cache API is not available");
+        }
+
+        // Only cache successful responses
+        if (response.status >= 200 && response.status < 300) {
+          // Get request context for breadcrumb if available
+          const requestContext = getCurrentContext();
+          if (requestContext) {
+            addBreadcrumb(requestContext, 'CacheStorage', 'Storing response in cache background', {
+              url: request.url,
+              status: response.status,
+              contentType: response.headers.get('Content-Type') || 'unknown'
+            });
+          }
+
+          this.logger.debug("Storing in cache background", {
+            url: request.url,
+            status: response.status,
+            contentType: response.headers.get('Content-Type') || 'unknown'
+          });
+
+          // Prepare response for caching (if functions provided)
+          const responseToCache = functions?.prepareCacheableResponse 
+            ? functions.prepareCacheableResponse(response)
+            : response;
+
+          // Prepare request and response with cache tags (if functions provided)
+          const { request: taggedRequest, response: taggedResponse } = functions?.prepareTaggedRequest
+            ? functions.prepareTaggedRequest(request, responseToCache, undefined, options)
+            : { request, response: responseToCache };
+
+          // Put in cache with the tagged request and response
+          await caches.default.put(taggedRequest, taggedResponse);
+
+          this.logger.debug("Successfully stored in cache background", {
+            url: request.url,
+            usedTags: taggedRequest !== request,
+          });
+          
+          // Add success breadcrumb if request context is available
+          if (requestContext) {
+            addBreadcrumb(requestContext, 'CacheStorage', 'Successfully stored in cache background', {
+              url: request.url,
+              contentType: response.headers.get('Content-Type') || 'unknown'
+            });
+          }
+        } else {
+          this.logger.debug("Not caching non-success response in background", {
+            url: request.url,
+            status: response.status,
+          });
+        }
+      } catch (error) {
+        this.logger.warn("Failed to store in cache background", {
+          error: error instanceof Error ? error.message : String(error),
+          url: request.url,
+        });
+        
+        // Add error breadcrumb if request context is available
+        const requestContext = getCurrentContext();
+        if (requestContext) {
+          addBreadcrumb(requestContext, 'CacheStorage', 'Failed to store in cache background', {
+            url: request.url,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+        
+        // Re-throw to ensure caller is aware of failure
+        throw error;
       }
+    };
 
-      // Only cache successful responses
-      if (response.status >= 200 && response.status < 300) {
-        this.logger.debug("Storing in cache background", {
+    // Get the best available execution context
+    const executionContext = getExecutionContext(ctx, request);
+    
+    // Run the storage operation in the background if possible
+    const operationName = "CacheStorageBackground";
+    const ranInBackground = runInBackground(
+      storageOperation, 
+      operationName, 
+      this.logger,
+      executionContext
+    );
+    
+    // If it couldn't run in background, execute it directly
+    if (!ranInBackground) {
+      try {
+        await storageOperation();
+      } catch (error) {
+        // Log but don't re-throw, as this is a background operation that shouldn't block
+        this.logger.warn("Failed to store in synchronous cache background", {
+          error: error instanceof Error ? error.message : String(error),
           url: request.url,
-          status: response.status,
-        });
-
-        // Prepare response for caching (if functions provided)
-        const responseToCache = functions?.prepareCacheableResponse 
-          ? functions.prepareCacheableResponse(response)
-          : response;
-
-        // Prepare request and response with cache tags (if functions provided)
-        const { request: taggedRequest, response: taggedResponse } = functions?.prepareTaggedRequest
-          ? functions.prepareTaggedRequest(request, responseToCache, undefined, options)
-          : { request, response: responseToCache };
-
-        // Put in cache with the tagged request and response
-        await caches.default.put(taggedRequest, taggedResponse);
-
-        this.logger.debug("Successfully stored in cache background", {
-          url: request.url,
-          usedTags: taggedRequest !== request,
-        });
-      } else {
-        this.logger.debug("Not caching non-success response in background", {
-          url: request.url,
-          status: response.status,
         });
       }
-    } catch (error) {
-      this.logger.warn("Failed to store in cache background", {
-        error: error instanceof Error ? error.message : String(error),
-        url: request.url,
-      });
-      // Background task, so we just log the error
     }
   }
 
@@ -405,6 +502,10 @@ export class CacheResilienceManager {
   /**
    * Revalidate a cached response in the background
    *
+   * Enhanced with waitUntil pattern for non-blocking background operations.
+   * This method applies fresh response headers and stores the result in cache,
+   * all done in the background with waitUntil when available.
+   *
    * @param request The original request
    * @param response The fresh response to cache
    * @param ctx The execution context
@@ -432,33 +533,88 @@ export class CacheResilienceManager {
       ) => Promise<void>;
     }
   ): Promise<void> {
-    try {
-      this.logger.debug("Revalidating cache in background", {
-        url: request.url,
-      });
+    // Define the revalidation operation as a separate function
+    const revalidationOperation = async () => {
+      try {
+        // Get request context for breadcrumb if available
+        const requestContext = getCurrentContext();
+        if (requestContext) {
+          addBreadcrumb(requestContext, 'CacheRevalidation', 'Revalidating cache in background', {
+            url: request.url,
+            contentType: response.headers.get('Content-Type') || 'unknown'
+          });
+        }
+        
+        this.logger.debug("Revalidating cache in background", {
+          url: request.url,
+          contentType: response.headers.get('Content-Type') || 'unknown'
+        });
 
-      // Apply cache headers to the response (if function provided)
-      const cachedResponse = functions?.applyCacheHeaders
-        ? functions.applyCacheHeaders(response.clone(), options, storageResult)
-        : response.clone();
+        // Apply cache headers to the response (if function provided)
+        const cachedResponse = functions?.applyCacheHeaders
+          ? functions.applyCacheHeaders(response.clone(), options, storageResult)
+          : response.clone();
 
-      // Store in cache in the background (if function provided)
-      if (functions?.storeInCacheBackground) {
-        await functions.storeInCacheBackground(request, cachedResponse, ctx, options);
-      } else {
-        // Fallback to internal storeInCacheBackground method
-        await this.storeInCacheBackground(request, cachedResponse, ctx, options);
+        // Store in cache in the background (if function provided)
+        if (functions?.storeInCacheBackground) {
+          await functions.storeInCacheBackground(request, cachedResponse, ctx, options);
+        } else {
+          // Fallback to internal storeInCacheBackground method
+          await this.storeInCacheBackground(request, cachedResponse, ctx, options);
+        }
+
+        this.logger.debug("Successfully revalidated cache in background", {
+          url: request.url,
+        });
+        
+        // Add success breadcrumb if request context is available
+        if (requestContext) {
+          addBreadcrumb(requestContext, 'CacheRevalidation', 'Successfully revalidated cache in background', {
+            url: request.url
+          });
+        }
+      } catch (error) {
+        this.logger.warn("Failed to revalidate cache in background", {
+          error: error instanceof Error ? error.message : String(error),
+          url: request.url,
+        });
+        
+        // Add error breadcrumb if request context is available
+        const requestContext = getCurrentContext();
+        if (requestContext) {
+          addBreadcrumb(requestContext, 'CacheRevalidation', 'Failed to revalidate cache in background', {
+            url: request.url,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+        
+        // Re-throw to ensure caller is aware of failure
+        throw error;
       }
-
-      this.logger.debug("Successfully revalidated cache in background", {
-        url: request.url,
+    };
+    
+    // Get the best available execution context
+    const executionContext = getExecutionContext(ctx, request);
+    
+    // Run the revalidation operation in the background if possible
+    const operationName = "CacheRevalidationBackground";
+    const ranInBackground = runInBackground(
+      revalidationOperation, 
+      operationName, 
+      this.logger,
+      executionContext
+    );
+    
+    // If it couldn't run in background, execute it directly but don't block
+    if (!ranInBackground) {
+      // Don't await this - we want it to run in parallel even if not using waitUntil
+      revalidationOperation().catch(error => {
+        // Log but don't re-throw, as this is a background operation that shouldn't block
+        this.logger.warn("Failed to revalidate in synchronous background mode", {
+          error: error instanceof Error ? error.message : String(error),
+          url: request.url,
+        });
       });
-    } catch (error) {
-      this.logger.warn("Failed to revalidate cache in background", {
-        error: error instanceof Error ? error.message : String(error),
-        url: request.url,
-      });
-      // Background task, so we just log the error
     }
   }
 }
