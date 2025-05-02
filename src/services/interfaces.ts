@@ -124,6 +124,8 @@ export interface StorageResult {
   path?: string;
   width?: number;
   height?: number;
+  ttl?: number;          // TTL in seconds for caching this resource
+  buffer?: ArrayBuffer;  // Optional buffer for storage operations
 }
 
 /**

@@ -1101,36 +1101,81 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     // Mark this operation as completed to prevent duplicates
     this.operationCache.set(operationKey, true);
     
-    // Store in KV with metadata
-    if (ctx && this.config.backgroundIndexing) {
-      // Store in background to avoid blocking response
-      ctx.waitUntil(
-        this.kvNamespace.put(key, storageResult.buffer, {
-          expirationTtl: ttl,
-          metadata
-        }).then(() => {
-          this.logDebug('KV transform cache: Successfully stored item in background', { key });
-        }).catch(error => {
-          this.logError('KV transform cache: Error storing item in background', { 
+    // Import background operations utility
+    try {
+      const { runInBackground } = await import('../../../utils/backgroundOperations');
+      
+      // Define storage operation as an async function
+      const storeOperation = async () => {
+        try {
+          await this.kvNamespace.put(key, storageResult.buffer, {
+            expirationTtl: ttl,
+            metadata
+          });
+          this.logDebug('KV transform cache: Successfully stored item', { key });
+        } catch (error) {
+          this.logError('KV transform cache: Error storing item', { 
             key, 
             error: error instanceof Error ? error.message : String(error)
           });
-        })
-      );
-    } else {
-      // Store immediately (blocking)
-      try {
-        await this.kvNamespace.put(key, storageResult.buffer, {
-          expirationTtl: ttl,
-          metadata
-        });
-        this.logDebug('KV transform cache: Successfully stored item', { key });
-      } catch (error) {
-        this.logError('KV transform cache: Error storing item', { 
-          key, 
-          error: error instanceof Error ? error.message : String(error)
-        });
-        // We don't rethrow since this is a background operation and we don't want to fail the main request
+          // Re-throw so the background operation can handle it properly
+          throw error;
+        }
+      };
+      
+      // Use the background operations utility to manage waitUntil
+      if (ctx && this.config.backgroundIndexing) {
+        // Logger needs to be a valid Logger object or undefined
+        const logger = this.logger || undefined;
+        
+        // Run in background with waitUntil
+        runInBackground(
+          storeOperation,
+          "KVTransformCacheStore",
+          logger as any,
+          ctx
+        );
+      } else {
+        // Store immediately (blocking)
+        await storeOperation();
+      }
+    } catch (importError) {
+      // Fall back to original implementation if import fails
+      this.logWarn('KV transform cache: Failed to import background operations utility, falling back to direct implementation', {
+        error: importError instanceof Error ? importError.message : String(importError)
+      });
+      
+      // Store in KV with metadata using the original implementation
+      if (ctx && this.config.backgroundIndexing) {
+        // Store in background to avoid blocking response
+        ctx.waitUntil(
+          this.kvNamespace.put(key, storageResult.buffer, {
+            expirationTtl: ttl,
+            metadata
+          }).then(() => {
+            this.logDebug('KV transform cache: Successfully stored item in background', { key });
+          }).catch(error => {
+            this.logError('KV transform cache: Error storing item in background', { 
+              key, 
+              error: error instanceof Error ? error.message : String(error)
+            });
+          })
+        );
+      } else {
+        // Store immediately (blocking)
+        try {
+          await this.kvNamespace.put(key, storageResult.buffer, {
+            expirationTtl: ttl,
+            metadata
+          });
+          this.logDebug('KV transform cache: Successfully stored item', { key });
+        } catch (error) {
+          this.logError('KV transform cache: Error storing item', { 
+            key, 
+            error: error instanceof Error ? error.message : String(error)
+          });
+          // We don't rethrow since this is a background operation and we don't want to fail the main request
+        }
       }
     }
   }

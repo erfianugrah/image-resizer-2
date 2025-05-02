@@ -3,7 +3,7 @@
  * 
  * This module provides configuration for the caching system, including:
  * - Cache method selection
- * - TTL settings
+ * - TTL settings with path pattern support
  * - Cache tags configuration
  * - Bypass rules
  * - KV Transform cache settings
@@ -29,6 +29,26 @@ export const CACHE_SCHEMA = {
           type: 'number',
           minimum: 0,
           description: 'Default cache TTL in seconds'
+        },
+        ok: {
+          type: 'number',
+          minimum: 0,
+          description: 'TTL for successful responses (200-299)'
+        },
+        redirects: {
+          type: 'number',
+          minimum: 0, 
+          description: 'TTL for redirect responses (300-399)'
+        },
+        clientError: {
+          type: 'number',
+          minimum: 0,
+          description: 'TTL for client error responses (400-499)'
+        },
+        serverError: {
+          type: 'number',
+          minimum: 0,
+          description: 'TTL for server error responses (500-599)'
         },
         status: {
           type: 'object',
@@ -64,6 +84,65 @@ export const CACHE_SCHEMA = {
       },
       required: ['default'],
       description: 'Cache TTL settings'
+    },
+    pathPatterns: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: {
+            type: 'string',
+            description: 'Name of the path pattern for identification'
+          },
+          matcher: {
+            type: 'string',
+            description: 'Regular expression pattern as string'
+          },
+          ttl: {
+            type: 'object',
+            properties: {
+              ok: {
+                type: 'number',
+                minimum: 0,
+                description: 'TTL for successful responses (200-299)'
+              },
+              redirects: {
+                type: 'number',
+                minimum: 0,
+                description: 'TTL for redirect responses (300-399)'
+              },
+              clientError: {
+                type: 'number',
+                minimum: 0,
+                description: 'TTL for client error responses (400-499)'
+              },
+              serverError: {
+                type: 'number',
+                minimum: 0,
+                description: 'TTL for server error responses (500-599)'
+              }
+            },
+            required: ['ok'],
+            description: 'TTL configuration for matched paths'
+          },
+          priority: {
+            type: 'number',
+            description: 'Pattern priority (higher numbers take precedence)'
+          },
+          description: {
+            type: 'string',
+            description: 'Optional description for documentation'
+          }
+        },
+        required: ['name', 'matcher', 'ttl'],
+        description: 'Path pattern for TTL determination'
+      },
+      description: 'Path patterns for determining cache TTL'
+    },
+    derivativeTTLs: {
+      type: 'object',
+      additionalProperties: { type: 'number' },
+      description: 'TTL settings by derivative type'
     },
     tags: {
       type: 'object',
@@ -182,6 +261,10 @@ export const DEFAULT_CACHE_CONFIG = {
   method: 'cf',
   ttl: {
     default: 86400, // 24 hours
+    ok: 86400,      // 24 hours
+    redirects: 3600,  // 1 hour
+    clientError: 60,  // 1 minute
+    serverError: 10,  // 10 seconds
     status: {
       success: 86400,   // 24 hours
       redirects: 3600,  // 1 hour
@@ -196,6 +279,81 @@ export const DEFAULT_CACHE_CONFIG = {
       'image/gif': 604800,   // 7 days
       'image/svg+xml': 2592000 // 30 days
     }
+  },
+  pathPatterns: [
+    {
+      name: 'default',
+      matcher: '.*',
+      ttl: {
+        ok: 86400,         // 24 hours
+        redirects: 3600,   // 1 hour
+        clientError: 60,   // 1 minute
+        serverError: 10    // 10 seconds
+      },
+      priority: 0,
+      description: 'Default pattern for all paths'
+    },
+    {
+      name: 'static-assets',
+      matcher: '/(static|assets|dist|images)/',
+      ttl: {
+        ok: 604800,       // 7 days
+        redirects: 86400, // 1 day
+        clientError: 60,  // 1 minute
+        serverError: 10   // 10 seconds
+      },
+      priority: 10,
+      description: 'Static assets that rarely change'
+    },
+    {
+      name: 'icons-logos',
+      matcher: '/(icons|logos|branding)/',
+      ttl: {
+        ok: 2592000,      // 30 days
+        redirects: 86400, // 1 day
+        clientError: 60,  // 1 minute
+        serverError: 10   // 10 seconds
+      },
+      priority: 20,
+      description: 'Icons and logos that rarely change'
+    },
+    {
+      name: 'content-images',
+      matcher: '/(blog|news|articles|posts)/',
+      ttl: {
+        ok: 86400,        // 1 day
+        redirects: 3600,  // 1 hour
+        clientError: 60,  // 1 minute
+        serverError: 10   // 10 seconds
+      },
+      priority: 30,
+      description: 'Content images that may change more frequently'
+    },
+    {
+      name: 'temporary-content',
+      matcher: '/(temp|preview|draft)/',
+      ttl: {
+        ok: 300,          // 5 minutes
+        redirects: 300,   // 5 minutes
+        clientError: 60,  // 1 minute
+        serverError: 10   // 10 seconds
+      },
+      priority: 100,
+      description: 'Temporary content with very short TTL'
+    }
+  ],
+  derivativeTTLs: {
+    'thumbnail': 1209600,  // 14 days
+    'avatar': 604800,      // 7 days
+    'profile': 432000,     // 5 days
+    'preview': 43200,      // 12 hours
+    'banner': 172800,      // 2 days
+    'hero': 172800,        // 2 days
+    'og-image': 2592000,   // 30 days
+    'icon': 2592000,       // 30 days
+    'logo': 2592000,       // 30 days
+    'temp': 3600,          // 1 hour
+    'preview-draft': 300   // 5 minutes
   },
   tags: {
     enabled: true,

@@ -7,6 +7,9 @@
  * This implementation follows a modular approach with clear separation of concerns.
  */
 
+/// <reference path="./cache/PathPatternTTLCalculator.ts" />
+/// <reference path="./cache/PathPatternTTLCalculator.d.ts" />
+
 import { Logger } from '../utils/logging';
 import {
   CacheService,
@@ -35,6 +38,7 @@ import {
   CacheFallbackManager,
   CloudflareCacheManager,
   TTLCalculator,
+  PathPatternTTLCalculator,
   CacheResilienceManager,
   CachePerformanceManager,
   KVTransformCacheInterface,
@@ -92,6 +96,7 @@ export class DefaultCacheService implements CacheService {
   }
   private cfCacheManager: CloudflareCacheManager;
   private ttlCalculator: TTLCalculator;
+  private pathPatternTTLCalculator: PathPatternTTLCalculator;
   private resilienceManager: CacheResilienceManager;
   private performanceManager: CachePerformanceManager;
 
@@ -150,14 +155,39 @@ export class DefaultCacheService implements CacheService {
     
     this.cfCacheManager = new CloudflareCacheManager(logger, configService);
     this.ttlCalculator = new TTLCalculator(logger, configService);
+    
+    // Initialize the path pattern TTL calculator with fallback handling
+    try {
+      // First try to import directly if reference isn't resolving
+      if (typeof PathPatternTTLCalculator === 'undefined') {
+        const { PathPatternTTLCalculator: ImportedCalculator } = require('./cache/PathPatternTTLCalculator');
+        this.pathPatternTTLCalculator = new ImportedCalculator(logger, configService);
+        this.logger.info("Successfully loaded PathPatternTTLCalculator via direct import");
+      } else {
+        // Normal initialization with the globally available class
+        this.pathPatternTTLCalculator = new PathPatternTTLCalculator(logger, configService);
+        this.logger.info("Successfully loaded PathPatternTTLCalculator from global scope");
+      }
+    } catch (error) {
+      // If that fails too, use the fallback implementation
+      this.logger.error("Failed to initialize PathPatternTTLCalculator, using fallback", {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      
+      // Import the fallback implementation
+      const { PathPatternTTLCalculatorFallback } = require('./cache/fallbacks');
+      this.pathPatternTTLCalculator = new PathPatternTTLCalculatorFallback(logger, configService);
+    }
     this.resilienceManager = new CacheResilienceManager(logger, configService);
     this.performanceManager = new CachePerformanceManager(logger, configService);
     
     this.logger.debug('Modular cache components initialized', {
-      components: 'CacheHeadersManager, CacheTagsManager, CacheBypassManager, CacheFallbackManager, KVTransformCacheInterface, CloudflareCacheManager, TTLCalculator, CacheResilienceManager, CachePerformanceManager',
-      componentsCount: 9,
+      components: 'CacheHeadersManager, CacheTagsManager, CacheBypassManager, CacheFallbackManager, KVTransformCacheInterface, CloudflareCacheManager, TTLCalculator, PathPatternTTLCalculator, CacheResilienceManager, CachePerformanceManager',
+      componentsCount: 10,
       transformCacheImpl: 'SimpleKVTransformCacheManager',
-      transformCache: config.cache.transformCache ? JSON.stringify(config.cache.transformCache).substring(0, 100) + '...' : 'undefined'
+      transformCache: config.cache.transformCache ? JSON.stringify(config.cache.transformCache).substring(0, 100) + '...' : 'undefined',
+      hasPathPatterns: Array.isArray(config.cache.pathPatterns) && config.cache.pathPatterns.length > 0
     });
   }
 
@@ -979,13 +1009,32 @@ export class DefaultCacheService implements CacheService {
         );
       }
 
-      this.logger.debug('Delegating TTL calculation to TTLCalculator module', {
-        status: response.status,
-        contentType: response.headers.get('Content-Type') || 'unknown'
-      });
+      // Get configuration
+      const config = this.configService.getConfig();
       
-      // Delegate to the TTL calculator module
-      return this.ttlCalculator.calculateTtl(response, options, storageResult);
+      // Determine which TTL calculator to use based on configuration
+      const usePathPatterns = Array.isArray(config.cache.pathPatterns) && 
+                             config.cache.pathPatterns.length > 0;
+      
+      if (usePathPatterns) {
+        this.logger.debug('Using path pattern-based TTL calculation', {
+          status: response.status,
+          contentType: response.headers.get('Content-Type') || 'unknown',
+          hasStorageResult: !!storageResult,
+          patternCount: config.cache.pathPatterns.length
+        });
+        
+        // Use the path pattern-based TTL calculator
+        return this.pathPatternTTLCalculator.calculateTtl(response, options, storageResult);
+      } else {
+        this.logger.debug('Using standard TTL calculation (no path patterns configured)', {
+          status: response.status,
+          contentType: response.headers.get('Content-Type') || 'unknown'
+        });
+        
+        // Fall back to the standard TTL calculator
+        return this.ttlCalculator.calculateTtl(response, options, storageResult);
+      }
     } catch (error: unknown) {
       // If it's already a CacheServiceError, re-throw it
       if (isCacheServiceError(error)) {
@@ -1228,6 +1277,84 @@ export class DefaultCacheService implements CacheService {
         headers.set('X-Cache-Expires', new Date(metadata.expiration).toISOString());
       }
       
+      // Set Cache-Control header based on TTL from metadata or calculate a new one
+      // If we have TTL in metadata, use that, otherwise calculate it
+      if (metadata.ttl) {
+        // Get the original TTL from metadata
+        const originalTTL = metadata.ttl;
+        
+        // Calculate age of the cached item
+        const now = Date.now();
+        const cacheTimestamp = metadata.timestamp || now;
+        const ageInSeconds = Math.floor((now - cacheTimestamp) / 1000);
+        
+        // Adjust max-age for standard browsers - don't let it go below 0
+        const adjustedMaxAge = Math.max(0, originalTTL - ageInSeconds);
+        
+        // Keep original TTL for edge caches like CDNs
+        const edgeTTL = originalTTL;
+        
+        // Set standard Cache-Control header with adjusted max-age
+        headers.set('Cache-Control', `public, max-age=${adjustedMaxAge}`);
+        
+        // Set CDN-specific headers with original TTL
+        headers.set('Surrogate-Control', `max-age=${edgeTTL}`);
+        headers.set('CDN-Cache-Control', `max-age=${edgeTTL}`);
+        
+        // Add Age header for debugging and standards compliance
+        headers.set('Age', ageInSeconds.toString());
+        
+        this.logger.debug('Applied age-adjusted TTL to KV cache response', {
+          originalTTL,
+          ageInSeconds,
+          adjustedMaxAge,
+          edgeTTL,
+          source: 'metadata'
+        });
+      } else {
+        // Create a temporary response to calculate TTL
+        const tempResponse = new Response(null, {
+          status: 200,
+          headers: new Headers({ 'Content-Type': metadata.contentType })
+        });
+        
+        // Use our TTL calculator to get appropriate TTL
+        const ttl = this.calculateTtl(tempResponse, metadata.transformOptions || {}, {
+          path: new URL(metadata.url).pathname,
+          sourceType: metadata.storageType || 'transform'
+        });
+        
+        // Calculate age of the cached item
+        const now = Date.now();
+        const cacheTimestamp = metadata.timestamp || now;
+        const ageInSeconds = Math.floor((now - cacheTimestamp) / 1000);
+        
+        // Adjust max-age for standard browsers - don't let it go below 0
+        const adjustedMaxAge = Math.max(0, ttl - ageInSeconds);
+        
+        // Keep original TTL for edge caches like CDNs
+        const edgeTTL = ttl;
+        
+        // Set standard Cache-Control header with adjusted max-age
+        headers.set('Cache-Control', `public, max-age=${adjustedMaxAge}`);
+        
+        // Set CDN-specific headers with original TTL
+        headers.set('Surrogate-Control', `max-age=${edgeTTL}`);
+        headers.set('CDN-Cache-Control', `max-age=${edgeTTL}`);
+        
+        // Add Age header for debugging and standards compliance
+        headers.set('Age', ageInSeconds.toString());
+        
+        this.logger.debug('Calculated and applied age-adjusted TTL to KV cache response', {
+          ttl,
+          ageInSeconds,
+          adjustedMaxAge,
+          edgeTTL,
+          source: 'calculated',
+          contentType: metadata.contentType
+        });
+      }
+      
       // Create the response with the cached data
       const response = new Response(value, {
         status: 200,
@@ -1316,18 +1443,23 @@ export class DefaultCacheService implements CacheService {
         return; // Exit early if we can't get the buffer
       }
       
-      // Create an enhanced storage result with the buffer
+      // Calculate TTL to use for caching
+      const ttl = this.calculateTtl(response, transformOptions || {}, storageResult);
+      
+      // Create an enhanced storage result with the buffer and TTL
       const enhancedStorageResult = {
         ...storageResult,
         buffer: responseBuffer,
-        storageType: storageResult.sourceType || 'transform'
+        storageType: storageResult.sourceType || 'transform',
+        ttl: ttl  // Add the TTL from our advanced calculator
       };
       
       // Execute the caching operation
       this.logger.debug('Delegating to KV transform cache manager', {
         managerType: typeof this.kvTransformCache,
         hasKVPutMethod: typeof this.kvTransformCache.put === 'function',
-        bufferSize: responseBuffer.byteLength
+        bufferSize: responseBuffer.byteLength,
+        calculatedTTL: ttl
       });
       
       await this.kvTransformCache.put(
