@@ -488,8 +488,7 @@ export class OptimizedCacheService implements CacheService {
       // Add cache tier for debugging
       headers.set('X-Cache-Tier', tier.name);
       
-      // Add surrogate control for CDN
-      headers.set('Surrogate-Control', `max-age=${adjustedTtl}`);
+      // CDN-specific header removed per request
       
       // Create the response with updated headers
       const newResponse = new Response(responseClone.body, {

@@ -1297,9 +1297,7 @@ export class DefaultCacheService implements CacheService {
         // Set standard Cache-Control header with adjusted max-age
         headers.set('Cache-Control', `public, max-age=${adjustedMaxAge}`);
         
-        // Set CDN-specific headers with original TTL
-        headers.set('Surrogate-Control', `max-age=${edgeTTL}`);
-        headers.set('CDN-Cache-Control', `max-age=${edgeTTL}`);
+        // CDN-specific headers removed per request
         
         // Add Age header for debugging and standards compliance
         headers.set('Age', ageInSeconds.toString());
@@ -1338,9 +1336,7 @@ export class DefaultCacheService implements CacheService {
         // Set standard Cache-Control header with adjusted max-age
         headers.set('Cache-Control', `public, max-age=${adjustedMaxAge}`);
         
-        // Set CDN-specific headers with original TTL
-        headers.set('Surrogate-Control', `max-age=${edgeTTL}`);
-        headers.set('CDN-Cache-Control', `max-age=${edgeTTL}`);
+        // CDN-specific headers removed per request
         
         // Add Age header for debugging and standards compliance
         headers.set('Age', ageInSeconds.toString());
