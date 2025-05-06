@@ -40,45 +40,55 @@ flowchart TD
 
 ## Parameter Mapping
 
-The following table shows the mapping between Akamai Image Manager parameters and Cloudflare Image Resizing parameters:
+Akamai Image Manager uses several parameter formats, with the standard formats being the `im=` notation and direct parameters like `imwidth`. The following table shows the mapping between standard Akamai Image Manager parameters and Cloudflare Image Resizing parameters:
+
+> **Note:** While the code supports a non-standard `im.` dot notation (e.g., `im.resize=width:400`), this is not official Akamai syntax and should be avoided in new implementations. Use the standard `im=` notation or direct parameters instead.
 
 | Akamai Parameter | Cloudflare Parameter | Description |
 |------------------|----------------------|-------------|
-| `im.resize=width:X` | `width=X` | Image width |
-| `im.resize=height:X` | `height=X` | Image height |
-| `im.resize=mode:fit` | `fit=contain` | Preserve aspect ratio, fit within dimensions |
-| `im.resize=mode:stretch` | `fit=scale-down` | No enlargement, preserve aspect ratio |
-| `im.resize=mode:fill` | `fit=cover` | Fill area, crop if needed |
-| `im.resize=mode:crop` | `fit=crop` | Crop to fit dimensions |
-| `im.resize=mode:pad` | `fit=pad` | Pad to fit dimensions |
-| `im.resize=aspect:W:H` | (width/height calculation) | Maintain aspect ratio |
-| `im.aspectCrop=width:X,height:Y` | Simulated via fit, width, height & gravity | Crop or expand image to specific aspect ratio |
-| `im.aspectCrop=hoffset:X,voffset:Y` | `gravity=[position]` | Control aspect crop positioning |
-| `im.aspectCrop=allowExpansion:true` | `background=transparent` | Add transparent pixels instead of cropping |
-| `im.quality=X` | `quality=X` | Image quality (1-100) |
-| `im.quality=low/medium/high` | `quality=50/75/90` | Named quality levels |
-| `im.format=webp` | `format=webp` | Image format conversion |
-| `im.format=jpeg/jpg` | `format=jpeg` | JPEG format |
-| `im.format=png` | `format=png` | PNG format |
-| `im.format=gif` | `format=gif` | GIF format |
-| `im.format=avif` | `format=avif` | AVIF format |
-| `im.format=auto` | `format=auto` | Auto format selection |
-| `im.rotate=X` | `rotate=X` | Rotation in degrees (90/180/270) |
-| `im.crop=X,Y,W,H` | `trim=top;right;bottom;left` | Crop specific area |
-| `im.grayscale=true` | `saturation=0` | Convert to grayscale |
-| `im.contrast=X` | `contrast=X` | Adjust contrast |
-| `im.brightness=X` | `brightness=X` | Adjust brightness |
-| `im.sharpen=X` | `sharpen=X` | Sharpen image (scaled to Cloudflare range) |
-| `im.sharpen=amount=X,radius=Y,threshold=Z` | `sharpen=X` | Complex sharpen (amount mapped to Cloudflare range) |
-| `im.unsharp=X` | `sharpen=X` | Alternative sharpening parameter |
-| `im.background=X` | `background=X` | Background color for padding/transparency |
-| `im.metadata=none/copyright/keep` | `metadata=none/copyright/keep` | Metadata handling |
-| `im.frame=X` | `anim=false` | Disable animation/GIF frame selection |
-| `im.blur=X` | `blur=X` | Apply blur effect (scaled to Cloudflare range) |
-| `im.mirror=horizontal/vertical` | `flip=true` or `flop=true` | Mirror image horizontally or vertically |
-| `im.composite=url:X,placement:Y` | Implemented via `draw` array | Add watermark or overlay images |
-| `im.if-dimension=condition,transform` | Custom implementation | Apply transformations conditionally based on image dimensions |
-| `im.hsl=hue:X,saturation:Y,lightness:Z` | Combined parameters | Adjust hue, saturation and lightness |
+| `im=Resize,width=X` | `width=X` | Image width |
+| `imwidth=X` | `width=X` | Direct width parameter |
+| `w=X` | `width=X` | Compact width parameter |
+| `im=Resize,height=X` | `height=X` | Image height |
+| `imheight=X` | `height=X` | Direct height parameter |
+| `h=X` | `height=X` | Compact height parameter |
+| `im=Resize,mode=fit` | `fit=contain` | Preserve aspect ratio, fit within dimensions |
+| `im=Resize,mode=stretch` | `fit=scale-down` | No enlargement, preserve aspect ratio |
+| `im=Resize,mode=fill` | `fit=cover` | Fill area, crop if needed |
+| `im=Resize,mode=crop` | `fit=crop` | Crop to fit dimensions |
+| `im=Resize,mode=pad` | `fit=pad` | Pad to fit dimensions |
+| `f=X` | Fit parameter (varies with value) | Size code compact parameter |
+| `im=AspectCrop=(X,Y)` | Simulated via fit, width, height & gravity | Crop or expand image to specific aspect ratio |
+| `im=AspectCrop,width=X,height=Y` | Simulated via fit, width, height & gravity | Crop or expand image to specific aspect ratio |
+| `r=X:Y` | Aspect parameter (width:height) | Aspect ratio parameter |
+| `aspect=X:Y` | Aspect parameter (width:height) | Aspect ratio parameter |
+| `im=AspectCrop,xPosition=X,yPosition=Y` | `gravity=[position]` | Control aspect crop positioning |
+| `p=X,Y` | `gravity=[position]` | Focal point (compact parameter) |
+| `focal=X,Y` | `gravity=[position]` | Focal point parameter |
+| `im=AspectCrop,allowExpansion=true` | `background=transparent` | Add transparent pixels instead of cropping |
+| `im=Quality=X` | `quality=X` | Image quality (1-100) |
+| `imquality=X` | `quality=X` | Direct quality parameter |
+| `q=X` | `quality=X` | Compact quality parameter |
+| `im=Format=webp` | `format=webp` | Image format conversion |
+| `imformat=webp` | `format=webp` | Direct format parameter |
+| `im=Rotate=X` | `rotate=X` | Rotation in degrees (90/180/270) |
+| `imrotate=X` | `rotate=X` | Direct rotation parameter |
+| `im=Crop,rect=(X,Y,W,H)` | `trim=top;right;bottom;left` | Crop specific area |
+| `imcrop=X,Y,W,H` | `trim=top;right;bottom;left` | Direct crop parameter |
+| `im=Grayscale` | `saturation=0` | Convert to grayscale |
+| `im=Contrast=X` | `contrast=X` | Adjust contrast |
+| `im=Brightness=X` | `brightness=X` | Adjust brightness |
+| `im=UnsharpMask,gain=X` | `sharpen=X` | Sharpen image (scaled to Cloudflare range) |
+| `im=BackgroundColor=X` | `background=#X` | Background color for padding/transparency |
+| `imcolor=X` | `background=#X` | Direct background color parameter |
+| `im=Frame=X` | `anim=false` | Disable animation/GIF frame selection |
+| `im=Blur=X` | `blur=X` | Apply blur effect (scaled to Cloudflare range) |
+| `im=Mirror,horizontal` | `flip=h` | Mirror image horizontally |
+| `im=Mirror,vertical` | `flip=v` | Mirror image vertically |
+| `im=Composite,image=(url=X),placement=Y` | Implemented via `draw` array | Add watermark or overlay images |
+| `im=Watermark,image=(url=X),placement=Y` | Implemented via `draw` array | Add watermark (alias for Composite) |
+| `gravity=X` | Positioning for overlays | Control overlay placement |
+| `im=if-dimension=condition,transform` | Custom implementation | Apply transformations conditionally based on image dimensions |
 
 ## Advanced Features
 
@@ -101,7 +111,7 @@ This is implemented using Cloudflare's `draw` array, which allows for:
 Akamai's conditional transformation parameters are supported through custom processing:
 
 ```
-im.if-dimension=width>1000,im.resize=width:800
+im=if-dimension=width>1000,im=Resize,width=800
 ```
 
 This applies different transformations based on conditions like image dimensions, orientation, or format.
@@ -112,17 +122,17 @@ Additional visual effects are supported:
 
 #### Blur
 ```
-im.blur=15
+im=Blur=15
 ```
 
 #### Mirror/Flip
 ```
-im.mirror=horizontal
+im=Mirror,horizontal
 ```
 
 #### HSL Adjustments
 ```
-im.hsl=hue:10,saturation:120,lightness:90
+imhue=10&imsaturation=120&imlightness=90
 ```
 
 ## Legacy Parameters
@@ -131,16 +141,16 @@ The following Akamai Image Manager features have partial or complete support:
 
 | Akamai Feature | Implementation | Notes |
 |----------------|----------------|-------|
-| `im.composite` | Cloudflare `draw` array | Supports overlay images, positioning, opacity |
-| `im.text` | Limited implementation | Basic text overlays with size, color and position support |
-| `im.watermark` | Full implementation | Alias for `im.composite` |
-| `im.overlay` | Full implementation | Alias for `im.composite` |
-| `im.pathgen` | Partial implementation | Basic path transformations supported |
-| `im.policies` | Mapped to derivatives | Policies mapped to Cloudflare derivative templates |
-| `im.blur` | Full implementation | Mapped to Cloudflare's blur parameter |
-| `im.mirror` | Full implementation | Maps to flip/flop parameters |
-| `im.if-dimension` | Custom implementation | Conditional transforms based on image dimensions |
-| `im.hsl` | Combined implementation | Maps to saturation, brightness and other parameters |
+| `im=Composite` | Cloudflare `draw` array | Supports overlay images, positioning, opacity |
+| Text overlays | Limited implementation | Basic text overlays with size, color and position support |
+| `im=Watermark` | Full implementation | Alias for `im=Composite` |
+| Overlay parameters | Full implementation | Multiple ways to add overlays |
+| Path transformations | Partial implementation | Basic path transformations supported |
+| Policy parameters | Mapped to derivatives | Policies mapped to Cloudflare derivative templates |
+| `im=Blur` | Full implementation | Mapped to Cloudflare's blur parameter |
+| `im=Mirror` | Full implementation | Maps to flip/flop parameters |
+| `im=if-dimension` | Custom implementation | Conditional transforms based on image dimensions |
+| HSL adjustments | Combined implementation | Maps to saturation, brightness and other parameters |
 
 ## Unsupported Features
 
@@ -148,13 +158,13 @@ The following features have limited or no direct support:
 
 | Akamai Feature | Limitation in Cloudflare | Workaround |
 |----------------|--------------------------|------------|
-| `im.colorspace=cmyk` | Limited colorspace support | Convert to RGB before serving |
+| CMYK colorspace | Limited colorspace support | Convert to RGB before serving |
 | Complex blend modes | Limited blend mode support | Pre-process images with required blend modes |
 | Arbitrary angle rotations | Only 90° increment rotations | Pre-rotate images to required angle |
 | Region-specific optimizations | No region-specific optimizations | Use standard quality settings |
 | Multiple image transforms in sequence | No transform chaining | Apply all transformations in a single step |
 | Custom ICC profiles | Limited ICC profile support | Convert to sRGB color space |
-| Complex `im.goop` effects | No direct equivalent | Pre-process images with effects |
+| Complex effects | No direct equivalent | Pre-process images with effects |
 | Face detection features | Limited detection capabilities | Precompute and use fixed coordinates |
 
 ## Implementation
@@ -207,45 +217,60 @@ Akamai's Aspect Crop changes the height or width of an image to a specific aspec
 
 1. **Basic Aspect Crop (16:9 ratio)**
    ```
-   im.aspectCrop=width:16,height:9
+   im=AspectCrop=(16,9)
    ```
 
 2. **Aspect Crop with Positioning (keep the top of the image)**
    ```
-   im.aspectCrop=width:16,height:9,hoffset:0.5,voffset:0
+   im=AspectCrop=(16,9),xPosition=0.5,yPosition=0
    ```
 
 3. **Aspect Crop with Expansion (add transparent pixels)**
    ```
-   im.aspectCrop=width:16,height:9,allowExpansion:true
+   im=AspectCrop=(16,9),allowExpansion=true
    ```
 
 ### Composite (Watermark)
 
 The composite functionality adds images on top of the base image:
 
-1. **Basic Watermark**
-   ```
-   im.composite=url:https://example.com/logo.png,placement:southeast
-   ```
+#### Basic Watermark
 
-2. **Watermark with Opacity**
-   ```
-   im.composite=url:https://example.com/watermark.png,opacity:50,placement:center
-   ```
+**Akamai URL:**
+```
+https://images.erfi.dev/Granna_1.JPG?im=Composite,image=(url=https://cdn.erfianugrah.com/ea_favicon.png),placement=southeast
+```
 
-3. **Tiled Watermark**
-   ```
-   im.composite=url:https://example.com/pattern.png,tile:true,opacity:30
-   ```
+![Basic Watermark](https://images.erfi.dev/Granna_1.JPG?im=Composite,image=(url=https://cdn.erfianugrah.com/ea_favicon.png),placement=southeast)
+
+#### Watermark with Opacity
+
+**Akamai URL:**
+```
+https://images.erfi.dev/Granna_1.JPG?im=Composite,image=(url=https://cdn.erfianugrah.com/ea_favicon.png),opacity=0.5,placement=center
+```
+
+![Watermark with Opacity](https://images.erfi.dev/Granna_1.JPG?im=Composite,image=(url=https://cdn.erfianugrah.com/ea_favicon.png),opacity=0.5,placement=center)
+
+#### Watermark with Size Control
+
+**Akamai URL:**
+```
+https://images.erfi.dev/Granna_1.JPG?im=Composite,image=(url=https://cdn.erfianugrah.com/ea_favicon.png),width=100,placement=northeast
+```
+
+![Watermark with Size Control](https://images.erfi.dev/Granna_1.JPG?im=Composite,image=(url=https://cdn.erfianugrah.com/ea_favicon.png),width=100,placement=northeast)
 
 ### Blur Effect
 
 Apply Gaussian blur to the image:
 
+**Akamai URL:**
 ```
-im.blur=15
+https://images.erfi.dev/Granna_1.JPG?im=Blur=15
 ```
+
+![Blur Effect](https://images.erfi.dev/Granna_1.JPG?im=Blur=15)
 
 The blur amount is scaled appropriately to match Cloudflare's 0-250 blur range.
 
@@ -253,25 +278,95 @@ The blur amount is scaled appropriately to match Cloudflare's 0-250 blur range.
 
 Mirror the image horizontally or vertically:
 
+**Horizontal Mirror:**
 ```
-im.mirror=horizontal
+https://images.erfi.dev/Granna_1.JPG?im=Mirror,horizontal
 ```
 
+![Horizontal Mirror](https://images.erfi.dev/Granna_1.JPG?im=Mirror,horizontal)
+
+**Vertical Mirror:**
 ```
-im.mirror=vertical
+https://images.erfi.dev/Granna_1.JPG?im=Mirror,vertical
 ```
+
+![Vertical Mirror](https://images.erfi.dev/Granna_1.JPG?im=Mirror,vertical)
+
+### Size and Quality Options
+
+Use direct parameters for width, height and quality:
+
+**Akamai URL:**
+```
+https://images.erfi.dev/Granna_1.JPG?imwidth=800&imheight=600&imquality=85
+```
+
+![Direct Image Parameters](https://images.erfi.dev/Granna_1.JPG?imwidth=800&imheight=600&imquality=85)
+
+Or use compact parameters:
+
+**Akamai URL:**
+```
+https://images.erfi.dev/Granna_1.JPG?w=800&h=600&q=85
+```
+
+![Compact Image Parameters](https://images.erfi.dev/Granna_1.JPG?w=800&h=600&q=85)
+
+### Aspect Ratio and Focal Point
+
+Control aspect ratio and focal point with compact parameters:
+
+**Akamai URL:**
+```
+https://images.erfi.dev/Granna_1.JPG?r=16:9&p=0.5,0.3
+```
+
+![Aspect Ratio with Compact Parameters](https://images.erfi.dev/Granna_1.JPG?r=16:9&p=0.5,0.3)
+
+Or use standard parameters:
+
+**Akamai URL:**
+```
+https://images.erfi.dev/Granna_1.JPG?aspect=16:9&focal=0.5,0.3
+```
+
+![Aspect Ratio with Standard Parameters](https://images.erfi.dev/Granna_1.JPG?aspect=16:9&focal=0.5,0.3)
+
+### Format and Size Codes
+
+Use Akamai's size code parameters:
+
+**Fit Size Code:**
+```
+https://images.erfi.dev/Granna_1.JPG?f=fit&w=800&h=600
+```
+
+![Fit Size Code](https://images.erfi.dev/Granna_1.JPG?f=fit&w=800&h=600)
+
+**Crop Size Code:**
+```
+https://images.erfi.dev/Granna_1.JPG?f=crop&w=800&h=600
+```
+
+![Crop Size Code](https://images.erfi.dev/Granna_1.JPG?f=crop&w=800&h=600)
 
 ### Conditional Transformations
 
 Apply transformations based on image properties:
 
+**Dimension-Based Transformation:**
 ```
-im.if-dimension=width>1000,im.resize=width:800
+https://images.erfi.dev/Granna_1.JPG?im=if-dimension=width>1000,im=Resize,width=800
 ```
 
+![Dimension-Based Transformation](https://images.erfi.dev/Granna_1.JPG?im=if-dimension=width>1000,im=Resize,width=800)
+
+**Orientation-Based Transformation:**
 ```
-im.if-orientation=landscape,im.aspectCrop=width:16,height:9
+https://images.erfi.dev/Granna_1.JPG?im=if-orientation=landscape,im=AspectCrop=(16,9)
 ```
+
+![Orientation-Based Transformation](https://images.erfi.dev/Granna_1.JPG?im=if-orientation=landscape,im=AspectCrop=(16,9))
 
 ## URL Format Support
 
@@ -279,7 +374,7 @@ The compatibility module supports three different Akamai URL formats:
 
 1. **Query Parameters**
    ```
-   https://example.com/images/test.jpg?im.resize=width:800,height:600&im.quality=85
+   https://example.com/images/test.jpg?im=Resize,width=800,height=600&imquality=85
    ```
 
 2. **Path Segment Parameters with im-**
@@ -300,7 +395,7 @@ When Akamai compatibility mode is enabled and used, the worker adds several debu
 
 ```
 X-Debug-Akamai-Compatibility: used
-X-Debug-Akamai-Original-Params: im.resize=width:800,height:600&im.quality=85
+X-Debug-Akamai-Original-Params: im=Resize,width=800,height=600&imquality=85
 X-Debug-Akamai-Translated-Params: width=800&height=600&quality=85
 ```
 
@@ -316,11 +411,11 @@ https://example.com/debug-report
 
 ### Basic Resizing
 
-![Basic Resizing Example](https://images.erfi.dev/Granna_1.JPG?im.resize=width:800,height:600,mode:fit&im.quality=85)
+![Basic Resizing Example](https://images.erfi.dev/Granna_1.JPG?im=Resize,width=800,height=600,mode=fit&imquality=85)
 
 **Akamai URL:**
 ```
-https://images.erfi.dev/Granna_1.JPG?im.resize=width:800,height:600,mode:fit&im.quality=85
+https://images.erfi.dev/Granna_1.JPG?im=Resize,width=800,height=600,mode=fit&imquality=85
 ```
 
 **Translated to Cloudflare:**
@@ -330,11 +425,11 @@ https://images.erfi.dev/Granna_1.JPG?width=800&height=600&fit=contain&quality=85
 
 ### Aspect Ratio Transformation
 
-![Aspect Ratio Example](https://images.erfi.dev/Granna_1.JPG?im.aspectCrop=width:16,height:9,hoffset:0.5,voffset:0.3)
+![Aspect Ratio Example](https://images.erfi.dev/Granna_1.JPG?im=AspectCrop=(16,9),xPosition=0.5,yPosition=0.3)
 
 **Akamai URL:**
 ```
-https://images.erfi.dev/Granna_1.JPG?im.aspectCrop=width:16,height:9,hoffset:0.5,voffset:0.3
+https://images.erfi.dev/Granna_1.JPG?im=AspectCrop=(16,9),xPosition=0.5,yPosition=0.3
 ```
 
 **Translated to Cloudflare:**
@@ -344,11 +439,11 @@ https://images.erfi.dev/Granna_1.JPG?width=800&height=450&fit=crop&gravity=north
 
 ### Watermark with Positioning
 
-![Watermark Example](https://images.erfi.dev/Granna_1.JPG?im.text=Watermark,placement:southeast,size:24,opacity:80)
+![Watermark Example](https://images.erfi.dev/Granna_1.JPG?im=Composite,image=(url=https://cdn.erfianugrah.com/ea_favicon.png),placement=southeast)
 
 **Akamai URL:**
 ```
-https://images.erfi.dev/Granna_1.JPG?im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:southeast,opacity:80
+https://images.erfi.dev/Granna_1.JPG?im=Composite,image=(url=https://cdn.erfianugrah.com/ea_favicon.png),placement=southeast,opacity=0.8
 ```
 
 **Translated to Cloudflare:**
@@ -358,11 +453,11 @@ https://images.erfi.dev/Granna_1.JPG?draw=[{"url":"https://cdn.erfianugrah.com/e
 
 ### Blur Effect
 
-![Blur Effect Example](https://images.erfi.dev/Granna_1.JPG?im.blur=20)
+![Blur Effect Example](https://images.erfi.dev/Granna_1.JPG?im=Blur=20)
 
 **Akamai URL:**
 ```
-https://images.erfi.dev/Granna_1.JPG?im.blur=20
+https://images.erfi.dev/Granna_1.JPG?im=Blur=20
 ```
 
 **Translated to Cloudflare:**
@@ -372,11 +467,11 @@ https://images.erfi.dev/Granna_1.JPG?blur=50
 
 ### Complex Multi-Parameter Transformation
 
-![Complex Transformation](https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.quality=80&im.format=webp&im.blur=10&im.grayscale=true)
+![Complex Transformation](https://images.erfi.dev/Granna_1.JPG?imwidth=500&imquality=80&imformat=webp&im=Blur=10&im=Grayscale)
 
 **Akamai URL:**
 ```
-https://images.erfi.dev/Granna_1.JPG?im.resize=width:500&im.quality=80&im.format=webp&im.blur=10&im.grayscale=true
+https://images.erfi.dev/Granna_1.JPG?imwidth=500&imquality=80&imformat=webp&im=Blur=10&im=Grayscale
 ```
 
 **Translated to Cloudflare:**
@@ -443,42 +538,42 @@ Here are recommended test cases to validate different aspects of the compatibili
 
 1. **Basic Functionality**: Verify resize and quality parameters
 
-   ![Basic Functionality](https://images.erfi.dev/Granna_1.JPG?im.resize=width:800,height:600&im.quality=85)
+   ![Basic Functionality](https://images.erfi.dev/Granna_1.JPG?im=Resize,width=800,height=600&imquality=85)
    
    ```
-   https://images.erfi.dev/Granna_1.JPG?im.resize=width:800,height:600&im.quality=85&debug=true
+   https://images.erfi.dev/Granna_1.JPG?im=Resize,width=800,height=600&imquality=85&debug=true
    ```
 
 2. **Advanced Functionality**: Test aspectCrop with positioning
 
-   ![Advanced Functionality](https://images.erfi.dev/Granna_1.JPG?im.aspectCrop=width:16,height:9,hoffset:0.5,voffset:0.2)
+   ![Advanced Functionality](https://images.erfi.dev/Granna_1.JPG?im=AspectCrop=(16,9),xPosition=0.5,yPosition=0.2)
    
    ```
-   https://images.erfi.dev/Granna_1.JPG?im.aspectCrop=width:16,height:9,hoffset:0.5,voffset:0.2&debug=true
+   https://images.erfi.dev/Granna_1.JPG?im=AspectCrop=(16,9),xPosition=0.5,yPosition=0.2&debug=true
    ```
 
 3. **Watermarking**: Test composite functionality
 
-   ![Watermarking](https://images.erfi.dev/Granna_1.JPG?im.text=Watermark,placement:southeast,size:18)
+   ![Watermarking](https://images.erfi.dev/Granna_1.JPG?im=Composite,image=(url=https://cdn.erfianugrah.com/ea_favicon.png),placement=southeast)
    
    ```
-   https://images.erfi.dev/Granna_1.JPG?im.composite=url:https://cdn.erfianugrah.com/ea_favicon.png,placement:southeast&debug=true
+   https://images.erfi.dev/Granna_1.JPG?im=Composite,image=(url=https://cdn.erfianugrah.com/ea_favicon.png),placement=southeast&debug=true
    ```
 
 4. **Visual Effects**: Test blur and other effects
 
-   ![Visual Effects](https://images.erfi.dev/Granna_1.JPG?im.blur=15&im.grayscale=true)
+   ![Visual Effects](https://images.erfi.dev/Granna_1.JPG?im=Blur=15&im=Grayscale)
    
    ```
-   https://images.erfi.dev/Granna_1.JPG?im.blur=15&im.grayscale=true&debug=true
+   https://images.erfi.dev/Granna_1.JPG?im=Blur=15&im=Grayscale&debug=true
    ```
 
 5. **Conditional Transformations**: Test dimension-based conditions
 
-   ![Conditional Transformations](https://images.erfi.dev/Granna_1.JPG?im.resize=width:300)
+   ![Conditional Transformations](https://images.erfi.dev/Granna_1.JPG?imwidth=300)
    
    ```
-   https://images.erfi.dev/Granna_1.JPG?im.if-dimension=width>500,im.resize=width:300&debug=true
+   https://images.erfi.dev/Granna_1.JPG?im=if-dimension=width>500,im=Resize,width=300&debug=true
    ```
 
 Look for the `X-Debug-Akamai-Compatibility: used` header in the response to confirm that the Akamai parameters were detected and translated correctly.
