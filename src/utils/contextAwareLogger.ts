@@ -118,7 +118,11 @@ export class ContextAwareLoggingService implements LoggingServiceFactory {
       'ERROR': LogLevel.ERROR
     };
     
-    return levelMap[this.config.logging.level] || LogLevel.INFO;
+    // Add null check to avoid the "Object is possibly 'undefined'" error
+    const configLogLevel = this.config?.logging?.level;
+    return configLogLevel && levelMap[configLogLevel] !== undefined
+      ? levelMap[configLogLevel]
+      : LogLevel.INFO;
   }
   
   /**

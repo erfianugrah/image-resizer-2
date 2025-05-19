@@ -93,7 +93,12 @@ export class PathPatternTTLCalculator {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined
       });
-      throw new CacheServiceError("Failed to initialize path pattern TTL calculator", { cause: error });
+      throw new CacheServiceError("Failed to initialize path pattern TTL calculator", { 
+        code: 'TTL_CALCULATOR_INIT_ERROR',
+        details: {
+          error: error instanceof Error ? error.message : String(error)
+        }
+      });
     }
   }
 

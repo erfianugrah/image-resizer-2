@@ -1013,15 +1013,16 @@ export class DefaultCacheService implements CacheService {
       const config = this.configService.getConfig();
       
       // Determine which TTL calculator to use based on configuration
-      const usePathPatterns = Array.isArray(config.cache.pathPatterns) && 
-                             config.cache.pathPatterns.length > 0;
+      const usePathPatterns = config.cache.pathPatterns ? 
+                             Array.isArray(config.cache.pathPatterns) && 
+                             config.cache.pathPatterns.length > 0 : false;
       
       if (usePathPatterns) {
         this.logger.debug('Using path pattern-based TTL calculation', {
           status: response.status,
           contentType: response.headers.get('Content-Type') || 'unknown',
           hasStorageResult: !!storageResult,
-          patternCount: config.cache.pathPatterns.length
+          patternCount: config.cache.pathPatterns?.length || 0
         });
         
         // Use the path pattern-based TTL calculator
@@ -1317,10 +1318,26 @@ export class DefaultCacheService implements CacheService {
         });
         
         // Use our TTL calculator to get appropriate TTL
-        const ttl = this.calculateTtl(tempResponse, metadata.transformOptions || {}, {
-          path: new URL(metadata.url).pathname,
-          sourceType: metadata.storageType || 'transform'
-        });
+        // Ensure that sourceType is a valid value from the StorageResult interface
+        let sourceType: 'r2' | 'remote' | 'fallback' | 'error' = 'fallback';
+        if (metadata.storageType && 
+            (metadata.storageType === 'r2' || 
+             metadata.storageType === 'remote' || 
+             metadata.storageType === 'fallback' || 
+             metadata.storageType === 'error')) {
+          sourceType = metadata.storageType;
+        }
+        
+        // Create a valid StorageResult object for TTL calculation
+        const storageResult: StorageResult = {
+          response: tempResponse.clone(),
+          sourceType: sourceType,
+          contentType: metadata.contentType,
+          size: metadata.size || 0,
+          path: new URL(metadata.url).pathname
+        };
+        
+        const ttl = this.calculateTtl(tempResponse, metadata.transformOptions || {}, storageResult);
         
         // Calculate age of the cached item
         const now = Date.now();

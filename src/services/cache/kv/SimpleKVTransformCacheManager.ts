@@ -1109,7 +1109,6 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       const storeOperation = async () => {
         try {
           await this.kvNamespace.put(key, storageResult.buffer, {
-            expirationTtl: ttl,
             metadata
           });
           this.logDebug('KV transform cache: Successfully stored item', { key });
@@ -1150,7 +1149,6 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
         // Store in background to avoid blocking response
         ctx.waitUntil(
           this.kvNamespace.put(key, storageResult.buffer, {
-            expirationTtl: ttl,
             metadata
           }).then(() => {
             this.logDebug('KV transform cache: Successfully stored item in background', { key });
@@ -1165,7 +1163,6 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
         // Store immediately (blocking)
         try {
           await this.kvNamespace.put(key, storageResult.buffer, {
-            expirationTtl: ttl,
             metadata
           });
           this.logDebug('KV transform cache: Successfully stored item', { key });

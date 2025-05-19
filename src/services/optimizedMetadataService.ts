@@ -405,7 +405,6 @@ export class OptimizedMetadataService implements MetadataFetchingService {
         cacheKey, 
         '', // Empty string value since metadata is stored in metadata field
         { 
-          expirationTtl: this.KV_CACHE_TTL,
           metadata: cacheData // Store metadata in key's metadata field instead of value
         }
       );
@@ -414,7 +413,6 @@ export class OptimizedMetadataService implements MetadataFetchingService {
         cacheKey,
         width: cacheData.width,
         height: cacheData.height,
-        ttl: this.KV_CACHE_TTL + 's',
         usingMetadataField: true
       });
     } catch (error) {

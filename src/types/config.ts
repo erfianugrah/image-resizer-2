@@ -222,6 +222,21 @@ export interface CacheConfig {
   minTtl?: number;  // Minimum TTL in seconds for any cached resource
   maxTtl?: number;  // Maximum TTL in seconds for any cached resource
   pathBasedTtl?: Record<string, number>; // Map of path patterns to specific TTLs
+  // Define pathPatterns format to match what's used in PathPatternTTLCalculator
+  pathPatterns?: Array<{
+    name: string;         // Pattern name for identification
+    matcher: string;      // Regular expression pattern as string
+    ttl: {                // TTL configuration for matched paths
+      ok: number;         // TTL for successful responses (2xx)
+      redirects?: number; // TTL for redirects (3xx)
+      clientError?: number; // TTL for client errors (4xx)
+      serverError?: number; // TTL for server errors (5xx)
+    };
+    priority?: number;    // Pattern priority (higher numbers take precedence) 
+    description?: string; // Optional description for documentation
+    tags?: string[];      // Optional tags for cache tagging
+  }>; // Path patterns with TTL and optional tags
+  derivativeTTLs?: Record<string, number>; // TTLs for specific derivatives
   immutableContent?: {
     enabled: boolean;
     contentTypes?: string[];     // Content types that should be considered immutable

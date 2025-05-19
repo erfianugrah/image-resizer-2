@@ -5,7 +5,7 @@
  * and provides structured logging with tracing.
  */
 
-import { Logger } from './logging';
+import { Logger, LogData } from './logging';
 import { 
   RequestContext, 
   addBreadcrumb, 
@@ -33,6 +33,50 @@ export class BreadcrumbLogger {
     this.category = category;
     this.context = context;
   }
+  
+  /**
+   * Sanitizes log data to ensure it conforms to the LogData type
+   * This ensures only compatible types are passed to the logger
+   * 
+   * @param data The data to sanitize
+   * @returns A LogData compatible object
+   */
+  private sanitizeLogData(data: Record<string, unknown>): LogData {
+    const result: LogData = {};
+    
+    // Process each property in the data object
+    for (const [key, value] of Object.entries(data)) {
+      if (value === null || value === undefined) {
+        // null and undefined are allowed in LogData
+        result[key] = value;
+      } else if (
+        typeof value === 'string' || 
+        typeof value === 'number' || 
+        typeof value === 'boolean'
+      ) {
+        // Primitive values are allowed
+        result[key] = value;
+      } else if (Array.isArray(value)) {
+        // Arrays of strings or numbers are allowed
+        if (value.every(item => typeof item === 'string')) {
+          result[key] = value as string[];
+        } else if (value.every(item => typeof item === 'number')) {
+          result[key] = value as number[];
+        } else {
+          // For mixed arrays, convert to string
+          result[key] = String(value);
+        }
+      } else if (typeof value === 'object') {
+        // For nested objects, convert to string
+        result[key] = JSON.stringify(value);
+      } else {
+        // For any other type, convert to string
+        result[key] = String(value);
+      }
+    }
+    
+    return result;
+  }
 
   /**
    * Get the current request context
@@ -49,7 +93,9 @@ export class BreadcrumbLogger {
    * @param data Optional data to include
    */
   info(message: string, data?: Record<string, unknown>): void {
-    this.logger.info(message, data);
+    // Convert Record<string, unknown> to LogData type for logger compatibility
+    const safeData = data ? this.sanitizeLogData(data) : undefined;
+    this.logger.info(message, safeData);
     
     const context = this.getContext();
     if (context) {
@@ -64,7 +110,9 @@ export class BreadcrumbLogger {
    * @param data Optional data to include
    */
   debug(message: string, data?: Record<string, unknown>): void {
-    this.logger.debug(message, data);
+    // Convert Record<string, unknown> to LogData type for logger compatibility
+    const safeData = data ? this.sanitizeLogData(data) : undefined;
+    this.logger.debug(message, safeData);
     
     const context = this.getContext();
     if (context && context.debugEnabled) {
@@ -79,7 +127,9 @@ export class BreadcrumbLogger {
    * @param data Optional data to include
    */
   warn(message: string, data?: Record<string, unknown>): void {
-    this.logger.warn(message, data);
+    // Convert Record<string, unknown> to LogData type for logger compatibility
+    const safeData = data ? this.sanitizeLogData(data) : undefined;
+    this.logger.warn(message, safeData);
     
     const context = this.getContext();
     if (context) {
@@ -94,7 +144,9 @@ export class BreadcrumbLogger {
    * @param data Optional data to include
    */
   error(message: string, data?: Record<string, unknown>): void {
-    this.logger.error(message, data);
+    // Convert Record<string, unknown> to LogData type for logger compatibility
+    const safeData = data ? this.sanitizeLogData(data) : undefined;
+    this.logger.error(message, safeData);
     
     const context = this.getContext();
     if (context) {
