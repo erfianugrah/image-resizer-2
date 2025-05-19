@@ -1,331 +1,329 @@
 {
-	"_meta": {
-		"version": "1.0.0",
-		"lastUpdated": "2025-05-19T11:44:53.145Z",
-		"activeModules": [
-			"cache",
-			"core",
-			"storage",
-			"transform"
-		]
-	},
-	"modules": {
-		"cache": {
-			"_meta": {
-				"name": "cache",
-				"version": "1.0.0",
-				"description": "Cache configuration module"
-			},
-			"config": {
-				"method": "cf",
-				"ttl": {
-					"default": 86400,
-					"status": {
-						"success": 86400,
-						"redirects": 3600,
-						"clientError": 60,
-						"serverError": 10
-					},
-					"contentType": {
-						"image/jpeg": 604800,
-						"image/png": 604800,
-						"image/webp": 604800,
-						"image/avif": 604800,
-						"image/gif": 604800,
-						"image/svg+xml": 2592000
-					}
-				},
-				"cacheEverything": true,
-				"useTtlByStatus": true,
-				"cacheTtlByStatus": {
-					"404": 60,
-					"200-299": 604800,
-					"301-302": 86400,
-					"500-599": 10
-				},
-				"cacheability": true,
-				"tags": {
-					"enabled": true,
-					"prefix": "img-",
-					"includeImageDimensions": true,
-					"includeFormat": true,
-					"includeQuality": true,
-					"includeDerivative": true,
-					"customTags": [],
-					"maxTags": 10
-				},
-				"bypass": {
-					"paths": [
-						"/admin/",
-						"/preview/",
-						"/draft/",
-						"/temp/",
-						"/test/"
-					],
-					"params": [
-						"nocache",
-						"refresh",
-						"force-refresh"
-					],
-					"inDevelopment": true,
-					"forAdmin": true,
-					"formats": []
-				},
-				"bypassParams": [
-					"nocache",
-					"refresh"
-				],
-				"pathBasedTtl": {
-					"/products/": 86400,
-					"/profiles/": 1209600,
-					"/blog/": 86400,
-					"/static/": 2592000
-				},
-				"pathBasedTags": {
-					"/products/": [
-						"product",
-						"catalog"
-					],
-					"/profiles/": [
-						"profile",
-						"avatar"
-					],
-					"/blog/": [
-						"blog",
-						"content"
-					],
-					"/static/": [
-						"static",
-						"assets"
-					]
-				},
-				"transformCache": {
-					"enabled": true,
-					"binding": "IMAGE_TRANSFORMATIONS_CACHE",
-					"prefix": "transform",
-					"maxSize": 26214400,
-					"defaultTtl": 86400,
-					"backgroundIndexing": true,
-					"disallowedPaths": [
-						"/admin/",
-						"/preview/",
-						"/draft/",
-						"/temp/"
-					]
-				}
-			}
-		},
-		"core": {
-			"_meta": {
-				"name": "core",
-				"version": "1.0.0",
-				"description": "Core configuration module for system-wide settings"
-			},
-			"config": {
-				"environment": "production",
-				"debug": {
-					"enabled": true,
-					"verbose": true,
-					"headers": [
-						"ir",
-						"cache",
-						"mode",
-						"client-hints",
-						"ua",
-						"device",
-						"strategy"
-					],
-					"allowedEnvironments": [
-						"development",
-						"staging",
-						"production"
-					],
-					"includePerformance": true
-				},
-				"features": {
-					"enableAkamaiCompatibility": true,
-					"enableAkamaiAdvancedFeatures": true,
-					"optimizedLogging": true,
-					"lazyServiceInitialization": true,
-					"optimizedClientDetection": true,
-					"optimizedCaching": true,
-					"optimizedMetadataFetching": true
-				},
-				"logging": {
-					"level": "DEBUG",
-					"includeTimestamp": true,
-					"enableStructuredLogs": true,
-					"enableBreadcrumbs": true,
-					"useLegacy": false,
-					"prettyPrint": true,
-					"colorize": true
-				}
-			}
-		},
-		"storage": {
-			"_meta": {
-				"name": "storage",
-				"version": "1.0.0",
-				"description": "Storage configuration module for image sources"
-			},
-			"config": {
-				"priority": [
-					"r2",
-					"remote",
-					"fallback"
-				],
-				"r2": {
-					"enabled": true,
-					"bindingName": "IMAGES_BUCKET"
-				},
-				"remoteUrl": "https://25f21f141824546aa72c74451a11b419.r2.cloudflarestorage.com/images-weur",
-				"fallbackUrl": "https://cdn.erfianugrah.com",
-				"remote": {
-					"url": "https://25f21f141824546aa72c74451a11b419.r2.cloudflarestorage.com/images-weur",
-					"auth": {
-						"enabled": true,
-						"type": "aws-s3",
-						"region": "us-east-1",
-						"service": "s3",
-						"accessKeyVar": "AWS_ACCESS_KEY_ID",
-						"secretKeyVar": "AWS_SECRET_ACCESS_KEY"
-					},
-					"fetchOptions": {
-						"userAgent": "Cloudflare-Image-Resizer/1.0-PROD",
-						"headers": {
-							"Accept": "image/*"
-						}
-					}
-				},
-				"fallback": {
-					"url": "https://cdn.erfianugrah.com",
-					"auth": {
-						"enabled": false,
-						"type": "bearer",
-						"tokenHeaderName": "Authorization"
-					}
-				},
-				"auth": {
-					"useOriginAuth": true,
-					"sharePublicly": true,
-					"securityLevel": "strict",
-					"cacheTtl": 86400
-				},
-				"pathTransforms": {
-					"images": {
-						"prefix": "",
-						"removePrefix": true
-					},
-					"assets": {
-						"prefix": "img/",
-						"removePrefix": true,
-						"r2": {
-							"prefix": "img/",
-							"removePrefix": true
-						},
-						"remote": {
-							"prefix": "assets/",
-							"removePrefix": true
-						},
-						"fallback": {
-							"prefix": "public/",
-							"removePrefix": true
-						}
-					},
-					"content": {
-						"prefix": "content-images/",
-						"removePrefix": true
-					}
-				}
-			}
-		},
-		"transform": {
-			"_meta": {
-				"name": "transform",
-				"version": "1.0.0",
-				"description": "Transformation configuration module for image processing"
-			},
-			"config": {
-				"defaults": {
-					"quality": 85,
-					"format": "auto",
-					"fit": "scale-down",
-					"metadata": "none"
-				},
-				"formatQuality": {
-					"webp": 85,
-					"avif": 80,
-					"jpeg": 85,
-					"png": 90,
-					"gif": 85
-				},
-				"derivatives": {
-					"thumbnail": {
-						"width": 320,
-						"height": 150,
-						"fit": "cover",
-						"gravity": "auto"
-					},
-					"avatar": {
-						"width": 180,
-						"height": 180,
-						"fit": "cover",
-						"gravity": "face"
-					},
-					"banner": {
-						"width": 1600,
-						"height": 400,
-						"fit": "cover",
-						"gravity": "auto"
-					},
-					"product": {
-						"width": 800,
-						"height": 800,
-						"fit": "contain",
-						"background": "white"
-					},
-					"og": {
-						"width": 1200,
-						"height": 630,
-						"fit": "cover",
-						"gravity": "auto"
-					},
-					"twitter": {
-						"width": 1200,
-						"height": 600,
-						"fit": "cover",
-						"gravity": "auto"
-					},
-					"mobile": {
-						"width": 480,
-						"format": "auto",
-						"quality": 80
-					},
-					"desktop": {
-						"width": 1440,
-						"format": "auto",
-						"quality": 85
-					}
-				},
-				"sizeCodes": {
-					"xxu": 40,
-					"xu": 80,
-					"u": 160,
-					"xxxs": 300,
-					"xxs": 400,
-					"xs": 500,
-					"s": 600,
-					"m": 700,
-					"l": 750,
-					"xl": 900,
-					"xxl": 1100,
-					"xxxl": 1400,
-					"sg": 1600,
-					"g": 2000,
-					"xg": 3000,
-					"xxg": 4000
-				}
-			}
-		}
-	}
+  "_meta": {
+    "version": "1.0.0",
+    "lastUpdated": "2025-05-19T14:06:00.412Z",
+    "activeModules": [
+      "cache",
+      "core",
+      "storage",
+      "transform"
+    ]
+  },
+  "modules": {
+    "cache": {
+      "_meta": {
+        "name": "cache",
+        "version": "1.0.0",
+        "description": "Cache configuration module"
+      },
+      "config": {
+        "method": "cf",
+        "ttl": {
+          "default": 86400,
+          "status": {
+            "success": 86400,
+            "redirects": 3600,
+            "clientError": 60,
+            "serverError": 10
+          },
+          "contentType": {
+            "image/jpeg": 604800,
+            "image/png": 604800,
+            "image/webp": 604800,
+            "image/avif": 604800,
+            "image/gif": 604800,
+            "image/svg+xml": 2592000
+          }
+        },
+        "cacheEverything": true,
+        "useTtlByStatus": true,
+        "cacheTtlByStatus": {
+          "404": 60,
+          "200-299": 604800,
+          "301-302": 86400,
+          "500-599": 10
+        },
+        "cacheability": true,
+        "tags": {
+          "enabled": true,
+          "prefix": "img-",
+          "includeImageDimensions": true,
+          "includeFormat": true,
+          "includeQuality": true,
+          "includeDerivative": true,
+          "customTags": [],
+          "maxTags": 10
+        },
+        "bypass": {
+          "paths": [
+            "/admin/",
+            "/preview/",
+            "/draft/",
+            "/temp/",
+            "/test/"
+          ],
+          "params": [
+            "nocache",
+            "refresh",
+            "force-refresh"
+          ],
+          "inDevelopment": true,
+          "forAdmin": true,
+          "formats": []
+        },
+        "bypassParams": [
+          "nocache",
+          "refresh"
+        ],
+        "pathBasedTtl": {
+          "/products/": 86400,
+          "/profiles/": 1209600,
+          "/blog/": 86400,
+          "/static/": 2592000
+        },
+        "pathBasedTags": {
+          "/products/": [
+            "product",
+            "catalog"
+          ],
+          "/profiles/": [
+            "profile",
+            "avatar"
+          ],
+          "/blog/": [
+            "blog",
+            "content"
+          ],
+          "/static/": [
+            "static",
+            "assets"
+          ]
+        },
+        "transformCache": {
+          "enabled": true,
+          "binding": "IMAGE_TRANSFORMATIONS_CACHE",
+          "prefix": "transform",
+          "maxSize": 26214400,
+          "defaultTtl": 86400,
+          "backgroundIndexing": true,
+          "disallowedPaths": [
+            "/admin/",
+            "/preview/",
+            "/draft/",
+            "/temp/"
+          ]
+        }
+      }
+    },
+    "core": {
+      "_meta": {
+        "name": "core",
+        "version": "1.0.0",
+        "description": "Core configuration module for system-wide settings"
+      },
+      "config": {
+        "environment": "production",
+        "debug": {
+          "enabled": true,
+          "verbose": true,
+          "headers": [
+            "ir",
+            "cache",
+            "mode",
+            "client-hints",
+            "ua",
+            "device",
+            "strategy"
+          ],
+          "allowedEnvironments": [
+            "development",
+            "staging",
+            "production"
+          ],
+          "includePerformance": true
+        },
+        "features": {
+          "enableAkamaiCompatibility": true,
+          "enableAkamaiAdvancedFeatures": true,
+          "optimizedLogging": true,
+          "lazyServiceInitialization": true,
+          "optimizedClientDetection": true,
+          "optimizedCaching": true,
+          "optimizedMetadataFetching": true
+        },
+        "logging": {
+          "level": "DEBUG",
+          "includeTimestamp": true,
+          "enableStructuredLogs": true,
+          "enableBreadcrumbs": true,
+          "useLegacy": false,
+          "prettyPrint": true,
+          "colorize": true
+        }
+      }
+    },
+    "storage": {
+      "_meta": {
+        "name": "storage",
+        "version": "1.0.0",
+        "description": "Storage configuration module for image sources"
+      },
+      "config": {
+        "priority": [
+          "r2",
+          "remote",
+          "fallback"
+        ],
+        "r2": {
+          "enabled": true,
+          "bindingName": "IMAGES_BUCKET"
+        },
+        "remote": {
+          "url": "https://25f21f141824546aa72c74451a11b419.r2.cloudflarestorage.com/images-weur",
+          "auth": {
+            "enabled": true,
+            "type": "aws-s3",
+            "region": "us-east-1",
+            "service": "s3",
+            "accessKeyVar": "AWS_ACCESS_KEY_ID",
+            "secretKeyVar": "AWS_SECRET_ACCESS_KEY"
+          },
+          "fetchOptions": {
+            "userAgent": "Cloudflare-Image-Resizer/1.0-PROD",
+            "headers": {
+              "Accept": "image/*"
+            }
+          }
+        },
+        "fallback": {
+          "url": "https://cdn.erfianugrah.com",
+          "auth": {
+            "enabled": false,
+            "type": "bearer",
+            "tokenHeaderName": "Authorization"
+          }
+        },
+        "auth": {
+          "useOriginAuth": true,
+          "sharePublicly": true,
+          "securityLevel": "strict",
+          "cacheTtl": 86400
+        },
+        "pathTransforms": {
+          "images": {
+            "prefix": "",
+            "removePrefix": true
+          },
+          "assets": {
+            "prefix": "img/",
+            "removePrefix": true,
+            "r2": {
+              "prefix": "img/",
+              "removePrefix": true
+            },
+            "remote": {
+              "prefix": "assets/",
+              "removePrefix": true
+            },
+            "fallback": {
+              "prefix": "public/",
+              "removePrefix": true
+            }
+          },
+          "content": {
+            "prefix": "content-images/",
+            "removePrefix": true
+          }
+        }
+      }
+    },
+    "transform": {
+      "_meta": {
+        "name": "transform",
+        "version": "1.0.0",
+        "description": "Transformation configuration module for image processing"
+      },
+      "config": {
+        "defaults": {
+          "quality": 85,
+          "format": "auto",
+          "fit": "scale-down",
+          "metadata": "none"
+        },
+        "formatQuality": {
+          "webp": 85,
+          "avif": 80,
+          "jpeg": 85,
+          "png": 90,
+          "gif": 85
+        },
+        "derivatives": {
+          "thumbnail": {
+            "width": 320,
+            "height": 150,
+            "fit": "cover",
+            "gravity": "auto"
+          },
+          "avatar": {
+            "width": 180,
+            "height": 180,
+            "fit": "cover",
+            "gravity": "face"
+          },
+          "banner": {
+            "width": 1600,
+            "height": 400,
+            "fit": "cover",
+            "gravity": "auto"
+          },
+          "product": {
+            "width": 800,
+            "height": 800,
+            "fit": "contain",
+            "background": "white"
+          },
+          "og": {
+            "width": 1200,
+            "height": 630,
+            "fit": "cover",
+            "gravity": "auto"
+          },
+          "twitter": {
+            "width": 1200,
+            "height": 600,
+            "fit": "cover",
+            "gravity": "auto"
+          },
+          "mobile": {
+            "width": 480,
+            "format": "auto",
+            "quality": 80
+          },
+          "desktop": {
+            "width": 1440,
+            "format": "auto",
+            "quality": 85
+          }
+        },
+        "sizeCodes": {
+          "xxu": 40,
+          "xu": 80,
+          "u": 160,
+          "xxxs": 300,
+          "xxs": 400,
+          "xs": 500,
+          "s": 600,
+          "m": 700,
+          "l": 750,
+          "xl": 900,
+          "xxl": 1100,
+          "xxxl": 1400,
+          "sg": 1600,
+          "g": 2000,
+          "xg": 3000,
+          "xxg": 4000
+        }
+      }
+    }
+  }
 }

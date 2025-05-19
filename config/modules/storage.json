@@ -1,77 +1,75 @@
 {
-  "_meta": {
-    "name": "storage",
-    "version": "1.0.0",
-    "description": "Storage configuration module for image sources"
-  },
-  "config": {
-    "priority": [
-      "r2",
-      "remote",
-      "fallback"
-    ],
-    "r2": {
-      "enabled": true,
-      "bindingName": "IMAGES_BUCKET"
-    },
-    "remoteUrl": "https://25f21f141824546aa72c74451a11b419.r2.cloudflarestorage.com/images-weur",
-    "fallbackUrl": "https://cdn.erfianugrah.com",
-    "remote": {
-      "url": "https://25f21f141824546aa72c74451a11b419.r2.cloudflarestorage.com/images-weur",
-      "auth": {
-        "enabled": true,
-        "type": "aws-s3",
-        "region": "us-east-1",
-        "service": "s3",
-        "accessKeyVar": "AWS_ACCESS_KEY_ID",
-        "secretKeyVar": "AWS_SECRET_ACCESS_KEY"
-      },
-      "fetchOptions": {
-        "userAgent": "Cloudflare-Image-Resizer/1.0-PROD",
-        "headers": {
-          "Accept": "image/*"
-        }
-      }
-    },
-    "fallback": {
-      "url": "https://cdn.erfianugrah.com",
-      "auth": {
-        "enabled": false,
-        "type": "bearer",
-        "tokenHeaderName": "Authorization"
-      }
-    },
-    "auth": {
-      "useOriginAuth": true,
-      "sharePublicly": true,
-      "securityLevel": "strict",
-      "cacheTtl": 86400
-    },
-    "pathTransforms": {
-      "images": {
-        "prefix": "",
-        "removePrefix": true
-      },
-      "assets": {
-        "prefix": "img/",
-        "removePrefix": true,
-        "r2": {
-          "prefix": "img/",
-          "removePrefix": true
-        },
-        "remote": {
-          "prefix": "assets/",
-          "removePrefix": true
-        },
-        "fallback": {
-          "prefix": "public/",
-          "removePrefix": true
-        }
-      },
-      "content": {
-        "prefix": "content-images/",
-        "removePrefix": true
-      }
-    }
-  }
+	"_meta": {
+		"name": "storage",
+		"version": "1.0.0",
+		"description": "Storage configuration module for image sources"
+	},
+	"config": {
+		"priority": [
+			"r2",
+			"remote",
+			"fallback"
+		],
+		"r2": {
+			"enabled": true,
+			"bindingName": "IMAGES_BUCKET"
+		},
+		"remote": {
+			"url": "https://25f21f141824546aa72c74451a11b419.r2.cloudflarestorage.com/images-weur",
+			"auth": {
+				"enabled": true,
+				"type": "aws-s3",
+				"region": "us-east-1",
+				"service": "s3",
+				"accessKeyVar": "AWS_ACCESS_KEY_ID",
+				"secretKeyVar": "AWS_SECRET_ACCESS_KEY"
+			},
+			"fetchOptions": {
+				"userAgent": "Cloudflare-Image-Resizer/1.0-PROD",
+				"headers": {
+					"Accept": "image/*"
+				}
+			}
+		},
+		"fallback": {
+			"url": "https://cdn.erfianugrah.com",
+			"auth": {
+				"enabled": false,
+				"type": "bearer",
+				"tokenHeaderName": "Authorization"
+			}
+		},
+		"auth": {
+			"useOriginAuth": true,
+			"sharePublicly": true,
+			"securityLevel": "strict",
+			"cacheTtl": 86400
+		},
+		"pathTransforms": {
+			"images": {
+				"prefix": "",
+				"removePrefix": true
+			},
+			"assets": {
+				"prefix": "img/",
+				"removePrefix": true,
+				"r2": {
+					"prefix": "img/",
+					"removePrefix": true
+				},
+				"remote": {
+					"prefix": "assets/",
+					"removePrefix": true
+				},
+				"fallback": {
+					"prefix": "public/",
+					"removePrefix": true
+				}
+			},
+			"content": {
+				"prefix": "content-images/",
+				"removePrefix": true
+			}
+		}
+	}
 }
