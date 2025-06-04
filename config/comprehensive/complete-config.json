@@ -1,7 +1,7 @@
 {
   "_meta": {
     "version": "1.0.0",
-    "lastUpdated": "2025-05-19T14:06:00.412Z",
+    "lastUpdated": "2025-06-04T06:53:17.175Z",
     "activeModules": [
       "cache",
       "core",
@@ -175,13 +175,30 @@
           "fallback"
         ],
         "r2": {
-          "enabled": true,
+          "enabled": false,
           "bindingName": "IMAGES_BUCKET"
         },
         "remote": {
-          "url": "https://25f21f141824546aa72c74451a11b419.r2.cloudflarestorage.com/images-weur",
+          "url": "https://mcdc-media.oss-cn-shanghai.aliyuncs.com/images/",
           "auth": {
             "enabled": true,
+            "type": "aws-s3",
+            "region": "auto",
+            "service": "s3",
+            "accessKeyVar": "ALI_AWS_ACCESS_KEY_ID",
+            "secretKeyVar": "ALI_AWS_SECRET_ACCESS_KEY"
+          },
+          "fetchOptions": {
+            "userAgent": "Cloudflare-Image-Resizer/1.0-PROD",
+            "headers": {
+              "Accept": "image/*"
+            }
+          }
+        },
+        "fallback": {
+          "url": "https://25f21f141824546aa72c74451a11b419.r2.cloudflarestorage.com/images-weur",
+          "auth": {
+            "enabled": false,
             "type": "aws-s3",
             "region": "us-east-1",
             "service": "s3",
@@ -193,14 +210,6 @@
             "headers": {
               "Accept": "image/*"
             }
-          }
-        },
-        "fallback": {
-          "url": "https://cdn.erfianugrah.com",
-          "auth": {
-            "enabled": false,
-            "type": "bearer",
-            "tokenHeaderName": "Authorization"
           }
         },
         "auth": {

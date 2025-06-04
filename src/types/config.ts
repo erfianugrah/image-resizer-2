@@ -408,6 +408,23 @@ export interface StorageConfig {
     enabled: boolean;
     bindingName: string;
   };
+  // Support for nested structure from storage module
+  remote?: {
+    url?: string;
+    auth?: RemoteAuthConfig;
+    fetchOptions?: {
+      userAgent?: string;
+      headers?: Record<string, string>;
+    };
+  };
+  fallback?: {
+    url?: string;
+    auth?: RemoteAuthConfig;
+    fetchOptions?: {
+      userAgent?: string;
+      headers?: Record<string, string>;
+    };
+  };
   fetchOptions?: {
     userAgent?: string;
     headers?: Record<string, string>;

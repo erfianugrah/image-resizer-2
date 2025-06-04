@@ -152,6 +152,24 @@ export async function getConfigWithFallback(
         // Merge storage configuration
         mergedConfig.storage = deepMerge(legacyConfig.storage, storageConfig);
         
+        // Map nested remote.url and fallback.url to flat structure expected by storage service
+        // Check in the merged config, not just the storageConfig
+        if (mergedConfig.storage.remote && mergedConfig.storage.remote.url) {
+          mergedConfig.storage.remoteUrl = mergedConfig.storage.remote.url;
+        }
+        if (mergedConfig.storage.fallback && mergedConfig.storage.fallback.url) {
+          mergedConfig.storage.fallbackUrl = mergedConfig.storage.fallback.url;
+        }
+        
+        // Map nested auth configurations to flat structure
+        // Also check in the merged config
+        if (mergedConfig.storage.remote && mergedConfig.storage.remote.auth) {
+          mergedConfig.storage.remoteAuth = mergedConfig.storage.remote.auth;
+        }
+        if (mergedConfig.storage.fallback && mergedConfig.storage.fallback.auth) {
+          mergedConfig.storage.fallbackAuth = mergedConfig.storage.fallback.auth;
+        }
+        
         // Merge path templates
         if (storageConfig.pathTemplates) {
           if (legacyConfig.pathTemplates) {
