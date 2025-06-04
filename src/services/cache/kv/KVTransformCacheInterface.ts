@@ -45,36 +45,34 @@ export interface KVCacheConfig {
  * Extends Record<string, unknown> to satisfy the type system
  */
 export interface CacheMetadata extends Record<string, unknown> {
-  // Identifying information
-  url: string;                 // Original URL
-  timestamp: number;           // When the item was cached
-  
-  // Image dimensions - explicitly included for better readability
-  width?: number;              // Image width (if available)
-  height?: number;             // Image height (if available)
+  // Essential timing (calculate expiration from timestamp + ttl)
+  timestamp: number;           // When cached (Unix timestamp in ms)
+  ttl: number;                // TTL in seconds
   
   // Content information
-  contentType: string;         // Content type of the cached image
-  size: number;                // Size in bytes
+  contentType: string;         // Full content type (e.g., "image/avif")
+  size: number;                // Size in bytes after transformation
   
-  // Cache control
-  ttl: number;                 // TTL in seconds
-  expiration: number;          // Expiration timestamp
+  // Dimensions (only if specified/available)
+  width?: number;              // Transformed width
+  height?: number;             // Transformed height
   
-  // Transform details
-  transformOptions: TransformOptions; // The transform options used
-  tags: string[];              // Cache tags
+  // Storage and compression info
+  storageType: string;         // Source type (r2, remote, fallback)
+  originalSize?: number;       // Original size before transformation
+  compressionRatio?: number;   // Compression ratio (2 decimal places)
   
-  // Additional metadata
-  storageType?: string;        // The storage type used (r2, remote, fallback)
-  originalSize?: number;       // Original image size before transformation
-  compressionRatio?: number;   // Compression ratio achieved
+  // Simplified tags for cache invalidation (max 5, shortened)
+  tags: string[];              // Cache tags without prefixes
   
-  // Aspect crop information
-  aspectCropInfo?: {           // Information about aspect crop processing
-    aspect?: string;           // Aspect ratio used
-    focal?: string;            // Focal point used
-    processedWithKV: boolean;  // Flag indicating this was processed by KV cache
+  // Clean transform options (no internal flags like __explicitWidth)
+  transformOptions: Record<string, any>; // User-facing options only
+  
+  // Aspect crop info (only if used)
+  aspectCropInfo?: {           
+    aspect?: string;           
+    focal?: string;            
+    processedWithKV: boolean;  
   };
 }
 

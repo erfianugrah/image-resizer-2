@@ -1028,28 +1028,43 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       }
     }
     
-    // Create metadata
+    // Create optimized metadata (must stay under 1024 bytes)
+    // Extract format from contentType for more efficient storage
+    const format = contentType.split('/')[1]?.split(';')[0] || 'unknown';
+    
+    // Filter transform options to remove internal flags
+    const cleanTransformOptions: Record<string, any> = {};
+    for (const [key, value] of Object.entries(transformOptions)) {
+      if (!key.startsWith('__') && value !== undefined) {
+        cleanTransformOptions[key] = value;
+      }
+    }
+    
     const metadata: CacheMetadata = {
-      // Key identifies
-      url: request.url,
+      // Essential timing (no expiration - calculate from timestamp + ttl)
       timestamp: now,
-      // Image properties (dimensions from transform options)
-      width: transformOptions.width ? parseInt(String(transformOptions.width), 10) : undefined,
-      height: transformOptions.height ? parseInt(String(transformOptions.height), 10) : undefined,
-      // Content information
+      ttl,
+      
+      // Content info (store format separately for easier access)
       contentType,
       size: storageResult.buffer.byteLength,
-      // Cache control properties
-      ttl,
-      expiration: now + (ttl * 1000),
-      // Additional metadata
-      transformOptions,
-      tags,
+      
+      // Dimensions if available
+      ...(transformOptions.width && { width: parseInt(String(transformOptions.width), 10) }),
+      ...(transformOptions.height && { height: parseInt(String(transformOptions.height), 10) }),
+      
+      // Storage info
       storageType: storageResult.storageType,
-      originalSize: storageResult.originalSize,
-      compressionRatio: storageResult.originalSize ? 
-        storageResult.buffer.byteLength / storageResult.originalSize : 
-        undefined
+      ...(storageResult.originalSize && { 
+        originalSize: storageResult.originalSize,
+        compressionRatio: parseFloat((storageResult.buffer.byteLength / storageResult.originalSize).toFixed(2))
+      }),
+      
+      // Create more useful tags
+      tags: this.createOptimizedTags(path, format, transformOptions, tags),
+      
+      // Clean transform options (no internal flags, no url)
+      transformOptions: cleanTransformOptions
     };
     
     // If we have aspect crop information in transformOptions, store it in metadata
@@ -1264,8 +1279,12 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     if (!this.config.enabled) return 0;
     
     // Use list + filter to find keys with the matching path pattern
-    const pathFilter = (metadata: CacheMetadata): boolean => 
-      !!(metadata.url && metadata.url.includes(pathPattern));
+    // Since we don't store URL in metadata, check tags for path info
+    const pathFilter = (metadata: CacheMetadata): boolean => {
+      if (!metadata.tags) return false;
+      // Check if any tag contains the path pattern
+      return metadata.tags.some(tag => tag.includes(pathPattern));
+    };
     
     const keys = await this.listKeysWithFilter(pathFilter);
     
@@ -1537,9 +1556,12 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     
     const now = Date.now();
     
-    // Find expired entries
-    const expiredFilter = (metadata: CacheMetadata): boolean => 
-      !!(metadata.expiration && metadata.expiration < now);
+    // Find expired entries (calculate expiration from timestamp + ttl)
+    const expiredFilter = (metadata: CacheMetadata): boolean => {
+      if (!metadata.timestamp || !metadata.ttl) return false;
+      const expiration = metadata.timestamp + (metadata.ttl * 1000);
+      return expiration < now;
+    };
     
     const expiredKeys = await this.listKeysWithFilter(expiredFilter, maxEntriesToPrune);
     
@@ -1600,6 +1622,49 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       return this.config.contentTypeTtls[contentType];
     }
     return this.config.defaultTtl;
+  }
+
+  /**
+   * Create optimized tags for cache invalidation
+   * Focus on useful tags that enable targeted purging
+   */
+  private createOptimizedTags(
+    path: string, 
+    format: string, 
+    transformOptions: Record<string, any>,
+    originalTags: string[]
+  ): string[] {
+    const optimizedTags: string[] = [];
+    
+    // 1. Filename (without path, more useful for purging)
+    const filename = path.split('/').pop() || path;
+    if (filename) {
+      optimizedTags.push(filename.substring(0, 50)); // Limit length
+    }
+    
+    // 2. Format tag (crucial for format-specific purging)
+    if (format && format !== 'unknown') {
+      optimizedTags.push(`fmt:${format}`);
+    }
+    
+    // 3. Size tag (if width is present)
+    if (transformOptions.width) {
+      optimizedTags.push(`w:${transformOptions.width}`);
+    }
+    
+    // 4. Size code tag (if using f parameter)
+    if (transformOptions.f) {
+      optimizedTags.push(`f:${transformOptions.f}`);
+    }
+    
+    // 5. Directory tag (first directory only, useful for organized content)
+    const pathParts = path.split('/').filter(Boolean);
+    if (pathParts.length > 1) {
+      optimizedTags.push(`dir:${pathParts[0]}`);
+    }
+    
+    // Remove duplicates and limit to 5 most important tags
+    return Array.from(new Set(optimizedTags)).slice(0, 5);
   }
 
   /**

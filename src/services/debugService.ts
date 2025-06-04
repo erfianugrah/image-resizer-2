@@ -163,7 +163,9 @@ export class DefaultDebugService implements DebugService {
       headers.set(headerNames.environment || 'X-Environment', config.environment);
       
       // Add processing mode and source headers
-      headers.set(headerNames.processingMode || 'X-Processing-Mode', 'cf-transform');
+      const processingMode = storageResult.metadata?.fromKvCache ? 'kv-cache' : 
+                           storageResult.metadata?.kvCacheHit ? 'kv-cache' : 'cf-transform';
+      headers.set(headerNames.processingMode || 'X-Processing-Mode', processingMode);
     
       // Add responsive sizing info
       if (options.width) {

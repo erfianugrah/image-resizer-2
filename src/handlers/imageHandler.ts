@@ -233,20 +233,35 @@ export async function handleImageRequest(
         // Update response with cache info
         let updatedResponse = new Response(cachedResponse.body, cachedResponse);
         
+        // Extract metadata from the cached response headers
+        const originalStorageType = cachedResponse.headers.get('X-Original-Storage-Type');
+        const originalSize = cachedResponse.headers.get('X-Original-Size');
+        let sourceType: 'r2' | 'remote' | 'fallback' | 'error' = 'remote'; // Default to 'remote'
+        
+        // Validate and use the original storage type if available
+        if (originalStorageType && 
+            (originalStorageType === 'r2' || 
+             originalStorageType === 'remote' || 
+             originalStorageType === 'fallback' || 
+             originalStorageType === 'error')) {
+          sourceType = originalStorageType;
+        }
+        
         // Apply debug headers using the debugService
         updatedResponse = services.debugService.addDebugHeaders(
           updatedResponse,
           request,
           {
             response: updatedResponse,
-            sourceType: 'r2', // Use 'r2' type as it's cached
+            sourceType: sourceType, // Use the actual original storage type
             contentType: updatedResponse.headers.get('Content-Type') || 'unknown',
-            size: null,
+            size: originalSize ? parseInt(originalSize, 10) : null,
             path: imagePath,
-            originalUrl: request.url // Add original URL for reference
+            originalUrl: request.url, // Add original URL for reference
+            metadata: { fromKvCache: true } // Add metadata to indicate this is from KV cache
           },
-          // Pass empty transform options as we're using cached result
-          {},
+          // Pass the original transform options for debug headers
+          optionsFromUrl,
           config,
           metrics,
           url

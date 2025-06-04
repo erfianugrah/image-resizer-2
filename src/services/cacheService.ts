@@ -1228,7 +1228,7 @@ export class DefaultCacheService implements CacheService {
       
       // Additional metadata headers for debugging
       headers.set('X-Transform-Cache-Hit', 'true');
-      headers.set('X-Original-URL', metadata.url);
+      headers.set('X-Original-URL', request.url);
       headers.set('X-Original-Size', (metadata.originalSize || 0).toString());
       
       if (metadata.compressionRatio) {
@@ -1268,14 +1268,21 @@ export class DefaultCacheService implements CacheService {
         headers.set('X-Image-Focal', metadata.transformOptions.focal.toString());
       }
       
+      // Add storage type information if available
+      if (metadata.storageType) {
+        headers.set('X-Original-Storage-Type', metadata.storageType);
+      }
+      
       // Add cache metadata timestamp and expiration
       if (metadata.timestamp) {
         headers.set('X-Cache-Time', new Date(metadata.timestamp).toISOString());
         headers.set('X-Cache-Age', ((Date.now() - metadata.timestamp) / 1000).toFixed(0) + 's');
       }
       
-      if (metadata.expiration) {
-        headers.set('X-Cache-Expires', new Date(metadata.expiration).toISOString());
+      // Calculate expiration from timestamp + ttl
+      if (metadata.timestamp && metadata.ttl) {
+        const expiration = metadata.timestamp + (metadata.ttl * 1000);
+        headers.set('X-Cache-Expires', new Date(expiration).toISOString());
       }
       
       // Set Cache-Control header based on TTL from metadata or calculate a new one
@@ -1334,7 +1341,7 @@ export class DefaultCacheService implements CacheService {
           sourceType: sourceType,
           contentType: metadata.contentType,
           size: metadata.size || 0,
-          path: new URL(metadata.url).pathname
+          path: new URL(request.url).pathname
         };
         
         const ttl = this.calculateTtl(tempResponse, metadata.transformOptions || {}, storageResult);
