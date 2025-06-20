@@ -1,7 +1,7 @@
 {
   "_meta": {
     "version": "1.0.0",
-    "lastUpdated": "2025-06-04T06:53:17.175Z",
+    "lastUpdated": "2025-06-20T10:34:20.749Z",
     "activeModules": [
       "cache",
       "core",
@@ -175,7 +175,7 @@
           "fallback"
         ],
         "r2": {
-          "enabled": false,
+          "enabled": true,
           "bindingName": "IMAGES_BUCKET"
         },
         "remote": {
