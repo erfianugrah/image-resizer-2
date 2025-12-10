@@ -413,7 +413,7 @@ async function fetchFromRemote(
 
               // Log signing process
               const awsHeaderKeys: string[] = [];
-              signedRequest.headers.forEach((_, key) => {
+              signedRequest.headers.forEach((_: string, key: string) => {
                 awsHeaderKeys.push(key);
               });
               
@@ -432,7 +432,7 @@ async function fetchFromRemote(
 
               // Extract the headers and add them to fetch options
               const addedHeaders: string[] = [];
-              signedRequest.headers.forEach((value, key) => {
+              signedRequest.headers.forEach((value: string, key: string) => {
                 // Only include AWS specific headers
                 if (key.startsWith('x-amz-') || key === 'authorization') {
                   if (
@@ -871,7 +871,7 @@ async function fetchFromFallback(
 
               // Log signing process
               const awsHeaderKeys: string[] = [];
-              signedRequest.headers.forEach((_, key) => {
+              signedRequest.headers.forEach((_: string, key: string) => {
                 awsHeaderKeys.push(key);
               });
               
@@ -882,7 +882,7 @@ async function fetchFromFallback(
 
               // Extract the headers and add them to fetch options
               const addedHeaders: string[] = [];
-              signedRequest.headers.forEach((value, key) => {
+              signedRequest.headers.forEach((value: string, key: string) => {
                 // Only include AWS specific headers
                 if (key.startsWith('x-amz-') || key === 'authorization') {
                   if (

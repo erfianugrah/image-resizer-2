@@ -34,11 +34,6 @@ export default {
     env: Env,
     ctx: ExecutionContext,
   ): Promise<Response> {
-    // Attach env and ctx to the request object for use in services
-    // Use proper type assertion to avoid TypeScript errors
-    (request as unknown as { env: any }).env = env;
-    (request as unknown as { ctx: ExecutionContext }).ctx = ctx;
-
     // Start performance tracking
     const metrics: PerformanceMetrics = {
       start: Date.now(),
@@ -52,20 +47,20 @@ export default {
     });
     const { logger, configurationService, loggingService, lifecycleManager } =
       services;
-      
-    // Create pathService and detectorService if not already present
-    if (!services.pathService) {
-      // Import dynamically to avoid circular dependencies
-      const { createPathService } = await import('./services/pathService');
-      services.pathService = createPathService(loggingService.getLogger('PathService'), configurationService.getConfig());
-      logger.info('Created missing PathService');
-    }
-    
-    if (!services.detectorService) {
-      // Import dynamically to avoid circular dependencies
-      const { createDetectorService } = await import('./services/detectorServiceFactory');
-      services.detectorService = createDetectorService(configurationService.getConfig(), loggingService.getLogger('DetectorService'));
-      logger.info('Created missing DetectorService');
+
+    if (!services.pathService || !services.detectorService) {
+      const missing = [
+        !services.pathService ? "PathService" : null,
+        !services.detectorService ? "DetectorService" : null,
+      ].filter((v): v is string => Boolean(v));
+      const error = new AppError(
+        `Required services missing: ${missing.join(", ")}`,
+        { status: 500 },
+      );
+      logger.error("Service container missing critical dependencies", {
+        missing,
+      });
+      return createErrorResponse(error);
     }
 
     // Log lifecycle information if available
@@ -355,6 +350,8 @@ export default {
         url,
         services,
         metrics,
+        env,
+        ctx,
         config
       );
       performanceMonitor.endOperation("image_request", {

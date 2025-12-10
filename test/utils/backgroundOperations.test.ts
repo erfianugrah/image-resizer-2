@@ -75,7 +75,7 @@ describe('Background Operations Utility', () => {
     expect(mockLogger.debug).toHaveBeenCalled();
   });
   
-  test('getExecutionContext finds context from different sources', () => {
+  test('getExecutionContext finds context from different sources', async () => {
     // Setup - direct context
     const direct = getExecutionContext(mockExecutionContext);
     expect(direct).toBe(mockExecutionContext);
@@ -88,8 +88,8 @@ describe('Background Operations Utility', () => {
     expect(fromRequest).toBe(mockExecutionContext);
     
     // Setup - from current context (needs mock to return something)
-    const requestContextModule = require('../../src/utils/requestContext');
-    requestContextModule.getCurrentContext.mockReturnValue({
+    const requestContextModule = await import('../../src/utils/requestContext');
+    (requestContextModule.getCurrentContext as any).mockReturnValue({
       executionContext: mockExecutionContext
     });
     

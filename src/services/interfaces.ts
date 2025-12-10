@@ -182,7 +182,8 @@ export interface ImageTransformationService {
     request: Request, 
     storageResult: StorageResult, 
     options: TransformOptions, 
-    config: ImageResizerConfig
+    config: ImageResizerConfig,
+    env: Env
   ): Promise<Response>;
 
   /**

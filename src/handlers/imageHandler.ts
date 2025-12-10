@@ -10,6 +10,8 @@ import { TransformImageCommand } from '../domain/commands';
 import { PerformanceMetrics } from '../services/interfaces';
 import { ParameterHandler } from '../parameters';
 import { createPerformanceLogger } from '../utils/logger-factory';
+import type { ExecutionContext } from '@cloudflare/workers-types';
+import { Env } from '../types';
 
 /**
  * Process an image transformation request
@@ -26,6 +28,8 @@ export async function handleImageRequest(
   url: URL,
   services: ServiceContainer,
   metrics: PerformanceMetrics,
+  env: Env,
+  ctx: ExecutionContext,
   config?: any
 ): Promise<Response> {
   // Use provided config or get it from the service if not provided
@@ -88,6 +92,19 @@ export async function handleImageRequest(
   // Use the new parameter handler to process all parameters
   const parameterHandler = new ParameterHandler(logger);
   const optionsFromUrl: TransformOptions = await parameterHandler.handleRequest(request);
+  
+  // Ensure path-specified width overrides size-code derived widths when present
+  const pathParamMatch = url.pathname.match(/_width=([\d]+)/);
+  if (pathParamMatch) {
+    const pathWidth = parseInt(pathParamMatch[1], 10);
+    if (!Number.isNaN(pathWidth)) {
+      optionsFromUrl.width = pathWidth;
+      (optionsFromUrl as any).__explicitWidth = true;
+      if ('f' in optionsFromUrl) {
+        delete (optionsFromUrl as any).f;
+      }
+    }
+  }
   
   // Log the parsed options with more detailed info
   logger.debug('Parsed transformation options', {
@@ -303,7 +320,9 @@ export async function handleImageRequest(
     optionsFromUrl,
     services,
     metrics,
-    url
+    url,
+    env,
+    ctx
   );
   
   // Track the command execution with performance metrics

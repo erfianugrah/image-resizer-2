@@ -8,7 +8,7 @@ describe('DefaultParameterProcessor', () => {
   const processor = new DefaultParameterProcessor(mockLogger);
 
   describe('process', () => {
-    it('should process parameters from multiple sources with priority', () => {
+    it('should process parameters from multiple sources with priority', async () => {
       const parameters: TransformParameter[] = [
         {
           name: 'width',
@@ -24,13 +24,13 @@ describe('DefaultParameterProcessor', () => {
         }
       ];
 
-      const result = processor.process(parameters);
+      const result = await processor.process(parameters);
       
       // Path parameter has higher priority
       expect(result.width).toBe(300);
     });
 
-    it('should validate and convert values', () => {
+    it('should validate and convert values', async () => {
       const parameters: TransformParameter[] = [
         {
           name: 'quality',
@@ -40,13 +40,13 @@ describe('DefaultParameterProcessor', () => {
         }
       ];
 
-      const result = processor.process(parameters);
+      const result = await processor.process(parameters);
       
       // Should use default value (85) for invalid quality
       expect(result.quality).toBe(85);
     });
 
-    it('should handle size code conversion', () => {
+    it('should handle size code conversion', async () => {
       const parameters: TransformParameter[] = [
         {
           name: 'f',
@@ -56,14 +56,14 @@ describe('DefaultParameterProcessor', () => {
         }
       ];
 
-      const result = processor.process(parameters);
+      const result = await processor.process(parameters);
       
       // xl size code maps to 900px width
       expect(result.width).toBe(900);
       expect(result.f).toBeUndefined(); // f parameter should be removed
     });
 
-    it('should normalize aspect ratio format', () => {
+    it('should normalize aspect ratio format', async () => {
       const parameters: TransformParameter[] = [
         {
           name: 'aspect',
@@ -73,7 +73,7 @@ describe('DefaultParameterProcessor', () => {
         }
       ];
 
-      const result = processor.process(parameters);
+      const result = await processor.process(parameters);
       
       // Should convert to colon format
       expect(result.aspect).toBe('16:9');
@@ -82,7 +82,7 @@ describe('DefaultParameterProcessor', () => {
       expect(result.ctx).toBe(true);
     });
 
-    it('should respect explicitly set ctx parameter', () => {
+    it('should respect explicitly set ctx parameter', async () => {
       const parameters: TransformParameter[] = [
         {
           name: 'aspect',
@@ -98,7 +98,7 @@ describe('DefaultParameterProcessor', () => {
         }
       ];
 
-      const result = processor.process(parameters);
+      const result = await processor.process(parameters);
       
       // ctx parameter has higher priority than auto-derived
       expect(result.ctx).toBe(false);

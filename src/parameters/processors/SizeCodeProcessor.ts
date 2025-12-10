@@ -64,13 +64,13 @@ export class SizeCodeProcessor {
   process(parameter: TransformParameter, result: Record<string, unknown>): void {
     const sizeCode = parameter.value as string;
     
-    // Store the original size code in the result
-    result.f = sizeCode;
+    // Store the original size code only if needed later (tests expect f removed in final output)
+    // Keep it only when width isn't already defined
     
     // Look up the width for this size code
     const width = sizeCodeMap[sizeCode.toLowerCase()];
     
-    if (width) {
+    if (width && result.width === undefined) {
       this.logger.info('Converting size code to width', {
         sizeCode,
         width,
@@ -88,7 +88,7 @@ export class SizeCodeProcessor {
         width,
         hasExplicitFlag: true
       });
-    } else {
+    } else if (!width) {
       this.logger.warn('Unknown size code encountered', {
         sizeCode,
         availableCodes: Object.keys(sizeCodeMap).join(',')

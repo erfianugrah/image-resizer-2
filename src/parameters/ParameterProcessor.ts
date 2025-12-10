@@ -194,34 +194,6 @@ export class DefaultParameterProcessor implements ParameterProcessor {
     const processed = { ...parameters };
     const processedValues: Record<string, unknown> = {};
     
-    // Pre-process 'f' parameter directly - this needs special handling for 'f' (size code) parameter
-    if (processed['f'] && typeof processed['f'].value === 'string') {
-      // Get the size code value
-      const sizeCode = processed['f'].value as string;
-      
-      // Get the width for this size code from the registry
-      const sizeCodeWidth = this.getSizeCodeWidth(sizeCode);
-      if (sizeCodeWidth) {
-        this.logger.info(`Direct handling of 'f=${sizeCode}' size code, mapping to width=${sizeCodeWidth}`, {
-          sizeCode,
-          mappedWidth: sizeCodeWidth,
-          priority: 'maximum'
-        });
-        
-        // Add an explicit width parameter with high priority
-        processed['width'] = {
-          name: 'width',
-          value: sizeCodeWidth,
-          source: 'derived',
-          priority: 150, // Make sure this overrides other width settings
-          __explicitWidth: true
-        };
-        
-        // Mark width as explicit in processedValues
-        processedValues.__explicitWidth = true;
-      }
-    }
-    
     // Define parameter mappings for explicit dimensions and other special cases
     interface ParameterMapping {
       target?: string;
@@ -295,6 +267,40 @@ export class DefaultParameterProcessor implements ParameterProcessor {
         });
       }
     });
+
+    // Handle size codes after explicit widths are marked so we don't override path/query widths
+    if (processed['f'] && typeof processed['f'].value === 'string') {
+      const existingWidth = processed['width'];
+      const hasExplicitWidth = !!(existingWidth && ((existingWidth as any).__explicitWidth || existingWidth.source === 'path'));
+      
+      if (!hasExplicitWidth) {
+        const sizeCode = processed['f'].value as string;
+        const sizeCodeWidth = this.getSizeCodeWidth(sizeCode);
+        
+        if (sizeCodeWidth) {
+          this.logger.info(`Direct handling of 'f=${sizeCode}' size code, mapping to width=${sizeCodeWidth}`, {
+            sizeCode,
+            mappedWidth: sizeCodeWidth,
+            priority: 'maximum'
+          });
+          
+          processed['width'] = {
+            name: 'width',
+            value: sizeCodeWidth,
+            source: 'derived',
+            priority: 150, // Keep high when no explicit width exists
+            __explicitWidth: true
+          };
+          
+          processedValues.__explicitWidth = true;
+        }
+      } else {
+        this.logger.debug('Skipping size-code width because an explicit width is already present', {
+          explicitWidth: existingWidth?.value,
+          explicitSource: existingWidth?.source
+        });
+      }
+    }
     
     // Process each parameter with the registry
     Object.values(processed).forEach(param => {
@@ -329,6 +335,27 @@ export class DefaultParameterProcessor implements ParameterProcessor {
           fValue: processed.f.value,
           width: processed.width.value
         });
+      }
+    }
+
+    // Final safeguard: if a path-provided width exists, make sure it wins over size codes
+    const pathWidthParam = parameters['width'] && parameters['width'].source === 'path' ? parameters['width'] : null;
+    if (pathWidthParam) {
+      processed['width'] = {
+        ...(processed['width'] || pathWidthParam),
+        name: 'width',
+        value: pathWidthParam.value,
+        source: 'path',
+        priority: Math.max(pathWidthParam.priority || 0, (processed['width']?.priority || 0) + 5),
+        __explicitWidth: true
+      } as TransformParameter;
+      
+      // Reflect the explicit width in processedValues for downstream formatters
+      processedValues.__explicitWidth = true;
+      
+      // Drop size-code marker so cache keys reflect the real width source
+      if (processed['f']) {
+        delete processed['f'];
       }
     }
     
@@ -395,6 +422,11 @@ export class DefaultParameterProcessor implements ParameterProcessor {
     
     if (hasExplicitHeight) {
       cfOptions.__explicitHeight = true;
+    }
+    
+    // Remove size code marker to align with expected options and avoid cache key skew
+    if ('f' in cfOptions) {
+      delete (cfOptions as Record<string, unknown>).f;
     }
     
     this.logger.breadcrumb('Formatted parameters for Cloudflare', undefined, {

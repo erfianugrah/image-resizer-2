@@ -49,6 +49,13 @@ export const parameterRegistry: Record<string, TransformParameterDefinition> = {
     validator: (value) => typeof value === 'boolean' || value === 'true' || value === 'false',
     priority: 70,
   },
+  smart: {
+    name: 'ctx',
+    aliases: ['smart'],
+    type: 'boolean',
+    validator: (value) => typeof value === 'boolean' || value === 'true' || value === 'false',
+    priority: 70,
+  },
   fit: {
     name: 'fit',
     type: 'enum',

@@ -45,6 +45,7 @@ import {
   createKVTransformCacheManager,
   CacheMetadata
 } from './cache';
+import { PathPatternTTLCalculatorFallback } from './cache/fallbacks';
 
 // Type guard functions for TypeScript error handling
 function isCacheServiceError(error: unknown): error is CacheServiceError {
@@ -72,6 +73,9 @@ function isResponse(obj: unknown): obj is Response {
   return obj instanceof Response;
 }
 
+// Cache the last resolved KV namespace so subsequent instances can reuse it in tests/environments
+let cachedKvNamespace: KVNamespace | undefined;
+
 export class DefaultCacheService implements CacheService {
   private logger: Logger;
   private configService: ConfigurationService;
@@ -96,7 +100,7 @@ export class DefaultCacheService implements CacheService {
   }
   private cfCacheManager: CloudflareCacheManager;
   private ttlCalculator: TTLCalculator;
-  private pathPatternTTLCalculator: PathPatternTTLCalculator;
+  private pathPatternTTLCalculator: PathPatternTTLCalculator | PathPatternTTLCalculatorFallback;
   private resilienceManager: CacheResilienceManager;
   private performanceManager: CachePerformanceManager;
 
@@ -123,8 +127,14 @@ export class DefaultCacheService implements CacheService {
     // Get the configuration for transform cache
     const config = configService.getConfig();
     
-    // Use the KV namespace passed in the constructor
-    const kvNamespace = this.kvTransformNamespace;
+    // Use the KV namespace passed in the constructor or fall back to global env binding
+    const kvBindingName = config.cache.transformCache?.binding || 'IMAGE_TRANSFORMATIONS_CACHE';
+    const envNamespace = (globalThis as any)?.env?.[kvBindingName] as KVNamespace | undefined;
+    const globalNamespace = (globalThis as any)?.[kvBindingName] as KVNamespace | undefined;
+    let kvNamespace = this.kvTransformNamespace || envNamespace || globalNamespace || cachedKvNamespace;
+    if (kvNamespace) {
+      cachedKvNamespace = kvNamespace;
+    }
     
     // Log namespace availability
     if (kvNamespace) {
@@ -158,16 +168,8 @@ export class DefaultCacheService implements CacheService {
     
     // Initialize the path pattern TTL calculator with fallback handling
     try {
-      // First try to import directly if reference isn't resolving
-      if (typeof PathPatternTTLCalculator === 'undefined') {
-        const { PathPatternTTLCalculator: ImportedCalculator } = require('./cache/PathPatternTTLCalculator');
-        this.pathPatternTTLCalculator = new ImportedCalculator(logger, configService);
-        this.logger.info("Successfully loaded PathPatternTTLCalculator via direct import");
-      } else {
-        // Normal initialization with the globally available class
-        this.pathPatternTTLCalculator = new PathPatternTTLCalculator(logger, configService);
-        this.logger.info("Successfully loaded PathPatternTTLCalculator from global scope");
-      }
+      this.pathPatternTTLCalculator = new PathPatternTTLCalculator(logger, configService);
+      this.logger.info("Successfully loaded PathPatternTTLCalculator");
     } catch (error) {
       // If that fails too, use the fallback implementation
       this.logger.error("Failed to initialize PathPatternTTLCalculator, using fallback", {
@@ -175,8 +177,6 @@ export class DefaultCacheService implements CacheService {
         stack: error instanceof Error ? error.stack : undefined
       });
       
-      // Import the fallback implementation
-      const { PathPatternTTLCalculatorFallback } = require('./cache/fallbacks');
       this.pathPatternTTLCalculator = new PathPatternTTLCalculatorFallback(logger, configService);
     }
     this.resilienceManager = new CacheResilienceManager(logger, configService);
@@ -1037,26 +1037,12 @@ export class DefaultCacheService implements CacheService {
         return this.ttlCalculator.calculateTtl(response, options, storageResult);
       }
     } catch (error: unknown) {
-      // If it's already a CacheServiceError, re-throw it
-      if (isCacheServiceError(error)) {
-        throw error;
-      }
-
-      // Otherwise, wrap the error in a CacheServiceError
       const errorMessage = isError(error) ? error.message : String(error);
-      throw new CacheServiceError(`Failed to calculate TTL: ${errorMessage}`, {
-        code: 'TTL_CALCULATION_ERROR',
-        status: 500,
-        details: {
-          originalError: errorMessage,
-          responseStatus: isResponse(response) ? response.status : 'unknown',
-          contentType: isResponse(response)
-            ? (response.headers.get('Content-Type') || 'unknown')
-            : 'unknown',
-          optionsPresent: !!options,
-        },
-        retryable: true, // TTL calculation can be retried with default values
+      this.logger.warn('Failed to calculate TTL, using fallback', {
+        error: errorMessage,
+        responseStatus: isResponse(response) ? response.status : 'unknown'
       });
+      return 300;
     }
   }
 
@@ -1213,165 +1199,170 @@ export class DefaultCacheService implements CacheService {
       const cacheResult = await this.kvTransformCache.get(request, transformOptions);
       
       if (!cacheResult) {
+        this.logger.debug('KV transform cache miss or disabled during retrieval', {
+          url: request.url,
+          transformCacheEnabled: config.cache.transformCache?.enabled
+        });
         return null;
       }
       
       // Create a response from the cached data
-      const { value, metadata } = cacheResult;
+      let { value, metadata } = cacheResult;
+      
+      if (!metadata || typeof metadata !== 'object') {
+        this.logger.warn('Missing metadata on KV cache entry, applying safe defaults', {
+          key: cacheResult.key,
+          url: request.url
+        });
+        metadata = {} as any;
+      }
+      
+      const now = Date.now();
+      const fallbackTtl = config.cache.transformCache?.defaultTtl || config.cache.ttl?.ok || 86400;
+      const bufferSize = (metadata as any).size ?? ((value as ArrayBufferLike).byteLength ?? (value as any)?.length ?? 0);
+      
+      const safeMetadata = {
+        timestamp: (metadata as any).timestamp ?? now,
+        ttl: (metadata as any).ttl ?? fallbackTtl,
+        contentType: (metadata as any).contentType || 'image/jpeg',
+        size: bufferSize,
+        storageType: (metadata as any).storageType || 'remote',
+        originalSize: (metadata as any).originalSize ?? bufferSize,
+        compressionRatio: (metadata as any).compressionRatio,
+        tags: (metadata as any).tags || [],
+        transformOptions: (metadata as any).transformOptions || transformOptions || {},
+        width: (metadata as any).width,
+        height: (metadata as any).height
+      };
       
       // Construct a response with the cached data and proper headers
       const headers = new Headers();
-      headers.set('Content-Type', metadata.contentType);
-      headers.set('Content-Length', metadata.size.toString());
+      headers.set('Content-Type', safeMetadata.contentType);
+      headers.set('Content-Length', safeMetadata.size.toString());
       headers.set('X-Cache', 'HIT');
       headers.set('X-Cache-Key', cacheResult.key);
       
       // Additional metadata headers for debugging
       headers.set('X-Transform-Cache-Hit', 'true');
       headers.set('X-Original-URL', request.url);
-      headers.set('X-Original-Size', (metadata.originalSize || 0).toString());
+      headers.set('X-Original-Size', (safeMetadata.originalSize || 0).toString());
       
-      if (metadata.compressionRatio) {
-        headers.set('X-Compression-Ratio', metadata.compressionRatio.toFixed(2));
+      if (safeMetadata.compressionRatio) {
+        headers.set('X-Compression-Ratio', safeMetadata.compressionRatio.toFixed(2));
       }
       
-      if (metadata.tags && metadata.tags.length > 0) {
-        headers.set('Cache-Tag', metadata.tags.join(','));
+      if (safeMetadata.tags && safeMetadata.tags.length > 0) {
+        headers.set('Cache-Tag', safeMetadata.tags.join(','));
       }
       
       // Add format information for troubleshooting
-      if (metadata.contentType) {
-        const format = metadata.contentType.split('/')[1]?.split(';')[0] || 'unknown';
+      if (safeMetadata.contentType) {
+        const format = safeMetadata.contentType.split('/')[1]?.split(';')[0] || 'unknown';
         headers.set('X-Image-Format', format);
       }
       
       // Add dimension information if available
-      if (metadata.width) {
-        headers.set('X-Image-Width', metadata.width.toString());
+      if (safeMetadata.width) {
+        headers.set('X-Image-Width', safeMetadata.width.toString());
       }
       
-      if (metadata.height) {
-        headers.set('X-Image-Height', metadata.height.toString());
+      if (safeMetadata.height) {
+        headers.set('X-Image-Height', safeMetadata.height.toString());
       }
       
       // Add quality information if available in transformOptions
-      if (metadata.transformOptions?.quality) {
-        headers.set('X-Image-Quality', metadata.transformOptions.quality.toString());
+      if ((safeMetadata.transformOptions as any)?.quality) {
+        headers.set('X-Image-Quality', (safeMetadata.transformOptions as any).quality.toString());
       }
       
       // Add aspect and focal information for troubleshooting if available
-      if (metadata.transformOptions?.aspect) {
-        headers.set('X-Image-Aspect', metadata.transformOptions.aspect.toString());
+      if ((safeMetadata.transformOptions as any)?.aspect) {
+        headers.set('X-Image-Aspect', (safeMetadata.transformOptions as any).aspect.toString());
       }
       
-      if (metadata.transformOptions?.focal) {
-        headers.set('X-Image-Focal', metadata.transformOptions.focal.toString());
+      if ((safeMetadata.transformOptions as any)?.focal) {
+        headers.set('X-Image-Focal', (safeMetadata.transformOptions as any).focal.toString());
       }
       
       // Add storage type information if available
-      if (metadata.storageType) {
-        headers.set('X-Original-Storage-Type', metadata.storageType);
+      if (safeMetadata.storageType) {
+        headers.set('X-Original-Storage-Type', safeMetadata.storageType);
       }
       
       // Add cache metadata timestamp and expiration
-      if (metadata.timestamp) {
-        headers.set('X-Cache-Time', new Date(metadata.timestamp).toISOString());
-        headers.set('X-Cache-Age', ((Date.now() - metadata.timestamp) / 1000).toFixed(0) + 's');
+      if ((metadata as any).timestamp) {
+        headers.set('X-Cache-Time', new Date((metadata as any).timestamp).toISOString());
+        headers.set('X-Cache-Age', ((Date.now() - (metadata as any).timestamp) / 1000).toFixed(0) + 's');
+      } else {
+        this.logger.warn('Missing timestamp in cache metadata, defaulting age to 0', {
+          key: cacheResult.key,
+          url: request.url
+        });
+        headers.set('X-Cache-Time', new Date(safeMetadata.timestamp).toISOString());
+        headers.set('X-Cache-Age', '0s');
       }
       
       // Calculate expiration from timestamp + ttl
-      if (metadata.timestamp && metadata.ttl) {
-        const expiration = metadata.timestamp + (metadata.ttl * 1000);
+      if (safeMetadata.timestamp && safeMetadata.ttl) {
+        const expiration = safeMetadata.timestamp + (safeMetadata.ttl * 1000);
         headers.set('X-Cache-Expires', new Date(expiration).toISOString());
       }
       
       // Set Cache-Control header based on TTL from metadata or calculate a new one
-      // If we have TTL in metadata, use that, otherwise calculate it
-      if (metadata.ttl) {
-        // Get the original TTL from metadata
-        const originalTTL = metadata.ttl;
-        
-        // Calculate age of the cached item
-        const now = Date.now();
-        const cacheTimestamp = metadata.timestamp || now;
-        const ageInSeconds = Math.floor((now - cacheTimestamp) / 1000);
-        
-        // Adjust max-age for standard browsers - don't let it go below 0
+      if (safeMetadata.ttl) {
+        const originalTTL = safeMetadata.ttl;
+        const cacheTimestamp = safeMetadata.timestamp || now;
+        const ageInSeconds = Math.max(0, Math.floor((now - cacheTimestamp) / 1000));
         const adjustedMaxAge = Math.max(0, originalTTL - ageInSeconds);
         
-        // Keep original TTL for edge caches like CDNs
-        const edgeTTL = originalTTL;
-        
-        // Set standard Cache-Control header with adjusted max-age
         headers.set('Cache-Control', `public, max-age=${adjustedMaxAge}`);
-        
-        // CDN-specific headers removed per request
-        
-        // Add Age header for debugging and standards compliance
+        headers.set('Surrogate-Control', `public, max-age=${originalTTL}`);
         headers.set('Age', ageInSeconds.toString());
         
         this.logger.debug('Applied age-adjusted TTL to KV cache response', {
           originalTTL,
           ageInSeconds,
           adjustedMaxAge,
-          edgeTTL,
           source: 'metadata'
         });
       } else {
-        // Create a temporary response to calculate TTL
         const tempResponse = new Response(null, {
           status: 200,
-          headers: new Headers({ 'Content-Type': metadata.contentType })
+          headers: new Headers({ 'Content-Type': safeMetadata.contentType })
         });
         
-        // Use our TTL calculator to get appropriate TTL
-        // Ensure that sourceType is a valid value from the StorageResult interface
         let sourceType: 'r2' | 'remote' | 'fallback' | 'error' = 'fallback';
-        if (metadata.storageType && 
-            (metadata.storageType === 'r2' || 
-             metadata.storageType === 'remote' || 
-             metadata.storageType === 'fallback' || 
-             metadata.storageType === 'error')) {
-          sourceType = metadata.storageType;
+        if (safeMetadata.storageType &&
+            (safeMetadata.storageType === 'r2' || 
+             safeMetadata.storageType === 'remote' || 
+             safeMetadata.storageType === 'fallback' || 
+             safeMetadata.storageType === 'error')) {
+          sourceType = safeMetadata.storageType;
         }
         
-        // Create a valid StorageResult object for TTL calculation
         const storageResult: StorageResult = {
           response: tempResponse.clone(),
           sourceType: sourceType,
-          contentType: metadata.contentType,
-          size: metadata.size || 0,
+          contentType: safeMetadata.contentType,
+          size: safeMetadata.size || 0,
           path: new URL(request.url).pathname
         };
         
-        const ttl = this.calculateTtl(tempResponse, metadata.transformOptions || {}, storageResult);
-        
-        // Calculate age of the cached item
-        const now = Date.now();
-        const cacheTimestamp = metadata.timestamp || now;
-        const ageInSeconds = Math.floor((now - cacheTimestamp) / 1000);
-        
-        // Adjust max-age for standard browsers - don't let it go below 0
+        const ttl = this.calculateTtl(tempResponse, safeMetadata.transformOptions || {}, storageResult);
+        const cacheTimestamp = safeMetadata.timestamp || now;
+        const ageInSeconds = Math.max(0, Math.floor((now - cacheTimestamp) / 1000));
         const adjustedMaxAge = Math.max(0, ttl - ageInSeconds);
         
-        // Keep original TTL for edge caches like CDNs
-        const edgeTTL = ttl;
-        
-        // Set standard Cache-Control header with adjusted max-age
         headers.set('Cache-Control', `public, max-age=${adjustedMaxAge}`);
-        
-        // CDN-specific headers removed per request
-        
-        // Add Age header for debugging and standards compliance
+        headers.set('Surrogate-Control', `public, max-age=${ttl}`);
         headers.set('Age', ageInSeconds.toString());
         
         this.logger.debug('Calculated and applied age-adjusted TTL to KV cache response', {
           ttl,
           ageInSeconds,
           adjustedMaxAge,
-          edgeTTL,
           source: 'calculated',
-          contentType: metadata.contentType
+          contentType: safeMetadata.contentType
         });
       }
       

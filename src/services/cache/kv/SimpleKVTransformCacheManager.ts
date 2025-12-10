@@ -19,32 +19,51 @@ import { StorageResult } from '../../interfaces';
 import { TransformOptions } from '../../../transform';
 import { Logger, LogData } from '../../../utils/logging';
 
-// LRU Cache for memory caching
+// LRU Cache entry with TTL support
+interface CacheEntry<V> {
+  value: V;
+  expiresAt: number; // Timestamp when this entry expires
+}
+
+// LRU Cache for memory caching with TTL support
 class LRUCache<K, V> {
   private capacity: number;
-  private cache: Map<K, V>;
+  private cache: Map<K, CacheEntry<V>>;
   private keyOrder: K[];
 
   constructor(capacity: number) {
     this.capacity = capacity;
-    this.cache = new Map<K, V>();
+    this.cache = new Map<K, CacheEntry<V>>();
     this.keyOrder = [];
   }
 
   get(key: K): V | undefined {
-    if (!this.cache.has(key)) return undefined;
+    const entry = this.cache.get(key);
+    if (!entry) return undefined;
+
+    // Check if entry has expired
+    const now = Date.now();
+    if (entry.expiresAt < now) {
+      // Entry expired, remove it
+      this.cache.delete(key);
+      this.keyOrder = this.keyOrder.filter(k => k !== key);
+      return undefined;
+    }
 
     // Move key to the end (most recently used)
     this.keyOrder = this.keyOrder.filter(k => k !== key);
     this.keyOrder.push(key);
 
-    return this.cache.get(key);
+    return entry.value;
   }
 
-  put(key: K, value: V): void {
+  put(key: K, value: V, ttlSeconds: number): void {
+    const expiresAt = Date.now() + (ttlSeconds * 1000);
+    const entry: CacheEntry<V> = { value, expiresAt };
+
     // If already exists, just update the value and move to end
     if (this.cache.has(key)) {
-      this.cache.set(key, value);
+      this.cache.set(key, entry);
       this.keyOrder = this.keyOrder.filter(k => k !== key);
       this.keyOrder.push(key);
       return;
@@ -59,12 +78,22 @@ class LRUCache<K, V> {
     }
 
     // Add new entry
-    this.cache.set(key, value);
+    this.cache.set(key, entry);
     this.keyOrder.push(key);
   }
 
   has(key: K): boolean {
-    return this.cache.has(key);
+    const entry = this.cache.get(key);
+    if (!entry) return false;
+
+    // Check if expired
+    if (entry.expiresAt < Date.now()) {
+      this.cache.delete(key);
+      this.keyOrder = this.keyOrder.filter(k => k !== key);
+      return false;
+    }
+
+    return true;
   }
 
   clear(): void {
@@ -73,11 +102,34 @@ class LRUCache<K, V> {
   }
 
   size(): number {
+    // Clean up expired entries before returning size
+    this.evictExpired();
     return this.cache.size;
   }
 
   keys(): K[] {
+    // Clean up expired entries before returning keys
+    this.evictExpired();
     return [...this.keyOrder];
+  }
+
+  /**
+   * Evict all expired entries
+   */
+  private evictExpired(): void {
+    const now = Date.now();
+    const expiredKeys: K[] = [];
+
+    for (const [key, entry] of this.cache.entries()) {
+      if (entry.expiresAt < now) {
+        expiredKeys.push(key);
+      }
+    }
+
+    for (const key of expiredKeys) {
+      this.cache.delete(key);
+      this.keyOrder = this.keyOrder.filter(k => k !== key);
+    }
   }
 }
 
@@ -618,9 +670,10 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       cacheResult = await this.getFromKV(formatKey, url, startTime, transformOptions);
       if (cacheResult) {
         this.stats.hits++;
-        // Store in memory cache for faster future access
-        this.memoryCache.put(baseKey, cacheResult);
-        
+        // Store in memory cache for faster future access with TTL
+        const ttl = cacheResult.metadata.ttl || this.config.defaultTtl;
+        this.memoryCache.put(baseKey, cacheResult, ttl);
+
         // Log the successful hit
         this.logDebug('KV transform cache: Cache hit using decided format', {
           operation: 'kv_get',
@@ -665,12 +718,13 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
         checkedFormats.add(format);
         const formatKey = this.generateCacheKey(request, transformOptions, format);
         cacheResult = await this.getFromKV(formatKey, url, startTime, transformOptions);
-        
+
         if (cacheResult) {
           this.stats.hits++;
-          // Store in memory cache for faster future access
-          this.memoryCache.put(baseKey, cacheResult);
-          
+          // Store in memory cache for faster future access with TTL
+          const ttl = cacheResult.metadata.ttl || this.config.defaultTtl;
+          this.memoryCache.put(baseKey, cacheResult, ttl);
+
           // Log the successful hit
           this.logDebug('KV transform cache: Cache hit using client-supported format', {
             operation: 'kv_get',
@@ -707,9 +761,10 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       cacheResult = await this.getFromKV(baseKey, url, startTime, transformOptions);
       if (cacheResult) {
         this.stats.hits++;
-        // Store in memory cache for faster future access
-        this.memoryCache.put(baseKey, cacheResult);
-        
+        // Store in memory cache for faster future access with TTL
+        const ttl = cacheResult.metadata.ttl || this.config.defaultTtl;
+        this.memoryCache.put(baseKey, cacheResult, ttl);
+
         // Log the successful hit
         this.logDebug('KV transform cache: Cache hit using auto format', {
           operation: 'kv_get',
@@ -747,15 +802,16 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
       checkedFormats.add(format);
       const formatKey = this.generateCacheKey(request, transformOptions, format);
       cacheResult = await this.getFromKV(formatKey, url, startTime, transformOptions);
-      
+
       if (cacheResult) {
         this.stats.hits++;
-        // Store in memory cache for faster future access
-        this.memoryCache.put(baseKey, cacheResult);
-        
+        // Store in memory cache for faster future access with TTL
+        const ttl = cacheResult.metadata.ttl || this.config.defaultTtl;
+        this.memoryCache.put(baseKey, cacheResult, ttl);
+
         // Log the successful hit with detailed format comparison
         const cachedFormat = cacheResult.metadata.contentType.split('/')[1]?.split(';')[0] || 'unknown';
-        
+
         this.logDebug('KV transform cache: Cache hit using fallback format', {
           operation: 'kv_get',
           category: 'cache',
@@ -1406,16 +1462,18 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     });
     
     // Create a hash based on the pathname, search params, and stringified transform options
-    // This provides uniqueness even when two sets of different parameters result in similar mainParams
-    const transformString = JSON.stringify(transformOptions);
-    
-    // For cache key consistency, we need to capture the exact set of URL parameters
-    // First, extract the raw URL search string, preserving exact format
-    const rawSearchParams = url.search;
-    
-    // We'll use the original search parameters directly to ensure identical hash generation
-    // Create a comprehensive hash input that maintains the exact format from the URL
-    const hashInput = `${url.pathname}${rawSearchParams}${transformString}`;
+    // Use deterministic stringification to ensure same parameters = same hash
+    const transformString = this.deterministicStringify(transformOptions);
+
+    // For cache key consistency, normalize URL search params by sorting them
+    const sortedParams = Array.from(url.searchParams.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([key, value]) => `${key}=${value}`)
+      .join('&');
+    const normalizedSearch = sortedParams ? `?${sortedParams}` : '';
+
+    // Create a comprehensive hash input with normalized components
+    const hashInput = `${url.pathname}${normalizedSearch}${transformString}`;
     const hash = this.createShortHash(hashInput);
     
     // Log debug info about f parameter if present
@@ -1584,9 +1642,42 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
   }
 
   /**
+   * Deterministic JSON serialization with sorted keys
+   * Ensures same object produces same string regardless of key order
+   *
+   * @param obj The object to serialize
+   * @returns Deterministic JSON string
+   */
+  private deterministicStringify(obj: any): string {
+    if (obj === null || obj === undefined) {
+      return String(obj);
+    }
+
+    if (typeof obj !== 'object') {
+      return JSON.stringify(obj);
+    }
+
+    if (Array.isArray(obj)) {
+      return '[' + obj.map(item => this.deterministicStringify(item)).join(',') + ']';
+    }
+
+    // Sort keys and recursively stringify
+    const sortedKeys = Object.keys(obj).sort();
+    const pairs = sortedKeys.map(key => {
+      // Skip internal flags starting with __
+      if (key.startsWith('__')) {
+        return null;
+      }
+      return `"${key}":${this.deterministicStringify(obj[key])}`;
+    }).filter(p => p !== null);
+
+    return '{' + pairs.join(',') + '}';
+  }
+
+  /**
    * Create a short hash for a string (used in key generation)
    * Uses an enhanced FNV-1a implementation which is both fast and reliable
-   * 
+   *
    * @param {string} input - The input string to hash
    * @return {string} The 8-character hex hash
    */
@@ -1594,23 +1685,23 @@ export class SimpleKVTransformCacheManager implements KVTransformCacheInterface 
     // Log hash inputs for debugging when needed
     if (this.config.debug) {
       // Truncate long inputs to prevent log flooding
-      const truncatedInput = input.length > 100 
+      const truncatedInput = input.length > 100
         ? `${input.substring(0, 50)}...${input.substring(input.length - 50)}`
         : input;
-      
+
       this.logDebug('Creating hash for input', {
         inputLength: input.length,
         inputPrefix: truncatedInput
       });
     }
-    
+
     // Generate the hash using our improved FNV-1a implementation
     const hash = fnv1a(input);
-    
+
     if (this.config.debug) {
       this.logDebug('Hash created', { hash });
     }
-    
+
     return hash;
   }
 

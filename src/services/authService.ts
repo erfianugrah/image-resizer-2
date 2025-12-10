@@ -257,7 +257,7 @@ export class AuthServiceImpl implements AuthService {
       
       // Extract the headers
       const headers: Record<string, string> = {};
-      signedRequest.headers.forEach((value, key) => {
+      signedRequest.headers.forEach((value: string, key: string) => {
         // Only include AWS specific headers
         if (key.startsWith('x-amz-') || key === 'authorization') {
           headers[key] = value;

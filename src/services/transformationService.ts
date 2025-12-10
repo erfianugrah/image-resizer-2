@@ -602,7 +602,8 @@ export class DefaultImageTransformationService implements ImageTransformationSer
     request: Request, 
     storageResult: StorageResult, 
     options: TransformOptions, 
-    config: ImageResizerConfig
+    config: ImageResizerConfig,
+    env: Env
   ): Promise<Response> {
     this.logger.debug('Starting image transformation', { 
       sourceType: storageResult.sourceType,
@@ -740,7 +741,13 @@ export class DefaultImageTransformationService implements ImageTransformationSer
     const buildStart = this.trackedBreadcrumb('Building transform options');
     
     // Build transformation options using validation and processing
-    const transformOptions = await this.buildTransformOptions(request, storageResult, effectiveOptions, config);
+    const transformOptions = await this.buildTransformOptions(
+      request,
+      storageResult,
+      effectiveOptions,
+      config,
+      env
+    );
     
     // Use optimized tracking for the completion breadcrumb
     this.trackedBreadcrumb('Built transform options', buildStart, transformOptions);
@@ -1200,7 +1207,8 @@ export class DefaultImageTransformationService implements ImageTransformationSer
     request: Request,
     storageResult: StorageResult,
     options: TransformOptions,
-    config: ImageResizerConfig
+    config: ImageResizerConfig,
+    env: Env
   ): Promise<TransformOptions> {
     this.trackedBreadcrumb('buildTransformOptions started', undefined, {
       imageSize: storageResult.size,
@@ -1240,8 +1248,6 @@ export class DefaultImageTransformationService implements ImageTransformationSer
     });
     
     if (needsMetadata && this.metadataService) {
-      const env = (request as unknown as { env: Env }).env;
-      
       this.logger.debug('Fetching metadata for transformation', {
         imagePath: storageResult.path,
         requiresMetadata: true,

@@ -21,6 +21,8 @@ export class TransformImageCommand implements Command<Response> {
   private readonly metrics: PerformanceMetrics;
   private readonly url: URL;
   private clientInfo?: ClientInfo;
+  private readonly env: Env;
+  private readonly ctx: ExecutionContext;
 
   /**
    * Create a new TransformImageCommand
@@ -38,7 +40,9 @@ export class TransformImageCommand implements Command<Response> {
     options: TransformOptions, 
     services: ServiceContainer,
     metrics: PerformanceMetrics,
-    url: URL
+    url: URL,
+    env: Env,
+    ctx: ExecutionContext
   ) {
     this.request = request;
     this.imagePath = imagePath;
@@ -46,6 +50,8 @@ export class TransformImageCommand implements Command<Response> {
     this.services = services;
     this.metrics = metrics;
     this.url = url;
+    this.env = env;
+    this.ctx = ctx;
   }
 
   /**
@@ -143,7 +149,7 @@ export class TransformImageCommand implements Command<Response> {
       const storageResult = await storageService.fetchImage(
         this.imagePath, 
         config, 
-        (this.request as unknown as { env: Env }).env, 
+        this.env, 
         this.request,
         { signal }
       );
@@ -206,7 +212,7 @@ export class TransformImageCommand implements Command<Response> {
             this.imagePath,
             transformOptions,
             config,
-            (this.request as unknown as { env: Env }).env
+            this.env
           );
           
           // End the smart processing timer and record metrics
@@ -241,7 +247,8 @@ export class TransformImageCommand implements Command<Response> {
         this.request,
         storageResult,
         transformOptions,
-        config
+        config,
+        this.env
       );
       
       // End the transform timer and record metrics
@@ -355,13 +362,11 @@ export class TransformImageCommand implements Command<Response> {
           });
           
           // Use the execution context for background processing
-          const ctx = (this.request as unknown as { ctx: ExecutionContext }).ctx;
-          
           // Make sure we have a valid execution context with waitUntil
-          if (ctx && typeof ctx.waitUntil === 'function') {
+          if (this.ctx && typeof this.ctx.waitUntil === 'function') {
             // Use waitUntil to run the KV transform caching in the background
             // This ensures KV operations don't block the response
-            ctx.waitUntil(
+            this.ctx.waitUntil(
               cacheService.storeTransformedImage(
                 this.request,
                 new Response(responseBuffer.slice(0), {
@@ -370,7 +375,7 @@ export class TransformImageCommand implements Command<Response> {
                 }),
                 enhancedStorageResult as any,
                 this.options,
-                ctx
+                this.ctx
               ).catch(err => {
                 logger.error('Error in background KV transform storage', {
                   error: err instanceof Error ? err.message : String(err),
@@ -387,8 +392,8 @@ export class TransformImageCommand implements Command<Response> {
           } else {
             // No valid context, log a warning but continue without blocking
             logger.warn('No valid execution context available for background KV transform caching', {
-              hasContext: !!ctx,
-              hasWaitUntil: ctx ? (typeof ctx.waitUntil === 'function') : false,
+              hasContext: !!this.ctx,
+              hasWaitUntil: this.ctx ? (typeof this.ctx.waitUntil === 'function') : false,
               url: this.request.url
             });
           }
@@ -407,7 +412,7 @@ export class TransformImageCommand implements Command<Response> {
         finalResponse = await cacheService.cacheWithFallback(
           this.request,
           finalResponse,
-          (this.request as unknown as { ctx: ExecutionContext }).ctx,
+          this.ctx,
           this.options,
           storageResult
         );

@@ -6,9 +6,13 @@
 
 import { ParameterParser } from '../interfaces';
 import { Logger } from '../../utils/logging';
-import { TransformParameter } from '../../utils/path';
+import { TransformParameter, TransformParameterDefinition } from '../../utils/path';
 import { parameterRegistry } from '../registry';
 import { defaultLogger } from '../../utils/logging';
+import { validateOverlayUrl } from '../../utils/urlSecurity';
+
+// Maximum dimensions for overlays to prevent DoS attacks
+const MAX_OVERLAY_DIMENSION = 10000; // 10,000 pixels
 
 export class StandardParser implements ParameterParser {
   private logger: Logger;
@@ -56,7 +60,8 @@ export class StandardParser implements ParameterParser {
     const parameters: TransformParameter[] = [];
     
     // Process all search parameters
-    for (const [key, value] of searchParams.entries()) {
+    for (const [rawKey, value] of searchParams.entries()) {
+      const key = rawKey;
       // Skip empty values
       if (!value) continue;
       
@@ -112,7 +117,12 @@ export class StandardParser implements ParameterParser {
       }
       
       // Find parameter definition in registry
-      const paramDef = parameterRegistry[key];
+      let paramDef: TransformParameterDefinition | undefined = parameterRegistry[key];
+      
+      // Resolve aliases
+      if (!paramDef) {
+        paramDef = Object.values(parameterRegistry).find(def => def.aliases?.includes(key));
+      }
       
       if (paramDef) {
         // Convert the value to the appropriate type based on parameter definition
@@ -148,7 +158,7 @@ export class StandardParser implements ParameterParser {
         
         // Create parameter object
         parameters.push({
-          name: key,
+          name: paramDef.name || key,
           value: typedValue,
           source: 'url',
           priority: paramDef.priority || 50
@@ -195,34 +205,60 @@ export class StandardParser implements ParameterParser {
     if (!overlayParam) {
       return; // No overlay to process
     }
-    
+
+    // Validate overlay URL for security
+    const overlayUrl = String(overlayParam.value);
+    const validation = validateOverlayUrl(overlayUrl);
+
+    if (!validation.isValid) {
+      this.logger.warn('Rejected insecure overlay URL', {
+        url: overlayUrl,
+        reason: validation.error
+      });
+      // Remove the overlay parameter to prevent processing
+      const overlayIndex = parameters.findIndex(p => p === overlayParam);
+      if (overlayIndex !== -1) {
+        parameters.splice(overlayIndex, 1);
+      }
+      return;
+    }
+
+    const sanitizedUrl = validation.sanitizedUrl || overlayUrl;
+
     this.logger.info('Processing overlay parameters for watermarking', {
-      overlayUrl: String(overlayParam.value)
+      overlayUrl: sanitizedUrl
     });
-    
+
     // Find related parameters
     const gravityParam = parameters.find(param => param.name === 'gravity');
     const dxParam = parameters.find(param => param.name === 'dx');
     const dyParam = parameters.find(param => param.name === 'dy');
     const widthParam = parameters.find(param => param.name === 'width' && !param.source.includes('imwidth'));
-    
-    // Create a draw object with overlay URL
+
+    // Create a draw object with sanitized overlay URL
     const drawObj: Record<string, string | number | boolean> = {
-      url: String(overlayParam.value)
+      url: sanitizedUrl
     };
     
     // Add width if specified and is for the overlay
     if (widthParam && widthParam.value !== undefined) {
-      const widthValue = typeof widthParam.value === 'string' ? 
+      const widthValue = typeof widthParam.value === 'string' ?
         parseInt(widthParam.value, 10) : Number(widthParam.value);
-        
+
       if (!isNaN(widthValue)) {
-        drawObj.width = widthValue;
-        
-        // Remove the width parameter so it doesn't get used for the main image
-        const widthIndex = parameters.findIndex(p => p === widthParam);
-        if (widthIndex !== -1) {
-          parameters.splice(widthIndex, 1);
+        if (widthValue > MAX_OVERLAY_DIMENSION) {
+          this.logger.warn('Overlay width exceeds maximum allowed dimension', {
+            requested: widthValue,
+            max: MAX_OVERLAY_DIMENSION
+          });
+        } else {
+          drawObj.width = widthValue;
+
+          // Remove the width parameter so it doesn't get used for the main image
+          const widthIndex = parameters.findIndex(p => p === widthParam);
+          if (widthIndex !== -1) {
+            parameters.splice(widthIndex, 1);
+          }
         }
       }
     }

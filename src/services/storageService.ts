@@ -1317,7 +1317,7 @@ export class DefaultStorageService implements StorageService {
                 const signedRequest = await aws.sign(signRequest);
                 
                 // Extract the headers and add them to fetch options
-                signedRequest.headers.forEach((value, key) => {
+                signedRequest.headers.forEach((value: string, key: string) => {
                   // Only include AWS specific headers
                   if (key.startsWith('x-amz-') || key === 'authorization') {
                     if (fetchOptions.headers && typeof fetchOptions.headers === 'object') {
@@ -1732,7 +1732,7 @@ export class DefaultStorageService implements StorageService {
                 const signedRequest = await aws.sign(signRequest);
                 
                 // Extract the headers and add them to fetch options
-                signedRequest.headers.forEach((value, key) => {
+                signedRequest.headers.forEach((value: string, key: string) => {
                   // Only include AWS specific headers
                   if (key.startsWith('x-amz-') || key === 'authorization') {
                     if (fetchOptions.headers && typeof fetchOptions.headers === 'object') {

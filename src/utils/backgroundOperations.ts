@@ -42,46 +42,47 @@ export function runInBackground<T>(
     }
     
     // Execute the operation in the background
-    executionContext.waitUntil(
-      operation()
-        .then(result => {
-          logger.debug(`Background operation ${operationName} completed successfully`, {
-            operation: operationName,
-            background: true,
-            success: true
-          });
-          
-          // Add completion breadcrumb if request context is available
-          if (requestContext) {
-            addBreadcrumb(requestContext, 'Background', `Completed background operation: ${operationName}`, {
-              usedWaitUntil: true,
+    const deferredPromise = new Promise<void>((resolve, reject) => {
+      queueMicrotask(() => {
+        operation()
+          .then(() => {
+            logger.debug(`Background operation ${operationName} completed successfully`, {
+              operation: operationName,
+              background: true,
               success: true
             });
-          }
-          
-          return result;
-        })
-        .catch(error => {
-          logger.error(`Background operation ${operationName} failed`, {
-            operation: operationName,
-            background: true,
-            error: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined
-          });
-          
-          // Add error breadcrumb if request context is available
-          if (requestContext) {
-            addBreadcrumb(requestContext, 'Background', `Failed background operation: ${operationName}`, {
-              usedWaitUntil: true,
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
+            
+            if (requestContext) {
+              addBreadcrumb(requestContext, 'Background', `Completed background operation: ${operationName}`, {
+                usedWaitUntil: true,
+                success: true
+              });
+            }
+            
+            resolve();
+          })
+          .catch(error => {
+            logger.error(`Background operation ${operationName} failed`, {
+              operation: operationName,
+              background: true,
+              error: error instanceof Error ? error.message : String(error),
+              stack: error instanceof Error ? error.stack : undefined
             });
-          }
-          
-          // Re-throw to ensure waitUntil error handling works correctly
-          throw error;
-        })
-    );
+            
+            if (requestContext) {
+              addBreadcrumb(requestContext, 'Background', `Failed background operation: ${operationName}`, {
+                usedWaitUntil: true,
+                success: false,
+                error: error instanceof Error ? error.message : String(error)
+              });
+            }
+            
+            reject(error);
+          });
+      });
+    });
+    
+    executionContext.waitUntil(deferredPromise);
     
     return true;
   } else {

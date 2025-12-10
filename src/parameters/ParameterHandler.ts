@@ -88,6 +88,20 @@ export class ParameterHandler {
       width: processedParams.width,
       hasExplicitWidth: processedParams.__explicitWidth === true
     });
+
+    // Ensure path-specified width segments override size-code derived widths
+    const pathWidthMatch = url.pathname.match(/_width=(\d+)/);
+    if (pathWidthMatch) {
+      const pathWidth = parseInt(pathWidthMatch[1], 10);
+      if (!Number.isNaN(pathWidth)) {
+        processedParams.width = pathWidth;
+        processedParams.__explicitWidth = true;
+        if ('f' in processedParams) {
+          delete (processedParams as any).f;
+        }
+        this.logger.debug('Applied path width override in ParameterHandler', { pathWidth });
+      }
+    }
     
     return processedParams;
   }

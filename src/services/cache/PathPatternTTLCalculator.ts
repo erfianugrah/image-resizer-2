@@ -36,11 +36,44 @@ export class PathPatternTTLCalculator {
   private pathPatterns: PathPattern[] = [];
   private defaultPattern: PathPattern | null = null;
   private initialized: boolean = false;
+  private compiledPatterns: Array<{ pattern: PathPattern; regex: RegExp }> = [];
+  private usingHardcodedDefaults: boolean = false;
 
   constructor(logger: Logger, configService: ConfigurationService) {
     this.logger = logger;
     this.configService = configService;
     this.initialize();
+  }
+
+  /**
+   * Update path patterns at runtime (used by tests and dynamic config reloads)
+   */
+  updatePatterns(patterns: PathPattern[]): void {
+    this.pathPatterns = patterns;
+    this.compiledPatterns = [];
+    
+    // Sort and set default pattern
+    this.pathPatterns.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+    this.defaultPattern = this.pathPatterns.find(p => p.name === 'default') || null;
+    
+    for (const pattern of this.pathPatterns) {
+      if (pattern.name === 'default' || !pattern.matcher) continue;
+      try {
+        this.compiledPatterns.push({ pattern, regex: new RegExp(pattern.matcher) });
+      } catch (err) {
+        this.logger.warn("Invalid regex in path pattern during update, skipping pattern", {
+          patternName: pattern.name || 'unnamed',
+          matcher: pattern.matcher,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    }
+    
+    this.logger.info("Updated path pattern TTL calculator", {
+      patternCount: this.pathPatterns.length,
+      compiledPatternCount: this.compiledPatterns.length,
+      hasDefaultPattern: !!this.defaultPattern
+    });
   }
 
   /**
@@ -62,11 +95,30 @@ export class PathPatternTTLCalculator {
         
         // Find default pattern
         this.defaultPattern = this.pathPatterns.find(p => p.name === 'default') || null;
+
+        // Precompile regex matchers once to avoid per-request compilation
+        this.compiledPatterns = [];
+        for (const pattern of this.pathPatterns) {
+          if (pattern.name === 'default' || !pattern.matcher) {
+            continue;
+          }
+          try {
+            const regex = new RegExp(pattern.matcher);
+            this.compiledPatterns.push({ pattern, regex });
+          } catch (err) {
+            this.logger.warn("Invalid regex in path pattern, skipping pattern", {
+              patternName: pattern.name || 'unnamed',
+              matcher: pattern.matcher,
+              error: err instanceof Error ? err.message : String(err)
+            });
+          }
+        }
         
         this.logger.info("Path pattern TTL calculator initialized", {
           patternCount: this.pathPatterns.length,
           hasDefaultPattern: !!this.defaultPattern,
-          patterns: this.pathPatterns.map(p => p.name).join(', ')
+          patterns: this.pathPatterns.map(p => p.name).join(', '),
+          compiledPatternCount: this.compiledPatterns.length
         });
       } else {
         // Create default pattern from basic TTL config
@@ -74,11 +126,19 @@ export class PathPatternTTLCalculator {
           name: 'default',
           matcher: '.*',
           ttl: {
-            ok: config.cache.ttl.ok,
-            clientError: config.cache.ttl.clientError,
-            serverError: config.cache.ttl.serverError
+            ok: config.cache.ttl?.ok ?? 300,
+            clientError: config.cache.ttl?.clientError ?? 60,
+            serverError: config.cache.ttl?.serverError ?? 10,
+            redirects: (config.cache.ttl as any)?.redirects ?? 300
           }
         };
+        if (
+          config.cache.ttl?.ok === undefined ||
+          config.cache.ttl?.clientError === undefined ||
+          config.cache.ttl?.serverError === undefined
+        ) {
+          this.usingHardcodedDefaults = true;
+        }
         
         this.logger.info("Path pattern TTL calculator using default pattern only", {
           defaultTtlOk: config.cache.ttl.ok,
@@ -156,44 +216,29 @@ export class PathPatternTTLCalculator {
       };
     } else {
       // Try to match against path patterns
-      for (const pattern of this.pathPatterns) {
-        // Skip the default pattern, we'll use it as fallback
-        if (pattern.name === 'default') continue;
-
-        if (pattern.matcher) {
-          try {
-            const regex = new RegExp(pattern.matcher);
-            if (regex.test(path)) {
-              ttlConfig = pattern.ttl;
-              matchedPattern = pattern;
-              
-              this.logger.debug("Using TTL from specific path pattern", {
-                path,
-                patternName: pattern.name || 'unnamed',
-                ttl: ttlConfig,
-                matcher: pattern.matcher,
-                source: 'path-pattern'
-              });
-              
-              // Add breadcrumb for pattern match if context is available
-              if (requestContext) {
-                addBreadcrumb(requestContext, 'TTLCalculation', 'Matched path pattern', {
-                  path,
-                  patternName: pattern.name,
-                  source: 'path-pattern'
-                });
-              }
-              
-              break;
-            }
-          } catch (err) {
-            // If regex is invalid, log and continue
-            this.logger.warn("Invalid regex in path pattern", {
-              patternName: pattern.name || 'unnamed',
-              matcher: pattern.matcher,
-              error: err instanceof Error ? err.message : String(err)
+      for (const { pattern, regex } of this.compiledPatterns) {
+        if (regex.test(path)) {
+          ttlConfig = pattern.ttl;
+          matchedPattern = pattern;
+          
+          this.logger.debug("Using TTL from specific path pattern", {
+            path,
+            patternName: pattern.name || 'unnamed',
+            ttl: ttlConfig,
+            matcher: pattern.matcher,
+            source: 'path-pattern'
+          });
+          
+          // Add breadcrumb for pattern match if context is available
+          if (requestContext) {
+            addBreadcrumb(requestContext, 'TTLCalculation', 'Matched path pattern', {
+              path,
+              patternName: pattern.name,
+              source: 'path-pattern'
             });
           }
+          
+          break;
         }
       }
       
@@ -241,8 +286,17 @@ export class PathPatternTTLCalculator {
       }
     }
     
+    // If we initialized with hardcoded defaults, emit a warn once
+    if (this.usingHardcodedDefaults) {
+      this.logger.warn("using hardcoded defaults for cache.ttl configuration", {
+        path,
+        ttl: ttlConfig
+      });
+      this.usingHardcodedDefaults = false;
+    }
+    
     // Determine TTL based on status code and matched configuration
-    let finalTTL: number;
+    let finalTTL: number | undefined;
     
     switch (statusCategory) {
       case 2: // Success (200-299)
@@ -260,6 +314,10 @@ export class PathPatternTTLCalculator {
       default:
         // Fallback for unexpected status categories
         finalTTL = ttlConfig.clientError || defaultTTLs.clientError;
+    }
+    
+    if (finalTTL === undefined) {
+      finalTTL = defaultTTLs.ok;
     }
     
     // Apply derivative-specific TTL adjustments if applicable
@@ -394,25 +452,4 @@ export class PathPatternTTLCalculator {
     return ttl;
   }
   
-  /**
-   * Update path patterns from configuration
-   * This method allows for hot reloading of TTL patterns
-   */
-  updatePatterns(patterns: PathPattern[]): void {
-    this.pathPatterns = patterns;
-    
-    // Sort patterns by priority (higher values first)
-    this.pathPatterns.sort((a, b) => 
-      (b.priority || 0) - (a.priority || 0)
-    );
-    
-    // Find default pattern
-    this.defaultPattern = this.pathPatterns.find(p => p.name === 'default') || null;
-    
-    this.logger.info("Updated path pattern TTL calculator", {
-      patternCount: this.pathPatterns.length,
-      hasDefaultPattern: !!this.defaultPattern,
-      patterns: this.pathPatterns.map(p => p.name).join(', ')
-    });
-  }
 }
