@@ -61,15 +61,15 @@ Metadata is now stored in the KV key's metadata field rather than in the value i
 ```typescript
 // Store metadata in KV metadata field instead of value
 await env.IMAGE_METADATA_CACHE.put(
-  cacheKey, 
+  cacheKey,
   binary_data,  // The actual image data as buffer
-  { 
+  {
     expirationTtl: this.KV_CACHE_TTL,
     metadata: {
-      width: metadata.width,
-      height: metadata.height,
-      format: metadata.format,
-      contentType: `image/${metadata.format}`,
+      width: metadata.metadata.width,
+      height: metadata.metadata.height,
+      format: metadata.metadata.format,
+      contentType: `image/${metadata.metadata.format}`,
       lastFetched: Date.now(),
       // Include aspect crop information if available
       aspectCropInfo: metadata.aspectCropInfo
