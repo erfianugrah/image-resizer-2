@@ -1,300 +1,353 @@
 # Configuration API Reference
 
-The Configuration API provides a RESTful interface for managing the Image Resizer configuration. This API allows you to retrieve, update, and manage configuration settings dynamically without redeploying your worker.
+The Configuration API provides a RESTful interface for managing the Image Resizer configuration dynamically. This API allows you to store, retrieve, version, and manage configuration settings without redeploying your worker.
+
+## Quick Navigation
+
+- [Back to Configuration Documentation](index.md)
+- [Configuration Reference](../core/configuration-reference.md)
+- [Getting Started Guide](getting-started.md)
+
+---
 
 ## Authentication
 
-All API endpoints require authentication using an API key:
+The Configuration API uses API key authentication for most endpoints. Include your API key in the request header:
 
-```
-X-API-Key: your-api-key-here
+```http
+X-Config-API-Key: your-api-key-here
 ```
 
-The API key should be set in your worker's environment variables as `CONFIG_API_KEY`.
+### Setting Up Authentication
+
+1. **Set the API key** in your environment variables (e.g., in `wrangler.toml` or `.dev.vars`):
+   ```toml
+   [vars]
+   CONFIG_API_KEY = "your-secure-api-key"
+   ```
+
+2. **Generate a secure key**:
+   ```bash
+   # Generate a random API key
+   openssl rand -hex 32
+   ```
+
+### Public Endpoints
+
+The following endpoints are publicly accessible without authentication:
+- `GET /api/config/modules` - List all modules
+- `GET /api/config/version/:id` - Get a specific version
+- `GET /api/config/versions` - List available versions
+- `GET /api/config/health` - Health check
+
+All other endpoints require authentication.
+
+---
 
 ## Base URL
 
-All API endpoints are relative to your worker's URL:
+All API endpoints are relative to your worker's URL with the `/api/config` prefix:
 
 ```
-https://your-worker.example.com/config
+https://your-worker.example.com/api/config
 ```
 
-## Endpoints
+---
 
-### Get Full Configuration
+## Configuration Structure
 
-Retrieves the complete configuration.
+The Configuration API uses a modular configuration system:
+
+```typescript
+interface ConfigurationSystem {
+  _meta: {
+    version: string;           // System version (e.g., "v25")
+    lastUpdated: string;       // ISO timestamp
+    activeModules: string[];   // List of active module names
+  };
+
+  modules: Record<string, ConfigModule>; // Individual modules
+}
+
+interface ConfigModule {
+  _meta: {
+    name: string;              // Module name
+    version: string;           // Module version
+    description: string;       // Module description
+    schema: Record<string, any>;    // JSON schema
+    defaults: Record<string, any>;  // Default values
+    moduleDependencies?: string[];  // Dependencies
+  };
+
+  config: Record<string, any>;  // Module-specific configuration
+}
+```
+
+---
+
+## API Endpoints
+
+### Configuration Management
+
+#### Get Current Configuration
+
+Retrieves the complete active configuration including all modules.
 
 **Request:**
-```
-GET /config
+```http
+GET /api/config
+X-Config-API-Key: your-api-key
 ```
 
 **Response:**
 ```json
 {
-  "core": {
-    "environment": "production",
-    "version": "1.0.0",
-    "debug": {...},
-    "logging": {...}
+  "_meta": {
+    "version": "v42",
+    "lastUpdated": "2025-12-10T14:30:00Z",
+    "activeModules": ["cache", "storage", "transform"]
   },
-  "storage": {...},
-  "transform": {...},
-  "cache": {...}
+  "modules": {
+    "cache": {
+      "_meta": {
+        "name": "cache",
+        "version": "1.0.0",
+        "description": "Cache configuration module",
+        "schema": { /* JSON schema */ },
+        "defaults": { /* default values */ }
+      },
+      "config": {
+        "ttl": {
+          "ok": 86400,
+          "clientError": 60,
+          "serverError": 10
+        },
+        "method": "cf",
+        "cacheEverything": true
+      }
+    },
+    "storage": {
+      /* storage module configuration */
+    },
+    "transform": {
+      /* transform module configuration */
+    }
+  }
 }
 ```
 
-### Get Module Configuration
+**Status Codes:**
+- `200 OK` - Configuration retrieved successfully
+- `401 Unauthorized` - Missing or invalid API key
+- `500 Internal Server Error` - Server error
 
-Retrieves configuration for a specific module.
+---
 
-**Request:**
-```
-GET /config/{module}
-```
+#### Create New Configuration
 
-Where `{module}` is one of: `core`, `storage`, `transform`, `cache`, `client`, `security`, `monitoring`.
-
-**Response:**
-```json
-{
-  "ttl": {
-    "ok": 86400,
-    "clientError": 60,
-    "serverError": 10
-  },
-  "method": "cf",
-  "cacheEverything": true,
-  ...
-}
-```
-
-### Update Full Configuration
-
-Replaces the entire configuration.
+Creates a new configuration version and optionally activates it.
 
 **Request:**
-```
-PUT /config
+```http
+POST /api/config
+X-Config-API-Key: your-api-key
 Content-Type: application/json
 
 {
-  "core": {...},
-  "storage": {...},
-  "transform": {...},
-  "cache": {...}
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Configuration updated successfully",
-  "version": 2
-}
-```
-
-### Update Module Configuration
-
-Updates configuration for a specific module.
-
-**Request:**
-```
-PUT /config/{module}
-Content-Type: application/json
-
-{
-  "ttl": {
-    "ok": 86400,
-    "clientError": 60,
-    "serverError": 10
+  "config": {
+    "_meta": {
+      "version": "v43",
+      "lastUpdated": "2025-12-10T15:00:00Z",
+      "activeModules": ["cache", "storage", "transform"]
+    },
+    "modules": {
+      "cache": {
+        "_meta": { /* module metadata */ },
+        "config": { /* cache configuration */ }
+      }
+    }
   },
-  "method": "cf",
-  "cacheEverything": true,
-  ...
+  "comment": "Updated cache TTL values",
+  "author": "admin",
+  "modules": ["cache"],
+  "tags": ["production", "cache-update"]
 }
 ```
 
 **Response:**
 ```json
 {
-  "success": true,
-  "message": "Module 'cache' updated successfully",
-  "version": 3
+  "message": "Configuration stored successfully",
+  "version": {
+    "id": "v43",
+    "timestamp": "2025-12-10T15:00:00Z",
+    "author": "admin",
+    "comment": "Updated cache TTL values",
+    "hash": "sha256:abc123...",
+    "parent": "v42",
+    "modules": ["cache"],
+    "changes": ["modules.cache.config.ttl.ok"],
+    "tags": ["production", "cache-update"]
+  }
 }
 ```
 
-### Get Configuration History
+**Status Codes:**
+- `201 Created` - Configuration created successfully
+- `400 Bad Request` - Invalid configuration or missing required fields
+- `401 Unauthorized` - Missing or invalid API key
 
-Retrieves configuration version history.
+---
+
+### Version Management
+
+#### List Configuration Versions
+
+Retrieves a list of all configuration versions with metadata.
 
 **Request:**
+```http
+GET /api/config/versions?limit=50
 ```
-GET /config/history
-```
+
+**Query Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `limit` | integer | `100` | Maximum number of versions to return (1-1000) |
 
 **Response:**
 ```json
 {
   "versions": [
     {
-      "version": 3,
-      "timestamp": "2023-09-15T14:22:10Z",
-      "module": "cache",
-      "action": "update"
+      "id": "v43",
+      "timestamp": "2025-12-10T15:00:00Z",
+      "author": "admin",
+      "comment": "Updated cache TTL values",
+      "hash": "sha256:abc123...",
+      "parent": "v42",
+      "modules": ["cache"],
+      "changes": ["modules.cache.config.ttl.ok"],
+      "tags": ["production", "cache-update"]
     },
     {
-      "version": 2,
-      "timestamp": "2023-09-15T12:10:05Z",
-      "module": "all",
-      "action": "replace"
-    },
-    {
-      "version": 1,
-      "timestamp": "2023-09-14T09:30:00Z",
-      "module": "all",
-      "action": "create"
+      "id": "v42",
+      "timestamp": "2025-12-09T10:30:00Z",
+      "author": "system",
+      "comment": "Initial configuration",
+      "hash": "sha256:def456...",
+      "modules": ["cache", "storage", "transform"],
+      "changes": []
     }
   ]
 }
 ```
 
-### Get Configuration Version
+**Status Codes:**
+- `200 OK` - Versions retrieved successfully
+- `400 Bad Request` - Invalid limit parameter
 
-Retrieves a specific configuration version.
+**Note:** This is a public endpoint (no authentication required).
+
+---
+
+#### Get Specific Version
+
+Retrieves a specific configuration version by ID.
 
 **Request:**
-```
-GET /config/version/{version}
+```http
+GET /api/config/version/v42
 ```
 
 **Response:**
 ```json
 {
-  "version": 2,
-  "timestamp": "2023-09-15T12:10:05Z",
-  "config": {
-    "core": {...},
-    "storage": {...},
-    "transform": {...},
-    "cache": {...}
+  "_meta": {
+    "version": "v42",
+    "lastUpdated": "2025-12-09T10:30:00Z",
+    "activeModules": ["cache", "storage", "transform"]
+  },
+  "modules": {
+    /* module configurations */
   }
 }
 ```
 
-### Restore Configuration Version
+**Status Codes:**
+- `200 OK` - Version retrieved successfully
+- `404 Not Found` - Version not found
 
-Restores a previous configuration version.
+**Note:** This is a public endpoint (no authentication required).
+
+---
+
+#### Activate Configuration Version
+
+Activates a specific configuration version, making it the current active configuration.
 
 **Request:**
-```
-POST /config/restore/{version}
+```http
+PUT /api/config/activate/v42
+X-Config-API-Key: your-api-key
 ```
 
 **Response:**
 ```json
 {
-  "success": true,
-  "message": "Configuration restored to version 2",
-  "version": 4
+  "message": "Version v42 activated successfully"
 }
 ```
 
-### Validate Configuration
+**Status Codes:**
+- `200 OK` - Version activated successfully
+- `400 Bad Request` - Activation failed (version may not exist)
+- `401 Unauthorized` - Missing or invalid API key
 
-Validates a configuration without applying it.
+---
+
+#### Compare Two Versions
+
+Compares two configuration versions and returns the differences.
 
 **Request:**
-```
-POST /config/validate
-Content-Type: application/json
-
-{
-  "core": {...},
-  "storage": {...},
-  "transform": {...},
-  "cache": {...}
-}
+```http
+GET /api/config/diff/v42/v43
+X-Config-API-Key: your-api-key
 ```
 
 **Response:**
 ```json
 {
-  "valid": true,
-  "message": "Configuration is valid"
-}
-```
-
-Or for validation failures:
-
-```json
-{
-  "valid": false,
-  "errors": [
-    {
-      "path": "cache.ttl.ok",
-      "message": "Value must be a positive integer"
-    },
-    {
-      "path": "storage.remoteAuth.type",
-      "message": "Invalid auth type: 'unknown'. Valid values are 'aws-s3', 'bearer', 'header', 'query'"
-    }
+  "added": [],
+  "removed": [],
+  "modified": [
+    "modules.cache.config.ttl.ok"
+  ],
+  "unchanged": [
+    "modules.cache.config.method",
+    "modules.cache.config.cacheEverything",
+    "modules.storage.config.priority"
   ]
 }
 ```
 
-### Register Module
+**Status Codes:**
+- `200 OK` - Comparison successful
+- `400 Bad Request` - Invalid version IDs or comparison failed
+- `401 Unauthorized` - Missing or invalid API key
 
-Registers a new configuration module.
+---
 
-**Request:**
-```
-POST /config/register/{moduleName}
-Content-Type: application/json
+### Module Management
 
-{
-  "schema": {
-    "type": "object",
-    "properties": {
-      "enabled": {
-        "type": "boolean",
-        "default": true
-      },
-      "options": {
-        "type": "object",
-        "properties": {...}
-      }
-    }
-  },
-  "defaultConfig": {
-    "enabled": true,
-    "options": {...}
-  },
-  "moduleDependencies": ["core", "storage"]
-}
-```
+#### List All Modules
 
-> **Note**: The property `moduleDependencies` specifies dependencies on other modules. Earlier versions used `dependencies`, which is now deprecated due to conflicts with the JSON Schema specification.
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Module 'analytics' registered successfully",
-  "moduleId": "analytics"
-}
-```
-
-### List Modules
-
-Lists all registered configuration modules.
+Retrieves a list of all registered configuration modules.
 
 **Request:**
-```
-GET /config/modules
+```http
+GET /api/config/modules
 ```
 
 **Response:**
@@ -302,234 +355,509 @@ GET /config/modules
 {
   "modules": [
     {
-      "id": "core",
-      "description": "Core system settings",
-      "moduleDependencies": []
+      "name": "cache",
+      "version": "1.0.0",
+      "description": "Cache configuration module"
     },
     {
-      "id": "storage",
-      "description": "Storage and origin settings",
-      "moduleDependencies": ["core"]
+      "name": "storage",
+      "version": "1.0.0",
+      "description": "Storage configuration module"
     },
     {
-      "id": "transform",
-      "description": "Image transformation settings",
-      "moduleDependencies": ["core"]
-    },
-    {
-      "id": "cache",
-      "description": "Caching configuration",
-      "moduleDependencies": ["core", "storage"]
+      "name": "transform",
+      "version": "1.0.0",
+      "description": "Transformation configuration module"
     }
   ]
 }
 ```
 
-### Resolve Environment Variables
+**Status Codes:**
+- `200 OK` - Modules retrieved successfully
 
-Resolves environment variable references in the configuration.
+**Note:** This is a public endpoint (no authentication required).
+
+---
+
+#### Get Module Configuration
+
+Retrieves the configuration for a specific module.
 
 **Request:**
+```http
+GET /api/config/modules/cache
+X-Config-API-Key: your-api-key
 ```
-POST /config/resolve-env
+
+**Response:**
+```json
+{
+  "_meta": {
+    "name": "cache",
+    "version": "1.0.0",
+    "description": "Cache configuration module",
+    "schema": { /* JSON schema */ },
+    "defaults": { /* default values */ }
+  },
+  "config": {
+    "ttl": {
+      "ok": 86400,
+      "clientError": 60,
+      "serverError": 10
+    },
+    "method": "cf",
+    "cacheEverything": true
+  }
+}
+```
+
+**Status Codes:**
+- `200 OK` - Module configuration retrieved successfully
+- `404 Not Found` - Module not found
+- `401 Unauthorized` - Missing or invalid API key
+
+---
+
+#### Update Module Configuration
+
+Updates the configuration for a specific module.
+
+**Request:**
+```http
+PUT /api/config/modules/cache
+X-Config-API-Key: your-api-key
 Content-Type: application/json
 
 {
-  "storage": {
-    "remoteAuth": {
-      "accessKeyVar": "AWS_ACCESS_KEY_ID",
-      "secretKeyVar": "AWS_SECRET_ACCESS_KEY"
-    }
-  }
+  "config": {
+    "ttl": {
+      "ok": 172800,
+      "clientError": 60,
+      "serverError": 10
+    },
+    "method": "cf",
+    "cacheEverything": true
+  },
+  "comment": "Doubled the cache TTL for successful responses",
+  "author": "admin"
 }
 ```
 
 **Response:**
 ```json
 {
-  "resolved": true,
-  "message": "Environment variables resolved successfully",
-  "result": {
-    "storage": {
-      "remoteAuth": {
-        "accessKeyVar": "AWS_ACCESS_KEY_ID", 
-        "secretKeyVar": "AWS_SECRET_ACCESS_KEY",
-        "_resolvedAccessKey": "AKXXXXXXXXXXXXXXXXXX", // Note: Sensitive values are masked
-        "_resolvedSecretKey": "********"
-      }
-    }
+  "message": "Module cache updated successfully",
+  "version": {
+    "id": "v44",
+    "timestamp": "2025-12-10T16:00:00Z",
+    "author": "admin",
+    "comment": "Doubled the cache TTL for successful responses",
+    "hash": "sha256:xyz789...",
+    "parent": "v43",
+    "modules": ["cache"],
+    "changes": ["modules.cache.config.ttl.ok"]
   }
 }
 ```
 
-## Error Responses
+**Status Codes:**
+- `200 OK` - Module updated successfully
+- `400 Bad Request` - Invalid configuration or validation failed
+- `401 Unauthorized` - Missing or invalid API key
+- `404 Not Found` - Module not found
 
-The API returns appropriate HTTP status codes for different error cases:
+---
 
-- `400 Bad Request`: Invalid request parameters or JSON body
-- `401 Unauthorized`: Missing or invalid API key
-- `404 Not Found`: Requested resource not found
-- `409 Conflict`: Configuration validation failed
-- `500 Internal Server Error`: Server-side error
+#### Register New Module
 
-Error responses include details about the error:
+Registers a new configuration module with schema and default values.
 
-```json
+**Request:**
+```http
+POST /api/config/modules
+X-Config-API-Key: your-api-key
+Content-Type: application/json
+
 {
-  "success": false,
-  "error": "Validation Error",
-  "details": [
-    {
-      "path": "cache.ttl.ok",
-      "message": "Value must be a positive integer"
-    }
-  ]
+  "name": "monitoring",
+  "version": "1.0.0",
+  "description": "Monitoring and alerting configuration",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "enabled": { "type": "boolean" },
+      "interval": { "type": "number" }
+    },
+    "required": ["enabled"]
+  },
+  "defaults": {
+    "enabled": true,
+    "interval": 60
+  },
+  "dependencies": ["logging"]
 }
 ```
 
-## Bulk Operations
+**Response:**
+```json
+{
+  "message": "Module monitoring registered successfully"
+}
+```
 
-### Bulk Update
+**Status Codes:**
+- `201 Created` - Module registered successfully
+- `400 Bad Request` - Invalid module definition or registration failed
+- `401 Unauthorized` - Missing or invalid API key
 
-Updates multiple modules in a single operation.
+---
+
+#### Bulk Update Modules
+
+Updates multiple modules in a single transaction.
 
 **Request:**
-```
-POST /config/bulk-update
+```http
+PUT /api/config/bulk-update
+X-Config-API-Key: your-api-key
 Content-Type: application/json
 
 {
   "modules": {
     "cache": {
       "ttl": {
-        "ok": 86400,
-        "clientError": 60
+        "ok": 172800,
+        "clientError": 120,
+        "serverError": 20
       }
     },
     "storage": {
-      "remoteUrl": "https://new-origin.example.com"
+      "priority": ["r2", "remote", "fallback"]
     }
   },
-  "description": "Update cache TTLs and remote origin"
+  "comment": "Bulk update of cache and storage settings",
+  "author": "admin"
 }
 ```
 
 **Response:**
 ```json
 {
-  "success": true,
   "message": "Bulk update completed successfully",
-  "version": 5,
-  "updated": ["cache", "storage"]
+  "version": {
+    "id": "v45",
+    "timestamp": "2025-12-10T17:00:00Z",
+    "author": "admin",
+    "comment": "Bulk update of cache and storage settings",
+    "hash": "sha256:uvw012...",
+    "parent": "v44",
+    "modules": ["cache", "storage"],
+    "changes": [
+      "modules.cache.config.ttl.ok",
+      "modules.cache.config.ttl.clientError",
+      "modules.cache.config.ttl.serverError",
+      "modules.storage.config.priority"
+    ]
+  }
 }
 ```
 
-## Schema Validation
+**Status Codes:**
+- `200 OK` - Bulk update successful
+- `400 Bad Request` - Invalid configuration or validation failed
+- `401 Unauthorized` - Missing or invalid API key
+- `404 Not Found` - One or more modules not found
 
-The Configuration API uses JSON Schema for validating configurations. You can retrieve the schema for the entire configuration or specific modules:
+---
+
+### Schema Management
+
+#### Get Full Configuration Schema
+
+Retrieves the JSON schemas for all modules.
 
 **Request:**
-```
-GET /config/schema
+```http
+GET /api/config/schema
+X-Config-API-Key: your-api-key
 ```
 
 **Response:**
 ```json
 {
-  "type": "object",
-  "properties": {
-    "core": { ... },
-    "storage": { ... },
-    "cache": { ... },
-    ...
-  },
-  "required": ["core"]
-}
-```
-
-Or for a specific module:
-
-**Request:**
-```
-GET /config/schema/{module}
-```
-
-**Response:**
-```json
-{
-  "type": "object",
-  "properties": {
-    "ttl": {
+  "schemas": {
+    "cache": {
       "type": "object",
       "properties": {
-        "ok": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "TTL for successful responses (200-299)"
+        "ttl": {
+          "type": "object",
+          "properties": {
+            "ok": { "type": "number" },
+            "clientError": { "type": "number" },
+            "serverError": { "type": "number" }
+          }
         },
-        "clientError": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "TTL for client error responses (400-499)"
-        },
-        "serverError": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "TTL for server error responses (500-599)"
-        }
-      },
-      "required": ["ok"]
+        "method": { "type": "string", "enum": ["cf", "cache-api", "none"] }
+      }
     },
-    "method": {
-      "type": "string",
-      "enum": ["cf", "cache-api", "none"],
-      "description": "Caching method to use"
-    },
-    "cacheEverything": {
-      "type": "boolean",
-      "description": "Whether to cache all content types"
+    "storage": {
+      /* storage schema */
     }
-  },
-  "required": ["ttl", "method"]
+  }
 }
 ```
 
-## Format Conversion
+**Status Codes:**
+- `200 OK` - Schemas retrieved successfully
+- `401 Unauthorized` - Missing or invalid API key
 
-The API can convert between legacy and simplified configuration formats:
+---
+
+#### Get Module Schema
+
+Retrieves the JSON schema for a specific module.
 
 **Request:**
+```http
+GET /api/config/schema/cache
+X-Config-API-Key: your-api-key
 ```
-POST /config/convert
+
+**Response:**
+```json
+{
+  "name": "cache",
+  "version": "1.0.0",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "ttl": {
+        "type": "object",
+        "properties": {
+          "ok": { "type": "number", "minimum": 0 },
+          "clientError": { "type": "number", "minimum": 0 },
+          "serverError": { "type": "number", "minimum": 0 }
+        },
+        "required": ["ok", "clientError", "serverError"]
+      },
+      "method": {
+        "type": "string",
+        "enum": ["cf", "cache-api", "none"],
+        "default": "cf"
+      }
+    },
+    "required": ["ttl", "method"]
+  }
+}
+```
+
+**Status Codes:**
+- `200 OK` - Schema retrieved successfully
+- `401 Unauthorized` - Missing or invalid API key
+- `404 Not Found` - Module not found
+
+---
+
+### Utility Endpoints
+
+#### Resolve Environment Variables
+
+Resolves environment variables in a configuration value (useful for testing).
+
+**Request:**
+```http
+POST /api/config/resolve-env
+X-Config-API-Key: your-api-key
 Content-Type: application/json
 
 {
-  "format": "simplified",
-  "config": {
-    "environment": "production",
-    "debug": { ... },
-    "cache": { ... },
-    ...
-  }
+  "value": "${ENV:CACHE_TTL_OK}"
 }
 ```
 
 **Response:**
 ```json
 {
-  "success": true,
-  "format": "simplified",
-  "result": {
-    "core": {
-      "environment": "production",
-      "debug": { ... }
-    },
-    "cache": { ... },
-    ...
-  }
+  "original": "${ENV:CACHE_TTL_OK}",
+  "resolved": "86400"
 }
 ```
 
-Supported formats:
-- `simplified`: Modern modular format
-- `legacy`: Original flat format
+**Status Codes:**
+- `200 OK` - Environment variable resolved successfully
+- `400 Bad Request` - Invalid value or resolution failed
+- `401 Unauthorized` - Missing or invalid API key
+
+---
+
+#### Health Check
+
+Checks the health status of the Configuration API service.
+
+**Request:**
+```http
+GET /api/config/health
+```
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "version": "1.0.0",
+  "timestamp": "2025-12-10T18:00:00Z"
+}
+```
+
+**Status Codes:**
+- `200 OK` - Service is healthy
+
+**Note:** This is a public endpoint (no authentication required).
+
+---
+
+## Error Responses
+
+All error responses follow a consistent format:
+
+```json
+{
+  "error": "error_code",
+  "message": "Human-readable error message"
+}
+```
+
+### Common Error Codes
+
+| Error Code | HTTP Status | Description |
+|------------|-------------|-------------|
+| `service_unavailable` | 500 | Configuration API service is not available |
+| `invalid_parameter` | 400 | Invalid or missing parameter in request |
+| `invalid_request` | 400 | Invalid JSON in request body |
+| `missing_field` | 400 | Required field is missing from request |
+| `not_found` | 404 | Requested resource not found |
+| `validation_error` | 400 | Configuration failed validation |
+| `activation_failed` | 400 | Failed to activate version |
+| `comparison_error` | 400 | Failed to compare versions |
+| `update_failed` | 400 | Failed to update configuration |
+| `registration_failed` | 400 | Failed to register module |
+| `resolution_failed` | 400 | Failed to resolve environment variable |
+| `internal_error` | 500 | Internal server error |
+
+---
+
+## Security Headers
+
+All responses include security headers:
+
+```http
+Content-Type: application/json
+Cache-Control: no-store, no-cache, must-revalidate, proxy-revalidate
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Referrer-Policy: same-origin
+```
+
+---
+
+## Usage Examples
+
+### Example 1: Get Current Configuration
+
+```bash
+curl -X GET https://images.example.com/api/config \
+  -H "X-Config-API-Key: your-api-key"
+```
+
+### Example 2: Update Cache TTL
+
+```bash
+curl -X PUT https://images.example.com/api/config/modules/cache \
+  -H "X-Config-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "config": {
+      "ttl": {
+        "ok": 172800,
+        "clientError": 60,
+        "serverError": 10
+      }
+    },
+    "comment": "Doubled cache TTL",
+    "author": "admin"
+  }'
+```
+
+### Example 3: List Recent Versions
+
+```bash
+curl -X GET "https://images.example.com/api/config/versions?limit=10"
+```
+
+### Example 4: Compare Two Versions
+
+```bash
+curl -X GET https://images.example.com/api/config/diff/v42/v43 \
+  -H "X-Config-API-Key: your-api-key"
+```
+
+### Example 5: Activate Previous Version (Rollback)
+
+```bash
+curl -X PUT https://images.example.com/api/config/activate/v42 \
+  -H "X-Config-API-Key: your-api-key"
+```
+
+---
+
+## Best Practices
+
+1. **Version Control**
+   - Always include meaningful comments when creating or updating configuration
+   - Use tags to mark important versions (e.g., "production", "hotfix")
+   - Keep track of parent versions to understand configuration history
+
+2. **Testing Changes**
+   - Test configuration changes in a non-production environment first
+   - Use the `/api/config/diff` endpoint to review changes before activating
+   - Keep previous versions available for quick rollback
+
+3. **Security**
+   - Store API keys securely (use environment variables, never commit to git)
+   - Rotate API keys regularly
+   - Monitor authentication logs for suspicious activity
+   - Use HTTPS for all API requests
+
+4. **Bulk Updates**
+   - Use bulk updates for related changes to maintain atomicity
+   - Bulk updates create a single version, making rollback easier
+
+5. **Schema Validation**
+   - Define comprehensive schemas for your modules
+   - Use schema validation to prevent invalid configurations
+   - Include descriptions in schemas for better documentation
+
+---
+
+## Rate Limiting
+
+The Configuration API may implement rate limiting in production environments to prevent abuse. Recommended limits:
+
+- **Anonymous requests** (public endpoints): 100 requests per minute
+- **Authenticated requests**: 500 requests per minute
+
+Exceeding rate limits will result in `429 Too Many Requests` responses.
+
+---
+
+## Related Documentation
+
+- [Configuration Reference](../core/configuration-reference.md) - Complete configuration options
+- [Getting Started Guide](getting-started.md) - Initial setup and basic usage
+- [Migration Guide](migration-guide.md) - Upgrading from older versions
+- [Troubleshooting](troubleshooting.md) - Common issues and solutions
+
+---
+
+*Last Updated: 2025-12-10*
+*API Version: 1.0.0*
