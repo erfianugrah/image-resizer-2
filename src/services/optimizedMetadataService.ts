@@ -247,7 +247,7 @@ export class OptimizedMetadataService implements MetadataFetchingService {
         
         // Convert CachedMetadata to ImageMetadata format
         const metadata: ImageMetadata = {
-          metadata: {
+          properties: {
             width: kvCacheData.width,
             height: kvCacheData.height,
             format: kvCacheData.format || 'jpeg',
@@ -262,9 +262,9 @@ export class OptimizedMetadataService implements MetadataFetchingService {
         
         this.logger.debug('KV cache hit using key metadata field', {
           cacheKey,
-          width: metadata.metadata.width,
-          height: metadata.metadata.height,
-          format: metadata.metadata.format,
+          width: metadata.properties.width,
+          height: metadata.properties.height,
+          format: metadata.properties.format,
           age: Math.round(cacheAge / 1000 / 60) + 'min',
           lookupDurationMs: kvLookupDuration
         });
@@ -303,7 +303,7 @@ export class OptimizedMetadataService implements MetadataFetchingService {
           
           // Convert CachedMetadata to ImageMetadata format
           const metadata: ImageMetadata = {
-            metadata: {
+            properties: {
               width: cachedData.width,
               height: cachedData.height,
               format: cachedData.format || 'jpeg',
@@ -318,9 +318,9 @@ export class OptimizedMetadataService implements MetadataFetchingService {
           
           this.logger.debug('KV cache hit using legacy value format', {
             cacheKey,
-            width: metadata.metadata.width,
-            height: metadata.metadata.height,
-            format: metadata.metadata.format,
+            width: metadata.properties.width,
+            height: metadata.properties.height,
+            format: metadata.properties.format,
             age: Math.round(cacheAge / 1000 / 60) + 'min',
             lookupDurationMs: kvLookupDuration
           });
@@ -372,22 +372,22 @@ export class OptimizedMetadataService implements MetadataFetchingService {
     
     try {
       // Extract the original data from Cloudflare's response if available
-      const original = metadata.metadata.originalMetadata?.original;
+      const original = metadata.properties.originalMetadata?.original;
       
       // Store only essential, non-duplicated data in CachedMetadata format
       const cacheData: CachedMetadata = {
-        width: metadata.metadata.width,
-        height: metadata.metadata.height,
-        format: metadata.metadata.format || 'jpeg',
+        width: metadata.properties.width,
+        height: metadata.properties.height,
+        format: metadata.properties.format || 'jpeg',
         lastFetched: Date.now(),
-        confidence: metadata.metadata.confidence || 'medium',
-        source: metadata.metadata.metadataSource || 'direct-fetch',
+        confidence: metadata.properties.confidence || 'medium',
+        source: metadata.properties.metadataSource || 'direct-fetch',
         // Only store fileSize if it's not already in the width/height values
         fileSize: original?.file_size,
         // Don't duplicate dimensions if they're the same as width/height
         originalDimensions: (original && 
-                           (original.width !== metadata.metadata.width || 
-                            original.height !== metadata.metadata.height)) 
+                           (original.width !== metadata.properties.width || 
+                            original.height !== metadata.properties.height)) 
           ? {
             width: original.width,
             height: original.height

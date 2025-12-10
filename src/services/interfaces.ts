@@ -892,7 +892,7 @@ export interface MetadataFetchingService {
  * Image metadata structure returned by format=json
  */
 export interface ImageMetadata {
-  metadata: {
+  properties: {
     width: number;
     height: number;
     format?: string;

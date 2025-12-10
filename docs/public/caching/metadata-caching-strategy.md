@@ -66,10 +66,10 @@ await env.IMAGE_METADATA_CACHE.put(
   {
     expirationTtl: this.KV_CACHE_TTL,
     metadata: {
-      width: metadata.metadata.width,
-      height: metadata.metadata.height,
-      format: metadata.metadata.format,
-      contentType: `image/${metadata.metadata.format}`,
+      width: metadata.properties.width,
+      height: metadata.properties.height,
+      format: metadata.properties.format,
+      contentType: `image/${metadata.properties.format}`,
       lastFetched: Date.now(),
       // Include aspect crop information if available
       aspectCropInfo: metadata.aspectCropInfo

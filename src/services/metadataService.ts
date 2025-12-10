@@ -272,7 +272,7 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
     try {
       // Base metadata structure (will be populated with actual values)
       const baseMetadata: ImageMetadata = {
-        metadata: {
+        properties: {
           width: 0,
           height: 0,
           format: undefined
@@ -291,7 +291,7 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
         
         if (storageResult && storageResult.contentType) {
           const format = storageResult.contentType.replace('image/', '');
-          baseMetadata.metadata.format = format;
+          baseMetadata.properties.format = format;
         }
       } catch (storageError) {
         this.logger.warn('Error getting basic info from storage service', {
@@ -434,12 +434,12 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
       
       // Create a properly structured metadata object
       const metadata: ImageMetadata = {
-        metadata: {
+        properties: {
           // Keep width and height adjacent for better readability
           width,
           height,
           // Basic image properties
-          format: workerMetadata.format || baseMetadata.metadata.format,
+          format: workerMetadata.format || baseMetadata.properties.format,
           // Quality assessment metadata
           confidence: 'high',
           estimationMethod: 'direct',
@@ -456,9 +456,9 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
       this.logger.debug('Successfully fetched metadata from Cloudflare Image API', {
         imagePath,
         duration,
-        width: metadata.metadata.width,
-        height: metadata.metadata.height,
-        format: metadata.metadata.format
+        width: metadata.properties.width,
+        height: metadata.properties.height,
+        format: metadata.properties.format
       });
       
       return metadata;
@@ -492,16 +492,16 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
     try {
       // Default result
       const result: TransformationResult = {};
-      
+
       // If no metadata provided, return empty result
-      if (!metadata || !metadata.metadata) {
+      if (!metadata || !metadata.properties) {
         this.logger.debug('No metadata provided, returning empty result');
         return result;
       }
       
       // Extract original dimensions from metadata
-      const originalWidth = metadata.metadata.width;
-      const originalHeight = metadata.metadata.height;
+      const originalWidth = metadata.properties.width;
+      const originalHeight = metadata.properties.height;
       
       // Store original dimensions in result
       result.dimensions = {
@@ -708,10 +708,10 @@ export class DefaultMetadataFetchingService implements MetadataFetchingService {
       
       // Return minimal result with just original dimensions if available
       const result: MetadataProcessResult = {};
-      if (metadata?.metadata?.width && metadata?.metadata?.height) {
+      if (metadata?.properties?.width && metadata?.properties?.height) {
         result.originalDimensions = {
-          width: metadata.metadata.width,
-          height: metadata.metadata.height
+          width: metadata.properties.width,
+          height: metadata.properties.height
         };
       }
       return result;

@@ -215,7 +215,7 @@ const metadata = await optimizedMetadataService.fetchMetadata(
   request
 );
 
-console.log(`Image dimensions: ${metadata.metadata.width}x${metadata.metadata.height}`);
+console.log(`Image dimensions: ${metadata.properties.width}x${metadata.properties.height}`);
 ```
 
 ### Fetch and Process in One Operation

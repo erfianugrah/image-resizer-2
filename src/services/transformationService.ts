@@ -1265,10 +1265,10 @@ export class DefaultImageTransformationService implements ImageTransformationSer
         
         this.logger.debug('Metadata fetched successfully', {
           imagePath: storageResult.path,
-          width: metadata.metadata?.width,
-          height: metadata.metadata?.height,
-          format: metadata.metadata?.format,
-          confidence: metadata.metadata?.confidence
+          width: metadata.properties?.width,
+          height: metadata.properties?.height,
+          format: metadata.properties?.format,
+          confidence: metadata.properties?.confidence
         });
         
         // Set up metadata processing options
@@ -1304,11 +1304,11 @@ export class DefaultImageTransformationService implements ImageTransformationSer
         }
         
         // Process the metadata based on what transformation is needed
-        if (options.aspect && metadata.metadata) {
+        if (options.aspect && metadata.properties) {
           this.logger.debug('Processing aspect ratio with metadata', {
             aspect: options.aspect,
-            originalWidth: metadata.metadata.width,
-            originalHeight: metadata.metadata.height
+            originalWidth: metadata.properties.width,
+            originalHeight: metadata.properties.height
           });
           
           // Process the metadata - create a targetAspect object if aspect ratio is provided
@@ -1361,22 +1361,22 @@ export class DefaultImageTransformationService implements ImageTransformationSer
         
         // If smart mode is enabled, process it with the metadata
         const smartValue = options.smart !== undefined ? String(options.smart) : '';
-        if ((options.smart === true || smartValue === 'true') && metadata.metadata) {
+        if ((options.smart === true || smartValue === 'true') && metadata.properties) {
           this.logger.debug('Processing smart transformation with metadata', {
-            originalWidth: metadata.metadata.width,
-            originalHeight: metadata.metadata.height
+            originalWidth: metadata.properties.width,
+            originalHeight: metadata.properties.height
           });
           
           // For smart mode without aspect, use original aspect ratio but with smart cropping
           if (!options.aspect) {
             // Default to square if no other dimensions are provided
-            let width = options.width ? Number(options.width) : metadata.metadata.width;
-            let height = options.height ? Number(options.height) : metadata.metadata.height;
+            let width = options.width ? Number(options.width) : metadata.properties.width;
+            let height = options.height ? Number(options.height) : metadata.properties.height;
             
             // If neither width nor height is specified, use a reasonable default
             if (!options.width && !options.height) {
-              width = Math.min(metadata.metadata.width, 800);
-              height = Math.round(width * (metadata.metadata.height / metadata.metadata.width));
+              width = Math.min(metadata.properties.width, 800);
+              height = Math.round(width * (metadata.properties.height / metadata.properties.width));
             }
             
             // Update the options with the calculated dimensions
@@ -1409,10 +1409,10 @@ export class DefaultImageTransformationService implements ImageTransformationSer
         }
         
         // For banner-type derivatives, apply special handling
-        if (options.derivative === 'banner' && metadata.metadata) {
+        if (options.derivative === 'banner' && metadata.properties) {
           this.logger.debug('Processing banner derivative with metadata', {
-            originalWidth: metadata.metadata.width,
-            originalHeight: metadata.metadata.height
+            originalWidth: metadata.properties.width,
+            originalHeight: metadata.properties.height
           });
           
           // Use face detection with wide aspect ratio if no specific gravity is set
