@@ -59,7 +59,7 @@
 		"config:load-production": "npm run config -- load-kv ./docs/public/configuration/examples/templates/production-config.json --env production"
 	},
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "^0.8.36",
+		"@cloudflare/vitest-pool-workers": "^0.12.7",
 		"@cloudflare/workers-types": "^4.20250406.0",
 		"@mdn/browser-compat-data": "^5.7.5",
 		"@types/node": "^20.11.30",
